@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:ssr": "vite build --ssr",
-    "preview": "vite preview"
+    "build:ssr": "vite build --ssr"
   },
   "dependencies": {
     "react": "^19.2.5",
