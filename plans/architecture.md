@@ -12,7 +12,7 @@ flowchart LR
         A[Ruby App] --> B[SSR::Deno.render data]
         B --> C{Ruby Native Extension}
         C -->|JSON| D[deno_runtime]
-        D --> E[Vite SSR Bundle]
+        D --> E[Self-Contained Vite SSR Bundle<br/>(all deps inlined, zero imports)]
         E -->|HTML string| D
         D -->|String| C
         C --> B
@@ -20,10 +20,10 @@ flowchart LR
     end
 
     subgraph Build Time
-        F[Vite + React/Vue/Svelte] -->|ssr.target: webworker| G[dist/server/entry-server.js]
+        F[Vite + React/Vue/Svelte] -->|ssr.target: webworker<br/>ssr.noExternal: true| G[dist/server/entry-server.js<br/>~448KB self-contained ESM]
     end
 
-    G -->|loaded at init| D
+    G -->|loaded & evaluated at init| D
 ```
 
 ## Data Flow
@@ -252,9 +252,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  ssr: {
+    target: 'webworker',
+    noExternal: true,          // Inline all deps into a single self-contained bundle
+  },
   build: {
     ssr: true,
-    ssrTarget: 'webworker',
     outDir: 'dist/server',
     rollupOptions: {
       input: 'src/entry-server.ts',
@@ -263,18 +266,28 @@ export default defineConfig({
 })
 ```
 
+> **`ssr.noExternal: true`** is critical. Without it, Vite produces a bundle with external `import` statements for dependencies like `react` and `react-dom`. The embedded `deno_runtime` cannot resolve these external imports — it has no package manager or `node_modules` access. With `noExternal: true`, Vite (via rolldown) inlines **all** dependencies into a single self-contained ESM file (~448KB for React 19, ~86KB gzipped) with zero `import` statements. The bundle only has the `export { render }` at the end, making it ideal for direct evaluation in the embedded Deno runtime.
+
 The entry file should export a `render` function:
 
 ```ts
 // src/entry-server.ts
 import { renderToString } from 'react-dom/server'
+import { createElement } from 'react'
 import App from './App'
 
 export function render(url: string, context: { component_data: any, props: any }): string {
-  const html = renderToString(<App data={context.component_data} {...context.props} />)
+  const html = renderToString(
+    createElement(App, {
+      data: context.component_data,
+      extra: context.props,
+    })
+  )
   return html
 }
 ```
+
+> **Note on JSX spread**: Vite 8 uses rolldown as its bundler, which does not support JSX spread syntax (`{...context.props}`). When passing dynamic props, use `createElement()` directly instead of JSX spread.
 
 ## Error Handling Strategy
 
@@ -347,8 +360,10 @@ end
 
 2. **Web Worker Target**: Using `ssr.target: "webworker"` in Vite produces a bundle that only uses Web APIs, which Deno supports natively without Node.js compatibility layers.
 
-3. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
+3. **Self-Contained Bundle via `ssr.noExternal: true`**: This is the most critical Vite configuration option. Without it, Vite produces a bundle with external `import` statements for dependencies (e.g., `import { renderToString } from 'react-dom/server'`). The embedded `deno_runtime` cannot resolve these — it has no package manager, no `node_modules`, and no module resolution algorithm. With `ssr.noExternal: true`, Vite's rolldown inlines **all** dependencies into a single self-contained ESM file with zero `import` statements. The resulting bundle (e.g., ~448KB for React 19) is evaluated directly in the Deno runtime as one unit, and only the `render` function is exported. This is the key enabler for the entire approach.
 
-4. **Tokio Runtime — Single-threaded for v1, multi-threaded roadmap**: For the first iteration, we use a Tokio `current_thread` runtime to keep things simple. Since Ruby has a GVL, long-running renders would block the Ruby thread. However, the architecture is designed with future multi-threading in mind — Puma's multi-threaded worker model or Ruby async web servers (Ractor or non-Ractor based) could take advantage of a multi-threaded Tokio runtime with a pool of Deno isolates, allowing concurrent renders without blocking each other.
+4. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
 
-5. **Configuration via Ruby**: All configuration (bundle path, permissions, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
+5. **Tokio Runtime — Single-threaded for v1, multi-threaded roadmap**: For the first iteration, we use a Tokio `current_thread` runtime to keep things simple. Since Ruby has a GVL, long-running renders would block the Ruby thread. However, the architecture is designed with future multi-threading in mind — Puma's multi-threaded worker model or Ruby async web servers (Ractor or non-Ractor based) could take advantage of a multi-threaded Tokio runtime with a pool of Deno isolates, allowing concurrent renders without blocking each other.
+
+6. **Configuration via Ruby**: All configuration (bundle path, permissions, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
