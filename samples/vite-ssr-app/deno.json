@@ -1,0 +1,26 @@
+{
+  "name": "@ssr-deno/vite-ssr-app",
+  "version": "1.0.0",
+  "exports": "./serve.deno.ts",
+  "lock": "deno.lock",
+  "tasks": {
+    "build:ssr": "deno run -A npm:vite build --ssr",
+    "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
+  },
+  "imports": {
+    "react": "npm:react@^19.2.5",
+    "react-dom": "npm:react-dom@^19.2.5",
+    "react/jsx-runtime": "npm:react@^19.2.5/jsx-runtime",
+    "react-dom/server": "npm:react-dom@^19.2.5/server",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5.2.0",
+    "vite": "npm:vite@^8.0.10"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": [
+      "npm:@types/react@^19.2.14",
+      "npm:@types/react-dom@^19.2.3"
+    ]
+  }
+}
