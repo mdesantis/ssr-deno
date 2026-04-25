@@ -1,6 +1,6 @@
 import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
-import App from './App'
+import App from './App.tsx'
 
 export interface RenderContext {
   component_data: Record<string, unknown>
