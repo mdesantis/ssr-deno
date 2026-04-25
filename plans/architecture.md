@@ -12,7 +12,7 @@ flowchart LR
         A[Ruby App] --> B[SSR::Deno.render data]
         B --> C{Ruby Native Extension}
         C -->|JSON| D[deno_runtime]
-        D --> E[Self-Contained Vite SSR Bundle<br/>(all deps inlined, zero imports)]
+        D --> E[Self-Contained Vite SSR Bundle]
         E -->|HTML string| D
         D -->|String| C
         C --> B
@@ -20,10 +20,10 @@ flowchart LR
     end
 
     subgraph Build Time
-        F[Vite + React/Vue/Svelte] -->|ssr.target: webworker<br/>ssr.noExternal: true| G[dist/server/entry-server.js<br/>~448KB self-contained ESM]
+        F[Vite + React/Vue/Svelte] -->|ssr.target: webworker| G[dist/server/entry-server.js]
     end
 
-    G -->|loaded & evaluated at init| D
+    G -->|loaded and evaluated at init| D
 ```
 
 ## Data Flow
