@@ -26,7 +26,4 @@ Gem::Specification.new do |spec|
 
   # Runtime dependencies
   spec.add_dependency 'rb_sys', '~> 0.9'
-
-  # Development dependencies
-  spec.add_development_dependency 'rake-compiler', '~> 1.2'
 end

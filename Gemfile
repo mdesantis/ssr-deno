@@ -8,6 +8,7 @@ gemspec
 gem 'irb'
 gem 'minitest', '~> 6.0'
 gem 'rake', '~> 13.0'
+gem 'rake-compiler', '~> 1.2'
 gem 'rubocop', '~> 1.21', require: false
 gem 'rubocop-minitest', '~> 0.39', require: false
 gem 'rubocop-performance', '~> 1.25', require: false
