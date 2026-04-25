@@ -25,7 +25,7 @@ Naming/VariableNumber:
   EnforcedStyle: snake_case
 
 Style/ClassAndModuleChildren:
-  EnforcedStyle: compact
+  EnforcedStyle: nested
 Style/Documentation:
   Enabled: false
 Style/EmptyMethod:
