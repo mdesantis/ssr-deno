@@ -3,9 +3,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  ssr: {
+    target: 'webworker',
+    noExternal: true,
+  },
   build: {
     ssr: true,
-    ssrTarget: 'webworker',
     outDir: 'dist/server',
     rollupOptions: {
       input: 'src/entry-server.ts',
