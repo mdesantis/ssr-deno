@@ -6,3 +6,6 @@
 /pkg/
 /spec/reports/
 /tmp/
+/lib/ssr/deno/*.so
+/lib/ssr/deno/*.bundle
+/lib/ssr/deno/*.dll
