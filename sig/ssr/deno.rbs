@@ -1,4 +1,4 @@
-module Ssr
+module SSR
   module Deno
     VERSION: String
     # See the writing guide of rbs: https://github.com/ruby/rbs#guides

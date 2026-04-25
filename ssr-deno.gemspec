@@ -4,7 +4,7 @@ require_relative "lib/ssr/deno/version"
 
 Gem::Specification.new do |spec|
   spec.name = "ssr-deno"
-  spec.version = Ssr::Deno::VERSION
+  spec.version = SSR::Deno::VERSION
   spec.authors = ["Maurizio De Santis"]
   spec.email = ["desantis.maurizio@gmail.com"]
 
