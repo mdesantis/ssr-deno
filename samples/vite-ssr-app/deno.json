@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "exports": "./serve.deno.ts",
   "lock": "deno.lock",
+  "exclude": [
+    "dist/",
+    "node_modules/"
+  ],
   "tasks": {
     "build:ssr": "deno run -A npm:vite build --ssr",
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
