@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Ruby gem that embeds the [`deno_runtime`](https://crates.io/crates/deno_runtime) Rust crate via a native extension to provide server-side rendering (SSR) of Vite-built web applications. The gem loads a Vite SSR production bundle (built with `ssr.target: "webworker"`) and executes it within an embedded Deno runtime, passing JSON data from Ruby and receiving rendered HTML back.
+A Ruby gem that embeds the [`deno_core::JsRuntime`](https://docs.rs/deno_core/latest/deno_core/struct.JsRuntime.html) Rust crate via a native extension to provide server-side rendering (SSR) of Vite-built web applications. The gem loads a Vite SSR production bundle (built with `ssr.target: "webworker"`) and executes it within an embedded V8 isolate, passing JSON data from Ruby and receiving rendered HTML back.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ flowchart LR
     subgraph Ruby Process
         A[Ruby App] --> B[SSR::Deno.render data]
         B --> C{Ruby Native Extension}
-        C -->|JSON| D[deno_runtime]
+        C -->|JSON| D[deno_core::JsRuntime]
         D --> E[Self-Contained Vite SSR Bundle]
         E -->|HTML string| D
         D -->|String| C
@@ -32,16 +32,16 @@ flowchart LR
 sequenceDiagram
     participant Ruby as Ruby App
     participant Ext as magnus Extension
-    participant Deno as deno_runtime
+    participant V8 as deno_core::JsRuntime
     participant JS as Vite SSR Bundle
 
     Ruby->>Ext: SSR::Deno.render({component_data, props})
     Ext->>Ext: Serialize args to JSON
-    Ext->>Deno: Execute JS entry with JSON
-    Deno->>JS: Call render(JSON.parse(args))
+    Ext->>V8: Execute JS entry with JSON
+    V8->>JS: Call render(JSON.parse(args))
     JS->>JS: Render component to HTML string
-    JS-->>Deno: Return HTML string
-    Deno-->>Ext: Return HTML as Rust String
+    JS-->>V8: Return HTML string
+    V8-->>Ext: Return HTML as Rust String
     Ext-->>Ruby: Return HTML as Ruby String
 ```
 
@@ -61,10 +61,9 @@ flowchart TD
         M3 --> M4[bundle_loader.rs]
     end
 
-    subgraph deno_runtime Crate
-        M2 --> D1[DenoRuntime]
-        D1 --> D2[JsRuntime]
-        D2 --> D3[V8 Engine]
+    subgraph deno_core Crate
+        M2 --> D1[JsRuntime]
+        D1 --> D2[V8 Engine]
     end
 
     subgraph JS Layer
@@ -103,8 +102,6 @@ magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-once_cell = "1"
-deno_runtime = "0.254"
 deno_core = "0.399"
 ```
 
@@ -151,24 +148,21 @@ fn render(args_json: String) -> Result<String, Error> {
 #### `deno_runtime_wrapper.rs` — Runtime Lifecycle
 
 This is the core module. It wraps a Tokio `current_thread` runtime and a
-`deno_runtime::MainWorker` instance.
+`deno_core::JsRuntime` instance.
 
-**Key API: `deno_runtime::MainWorker`**
+**Key API: `deno_core::JsRuntime`**
 
-- Created via `MainWorker::new(service_options, worker_options)` where:
-  - `WorkerServiceOptions` provides module loader, permissions, blob store, etc.
-  - `WorkerOptions` provides bootstrap config, extensions, startup snapshot, etc.
-- `worker.execute_script(name, code)` — synchronously executes a script and returns a `v8::Global<v8::Value>`. Used to evaluate the self-contained SSR bundle.
-- `worker.js_runtime.global()` — gets the V8 global object to extract the `render` function.
-- `worker.run_event_loop(poll)` — runs the event loop for async module loading.
+- Created via `JsRuntime::new(RuntimeOptions::default())` — creates a minimal V8 isolate with no Deno-specific extensions.
+- `js_runtime.execute_script(name, code)` — synchronously executes a script and returns a `v8::Global<v8::Value>`. Used to evaluate the self-contained SSR bundle.
+- `js_runtime.handle_scope()` — creates a V8 handle scope to access the global object and extract the `render` function.
+- No module loading, no file system, no permissions — just a bare V8 engine.
 
-**Strategy for Phase 2:**
+**Why `deno_core::JsRuntime` instead of `deno_runtime`:**
 
-Since `deno_runtime` has many dependencies (deno_fs, deno_io, deno_web, etc.),
-Phase 2 will use `deno_core::JsRuntime` directly with a minimal set of
-extensions, rather than the full `MainWorker`. This avoids pulling in the
-entire Deno runtime surface (file system, permissions, Node compat, etc.)
-which we don't need for SSR.
+The full `deno_runtime` crate pulls in many unnecessary dependencies
+(deno_fs, deno_io, deno_web, deno_fetch, deno_node, etc.) that are not
+needed for SSR. Since the Vite SSR bundle is self-contained with zero
+external imports, we only need a bare V8 isolate.
 
 ```rust
 use deno_core::{JsRuntime, RuntimeOptions, v8};
@@ -322,7 +316,7 @@ export default defineConfig({
 })
 ```
 
-> **`ssr.noExternal: true`** is critical. Without it, Vite produces a bundle with external `import` statements for dependencies like `react` and `react-dom`. The embedded `deno_runtime` cannot resolve these external imports — it has no package manager or `node_modules` access. With `noExternal: true`, Vite (via rolldown) inlines **all** dependencies into a single self-contained ESM file (~448KB for React 19, ~86KB gzipped) with zero `import` statements. The bundle only has the `export { render }` at the end, making it ideal for direct evaluation in the embedded Deno runtime.
+> **`ssr.noExternal: true`** is critical. Without it, Vite produces a bundle with external `import` statements for dependencies like `react` and `react-dom`. The embedded `deno_core::JsRuntime` cannot resolve these external imports — it has no package manager or `node_modules` access. With `noExternal: true`, Vite (via rolldown) inlines **all** dependencies into a single self-contained ESM file (~448KB for React 19, ~86KB gzipped) with zero `import` statements. The bundle only has the `export { render }` at the end, making it ideal for direct evaluation in the embedded V8 isolate.
 
 The entry file should export a `render` function:
 
