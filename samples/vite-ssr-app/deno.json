@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/config.v1.json",
   "name": "@ssr-deno/vite-ssr-app",
   "version": "1.0.0",
   "exports": "./serve.deno.ts",

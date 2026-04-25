@@ -1,0 +1,13 @@
+{
+  // Enable Deno for the samples directory (Vite SSR sample uses Deno)
+  "deno.enablePaths": [
+    "samples/vite-ssr-app"
+  ],
+  // Use the Deno language server for .ts files in the samples directory
+  "deno.codeLens.test": true,
+  // Disable the built-in TypeScript language server for Deno-managed files
+  // to avoid conflicts between TS and Deno type checking
+  "deno.config": "./samples/vite-ssr-app/deno.json",
+  // Disable JSON schema fetching from remote hosts to avoid untrusted location errors
+  "json.schemaDownload.enable": false
+}
