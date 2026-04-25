@@ -16,5 +16,10 @@
   },
   "include": [
     "src"
+  ],
+  "exclude": [
+    "serve.deno.ts",
+    "deno.json",
+    "deno.lock"
   ]
 }
