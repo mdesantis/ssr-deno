@@ -78,44 +78,17 @@ flowchart TD
 ```
 ssr-deno/
 ├── ext/
-│   └── ssr_deno/                    # Rust crate
-│       ├── Cargo.toml
-│       ├── src/
-│       │   ├── lib.rs               # magnus entrypoint, Ruby bindings
-│       │   ├── deno_runtime_wrapper.rs  # deno_runtime lifecycle management
-│       │   ├── js_executor.rs       # JS execution, JSON serialization
-│       │   └── bundle_loader.rs     # Load Vite SSR bundle from disk
-│       └── vendor/                  # vendored deno dependencies (if needed)
+│   └── ssr_deno/                    # Rust crate (Cargo.toml, src/)
 ├── lib/
-│   ├── ssr/
-│   │   ├── deno.rb                  # Ruby module, loads native extension
-│   │   ├── deno/
-│   │   │   ├── version.rb
-│   │   │   ├── runtime.rb           # Ruby-side runtime manager
-│   │   │   └── configuration.rb     # Gem configuration
-│   │   └── deno.rb
-│   └── ssr-deno.rb                  # Top-level require
-├── sig/
-│   └── ssr/
-│       └── deno.rbs                 # RBS type signatures
-├── test/
-│   ├── test_helper.rb
-│   └── ssr/
-│       └── test_deno.rb
+│   └── ssr/deno/                    # Ruby module (version.rb, runtime.rb, configuration.rb)
+├── sig/                             # RBS type signatures
+├── test/                            # Minitest suite
+├── samples/
+│   └── vite-ssr-app/                # Sample Vite SSR project (deno.json, src/, dist/)
+├── .vscode/                         # VSCode Deno extension settings
 ├── Gemfile
 ├── ssr-deno.gemspec
-├── Rakefile
-└── samples/                         # Sample Vite SSR project
-    └── vite-ssr-app/
-        ├── package.json
-        ├── vite.config.ts
-        ├── src/
-        │   ├── entry-server.ts
-        │   ├── App.tsx
-        │   └── components/
-        └── dist/
-            └── server/
-                └── entry-server.js  # Built output
+└── Rakefile
 ```
 
 ## Detailed Component Design
@@ -197,8 +170,8 @@ module SSR
     class << self
       def render(component_data: {}, props: {}, url: '/')
         # Delegates to native extension
-        # component_data: hash with component identification
-        # props: hash with component props
+        # component_data: hash with component identification (e.g. { component_name: "hello_world" })
+        # props: hash with component props (e.g. { name: "Maurizio" })
         # url: current request URL (for routing)
         native_render({
           component_data: component_data,
@@ -274,9 +247,9 @@ The entry file should export a `render` function:
 // src/entry-server.ts
 import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
-import App from './App'
+import App from './App.tsx'
 
-export function render(url: string, context: { component_data: any, props: any }): string {
+export function render(_url: string, context: { component_data: any, props: any }): string {
   const html = renderToString(
     createElement(App, {
       data: context.component_data,
