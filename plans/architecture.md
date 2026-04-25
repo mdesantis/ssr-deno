@@ -99,66 +99,149 @@ ssr-deno/
 
 ```toml
 [dependencies]
-magnus = { version = "0.7", features = ["user-value"] }
-rb-sys = "0.9"
-deno_runtime = "0.150"  # exact version TBD
-deno_core = "0.280"     # exact version TBD
+magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 once_cell = "1"
+deno_runtime = "0.254"
+deno_core = "0.399"
 ```
 
 #### `lib.rs` — magnus Entrypoint
 
 - Defines the `SSR::Deno` Ruby module
-- Registers the `render` class method
-- Initializes the Tokio runtime (needed by `deno_runtime`)
-- Manages a singleton `DenoRuntimeWrapper` using `once_cell`
+- Registers the `render` class method (takes JSON string, returns HTML string)
+- Registers `init_runtime` to initialize the Deno runtime with a bundle path
+- Uses `std::sync::OnceLock` for a singleton `DenoRuntimeWrapper`
+- The Tokio runtime is embedded inside `DenoRuntimeWrapper`
 
 ```rust
-// Pseudocode
+use magnus::{function, Error, Module, Object, Ruby};
+use std::sync::OnceLock;
+use crate::deno_runtime_wrapper::DenoRuntimeWrapper;
+
+static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
+
 #[magnus::init]
-fn init() -> Result<(), Error> {
-    let module = define_module("SSR")?;
+fn init(ruby: &Ruby) -> Result<(), Error> {
+    let module = ruby.define_module("SSR")?;
     let deno_module = module.define_module("Deno")?;
+    deno_module.define_singleton_method("init_runtime", function!(init_runtime, 1))?;
     deno_module.define_singleton_method("render", function!(render, 1))?;
     Ok(())
 }
 
-fn render(args: String) -> Result<String, Error> {
-    RUNTIME_WRAPPER.with(|rt| {
-        rt.block_on(async {
-            let result = rt.execute_render(&args).await?;
-            Ok(result)
-        })
-    })
+fn init_runtime(bundle_path: String) -> Result<String, Error> {
+    let runtime = DenoRuntimeWrapper::new(&bundle_path)
+        .map_err(|e| Error::new(format!("Failed to init runtime: {e}")))?;
+    RUNTIME.set(runtime)
+        .map_err(|_| Error::new("Runtime already initialized".to_string()))?;
+    Ok("Runtime initialized".to_string())
+}
+
+fn render(args_json: String) -> Result<String, Error> {
+    let runtime = RUNTIME.get()
+        .ok_or_else(|| Error::new("Runtime not initialized".to_string()))?;
+    runtime.block_on_render(&args_json)
+        .map_err(|e| Error::new(format!("Render failed: {e}")))
 }
 ```
 
 #### `deno_runtime_wrapper.rs` — Runtime Lifecycle
 
-- Initializes a single `deno_runtime::Deno` instance (singleton pattern)
-- Configures the runtime with:
-  - Web Worker extensions (no Node compat layer)
-  - `allow_read` permission for the bundle directory
-  - Custom extension for the `render` bridge function
-- Maintains a Tokio `current_thread` runtime for async execution
-- Handles graceful shutdown
+This is the core module. It wraps a Tokio `current_thread` runtime and a
+`deno_runtime::MainWorker` instance.
+
+**Key API: `deno_runtime::MainWorker`**
+
+- Created via `MainWorker::new(service_options, worker_options)` where:
+  - `WorkerServiceOptions` provides module loader, permissions, blob store, etc.
+  - `WorkerOptions` provides bootstrap config, extensions, startup snapshot, etc.
+- `worker.execute_script(name, code)` — synchronously executes a script and returns a `v8::Global<v8::Value>`. Used to evaluate the self-contained SSR bundle.
+- `worker.js_runtime.global()` — gets the V8 global object to extract the `render` function.
+- `worker.run_event_loop(poll)` — runs the event loop for async module loading.
+
+**Strategy for Phase 2:**
+
+Since `deno_runtime` has many dependencies (deno_fs, deno_io, deno_web, etc.),
+Phase 2 will use `deno_core::JsRuntime` directly with a minimal set of
+extensions, rather than the full `MainWorker`. This avoids pulling in the
+entire Deno runtime surface (file system, permissions, Node compat, etc.)
+which we don't need for SSR.
+
+```rust
+use deno_core::{JsRuntime, RuntimeOptions, v8};
+use std::sync::Mutex;
+use tokio::runtime::Runtime as TokioRuntime;
+
+pub struct DenoRuntimeWrapper {
+    tokio_rt: TokioRuntime,
+    js_runtime: Mutex<JsRuntime>,
+}
+
+impl DenoRuntimeWrapper {
+    pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let tokio_rt = TokioRuntime::new()?;
+        let js_runtime = JsRuntime::new(RuntimeOptions::default());
+        let bundle = std::fs::read_to_string(bundle_path)?;
+
+        // Evaluate the self-contained SSR bundle
+        let mut rt = js_runtime;
+        rt.execute_script("entry-server", bundle.into())?;
+
+        Ok(Self {
+            tokio_rt,
+            js_runtime: Mutex::new(rt),
+        })
+    }
+
+    pub fn block_on_render(&self, args_json: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let mut js_runtime = self.js_runtime.lock().unwrap();
+        let scope = &mut js_runtime.handle_scope();
+
+        // Get the render function from global scope
+        let global = scope.get_current_context().global(scope);
+        let render_key = v8::String::new(scope, "render").unwrap();
+        let render_fn: v8::Local<v8::Function> = global.get(scope, render_key.into()).unwrap().try_into()?;
+
+        // Create JSON string argument
+        let json_arg = v8::String::new(scope, args_json).unwrap();
+        let undefined = v8::undefined(scope);
+
+        // Call render(undefined, args_json)
+        let result = render_fn.call(scope, undefined.into(), &[json_arg.into()])?;
+        Ok(result.to_string(scope).unwrap().to_rust_string_lossy(scope))
+    }
+}
+```
+
+> **Note on `deno_core` vs `deno_runtime`**: The full `deno_runtime` crate pulls
+> in many dependencies (deno_fs, deno_io, deno_web, deno_fetch, deno_node, etc.)
+> that are unnecessary for SSR. Using `deno_core::JsRuntime` directly gives us
+> a minimal V8 isolate with just the JavaScript engine. The self-contained Vite
+> SSR bundle (with `ssr.noExternal: true`) has zero external imports, so it
+> doesn't need module loading, file system access, or any Deno APIs.
 
 #### `js_executor.rs` — JS Execution
 
-- Loads the Vite SSR bundle from disk at initialization
-- Evaluates the bundle in the Deno runtime
-- Calls the exported `render` function with JSON-serialized args
-- Returns the HTML string result back to Ruby
-- Handles JS exceptions and converts them to Ruby exceptions
+*Note: For Phase 2, this logic is embedded directly in `deno_runtime_wrapper.rs`
+since the execution path is straightforward: evaluate bundle, call render, return HTML.*
+
+- Evaluates the self-contained Vite SSR bundle via `JsRuntime::execute_script`
+- Extracts the `render` function from the V8 global scope
+- Calls `render(json_args)` with JSON-serialized component data
+- Converts the V8 return value to a Rust String
+- Handles JS exceptions and converts them to Ruby exceptions via magnus
 
 #### `bundle_loader.rs` — Bundle Loading
 
+*Note: For Phase 2, this is a simple `std::fs::read_to_string` call. A more
+sophisticated loader with hot-reload support will be added in Phase 4.*
+
 - Reads the Vite SSR entry file from a configurable path
-- Supports hot-reload in development (file watcher, optional)
-- Caches the module in the Deno runtime's module map
+- Returns the file contents as a `String` for evaluation
+- The bundle path is passed from Ruby via `SSR::Deno.init_runtime(bundle_path)`
 
 ### 2. Ruby Layer
 
@@ -296,12 +379,65 @@ end
 - Add `rb-sys` and `magnus` as dependencies
 - Create a minimal "hello world" native extension to verify the build pipeline
 
-### Phase 2: Embed deno_runtime
-- Add `deno_runtime` and `deno_core` to `Cargo.toml`
-- Implement `DenoRuntimeWrapper` with singleton lifecycle
-- Configure runtime for web-worker mode (no Node compat)
-- Set up Tokio runtime for async execution
-- Verify the runtime initializes correctly from Ruby
+### Phase 2: Embed `deno_core::JsRuntime`
+
+**Key Decision**: Use [`deno_core::JsRuntime`](https://docs.rs/deno_core/latest/deno_core/struct.JsRuntime.html) directly instead of the full [`deno_runtime`](https://crates.io/crates/deno_runtime) crate. The full `deno_runtime` pulls in many unnecessary dependencies (deno_fs, deno_io, deno_web, deno_fetch, deno_node, etc.) that are not needed for SSR. Since the Vite SSR bundle is self-contained (via `ssr.noExternal: true`) with zero external imports, we only need a bare V8 isolate.
+
+**Steps:**
+
+1. **Update [`ext/ssr_deno/Cargo.toml`](ext/ssr_deno/Cargo.toml)**
+   - Add `deno_core = "0.399"` dependency
+   - Remove `once_cell = "1"` (use `std::sync::OnceLock` from Rust stdlib instead)
+   - Keep `magnus = { version = "0.8", features = ["embed"] }`, `serde`, `serde_json`, `tokio`
+
+2. **Create [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](ext/ssr_deno/src/deno_runtime_wrapper.rs)**
+   - Define `DenoRuntimeWrapper` struct with:
+     - `tokio_rt: tokio::runtime::Runtime` — Tokio current-thread runtime for async operations
+     - `js_runtime: Mutex<JsRuntime>` — The V8 isolate wrapped in a Mutex for safe access
+   - Implement `DenoRuntimeWrapper::new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>>`:
+     - Create a Tokio `current_thread` runtime
+     - Create a `JsRuntime` with `RuntimeOptions::default()` (minimal V8 isolate)
+     - Read the bundle file via `std::fs::read_to_string`
+     - Evaluate the bundle via `js_runtime.execute_script("entry-server", bundle.into())`
+     - Return the wrapped runtime
+   - Implement `DenoRuntimeWrapper::block_on_render(&self, args_json: &str) -> Result<String, Box<dyn std::error::Error>>`:
+     - Lock the `Mutex<JsRuntime>`
+     - Create a V8 handle scope via `js_runtime.handle_scope()`
+     - Get the V8 global object: `scope.get_current_context().global(scope)`
+     - Extract the `render` function: `global.get(scope, render_key.into())`
+     - Create a V8 string from `args_json`
+     - Call `render_fn.call(scope, undefined.into(), &[json_arg.into()])`
+     - Convert the V8 result to a Rust String via `result.to_string(scope).unwrap().to_rust_string_lossy(scope)`
+
+3. **Update [`ext/ssr_deno/src/lib.rs`](ext/ssr_deno/src/lib.rs)**
+   - Replace the hello-world implementation with:
+     - `use std::sync::OnceLock` for the singleton runtime
+     - `static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new()`
+     - `fn init_runtime(bundle_path: String) -> Result<String, Error>` — creates `DenoRuntimeWrapper::new(&bundle_path)`, stores it in `RUNTIME`
+     - `fn render(args_json: String) -> Result<String, Error>` — gets `RUNTIME.get()`, calls `runtime.block_on_render(&args_json)`
+     - Register both methods as singleton methods on `SSR::Deno` in the `#[magnus::init]` function
+   - Ensure proper error conversion: `map_err(|e| Error::new(format!("...: {e}")))`
+
+4. **Compile and verify**
+   - Run `bundle exec rake compile` to build the native extension
+   - Verify from Ruby console:
+     ```ruby
+     require 'ssr/deno'
+     bundle_path = File.expand_path('samples/vite-ssr-app/dist/server/entry-server.js')
+     SSR::Deno.init_runtime(bundle_path)
+     result = SSR::Deno.render({component_data: {component_name: "hello_world"}, props: {name: "World"}, url: "/"}.to_json)
+     puts result
+     # => <!DOCTYPE html><html>...
+     ```
+   - Run `bundle exec rake test` to ensure existing tests pass
+
+5. **Handle edge cases**
+   - Bundle file not found: return descriptive error
+   - `render` function not found in bundle: return descriptive error
+   - JS runtime error during evaluation or render: catch and convert to Ruby error
+   - Double initialization: `OnceLock::set` returns `Err` if already set — return error message
+
+**Expected Outcome**: The Ruby API `SSR::Deno.init_runtime(path)` + `SSR::Deno.render(json)` works end-to-end, loading the Vite SSR bundle and rendering HTML from a real React component.
 
 ### Phase 3: Ruby API
 - Implement `SSR::Deno.render` method
@@ -333,10 +469,12 @@ end
 
 2. **Web Worker Target**: Using `ssr.target: "webworker"` in Vite produces a bundle that only uses Web APIs, which Deno supports natively without Node.js compatibility layers.
 
-3. **Self-Contained Bundle via `ssr.noExternal: true`**: This is the most critical Vite configuration option. Without it, Vite produces a bundle with external `import` statements for dependencies (e.g., `import { renderToString } from 'react-dom/server'`). The embedded `deno_runtime` cannot resolve these — it has no package manager, no `node_modules`, and no module resolution algorithm. With `ssr.noExternal: true`, Vite's rolldown inlines **all** dependencies into a single self-contained ESM file with zero `import` statements. The resulting bundle (e.g., ~448KB for React 19) is evaluated directly in the Deno runtime as one unit, and only the `render` function is exported. This is the key enabler for the entire approach.
+3. **Self-Contained Bundle via `ssr.noExternal: true`**: This is the most critical Vite configuration option. Without it, Vite produces a bundle with external `import` statements for dependencies (e.g., `import { renderToString } from 'react-dom/server'`). The embedded Deno runtime cannot resolve these — it has no package manager, no `node_modules`, and no module resolution algorithm. With `ssr.noExternal: true`, Vite's rolldown inlines **all** dependencies into a single self-contained ESM file with zero `import` statements. The resulting bundle (e.g., ~448KB for React 19) is evaluated directly in the Deno runtime as one unit, and only the `render` function is exported. This is the key enabler for the entire approach.
 
-4. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
+4. **`deno_core::JsRuntime` over `deno_runtime`**: We use [`deno_core::JsRuntime`](https://docs.rs/deno_core/latest/deno_core/struct.JsRuntime.html) directly instead of the full [`deno_runtime`](https://crates.io/crates/deno_runtime) crate. The full `deno_runtime` pulls in many unnecessary dependencies (deno_fs, deno_io, deno_web, deno_fetch, deno_node, etc.) that are not needed for SSR. Since the self-contained Vite SSR bundle has zero external imports, we only need a bare V8 isolate with no module loading, file system access, or Deno API support. This keeps the compiled binary smaller and compilation faster.
 
-5. **Tokio Runtime — Single-threaded for v1, multi-threaded roadmap**: For the first iteration, we use a Tokio `current_thread` runtime to keep things simple. Since Ruby has a GVL, long-running renders would block the Ruby thread. However, the architecture is designed with future multi-threading in mind — Puma's multi-threaded worker model or Ruby async web servers (Ractor or non-Ractor based) could take advantage of a multi-threaded Tokio runtime with a pool of Deno isolates, allowing concurrent renders without blocking each other.
+5. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
 
-6. **Configuration via Ruby**: All configuration (bundle path, permissions, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
+6. **Tokio Runtime — Single-threaded for v1, multi-threaded roadmap**: For the first iteration, we use a Tokio `current_thread` runtime to keep things simple. Since Ruby has a GVL, long-running renders would block the Ruby thread. However, the architecture is designed with future multi-threading in mind — Puma's multi-threaded worker model or Ruby async web servers (Ractor or non-Ractor based) could take advantage of a multi-threaded Tokio runtime with a pool of Deno isolates, allowing concurrent renders without blocking each other.
+
+7. **Configuration via Ruby**: All configuration (bundle path, permissions, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
