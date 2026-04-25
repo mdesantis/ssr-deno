@@ -52,7 +52,7 @@ const sizeKB = (bundleCode.length / 1024).toFixed(0);
 console.log(`Bundle loaded successfully (${sizeKB} KB)`);
 
 // Start HTTP server
-Deno.serve({ port: PORT }, async (req: Request) => {
+Deno.serve({ port: PORT }, (req: Request) => {
   const url = new URL(req.url);
   const name = url.searchParams.get("name") || "World";
 

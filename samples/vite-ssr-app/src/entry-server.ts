@@ -7,7 +7,7 @@ export interface RenderContext {
   props: Record<string, unknown>
 }
 
-export function render(url: string, context: RenderContext): string {
+export function render(_url: string, context: RenderContext): string {
   const html = renderToString(
     createElement(App, {
       data: context.component_data,
