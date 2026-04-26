@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# V8 TLS fix: When linking librusty_v8.a into a cdylib (.so), the linker
+# fails with R_X86_64_TPOFF32 relocation errors because V8's thread-local
+# storage uses the 'local-exec' model by default, which is incompatible
+# with shared libraries.
+#
+# Building V8 from source with v8_monolithic_for_shared_library=true
+# changes the TLS model to 'local-dynamic', producing compatible relocations.
+#
+# See: plans/v8-tls-issue.md
+export V8_FROM_SOURCE=true
+export GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
+export LIBCLANG_PATH=/usr/lib/llvm-21/lib
+
+exec bundle exec rake compile "$@"
