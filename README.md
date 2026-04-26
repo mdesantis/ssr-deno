@@ -1,38 +1,97 @@
-# Ssr::Deno
+# ssr-deno
 
-TODO: Delete this and the text below, and describe your gem
+Server-side rendering for Ruby using Deno.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/ssr/deno`. To experiment with that code, run `bin/console` for an interactive prompt.
+`ssr-deno` embeds a Deno V8 runtime in Ruby via a Rust native extension, enabling server-side rendering of JavaScript/TypeScript frameworks (React, Vue, etc.) directly from Ruby.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+Add this line to your application's Gemfile:
 
-Install the gem and add to the application's Gemfile by executing:
-
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+```ruby
+gem 'ssr-deno'
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+And then execute:
 
 ```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+$ bundle install
+```
+
+Or install it yourself as:
+
+```bash
+$ gem install ssr-deno
 ```
 
 ## Usage
 
-TODO: Write usage instructions here
+```ruby
+require 'ssr/deno'
+
+# Initialize the runtime with a Vite SSR bundle
+SSR::Deno.init_runtime('path/to/dist/server/entry-server.js')
+
+# Render a component
+html = SSR::Deno.render(JSON.generate({
+  component_data: { message: 'Hello World!' },
+  props: {},
+  url: '/'
+}))
+
+puts html
+# => <html><head><title></title></head><body>...
+```
+
+The `render` function expects a JSON string with:
+- `component_data` — data passed to the root component
+- `props` — additional props
+- `url` — the request URL
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+### Prerequisites
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+- Ruby 3.3+
+- Rust toolchain
+- LLVM/Clang 21 (for V8 build)
+- Bundler
+
+### Setup
+
+```bash
+git clone https://github.com/mdesantis/ssr-deno.git
+cd ssr-deno
+bin/setup
+```
+
+### Compile the native extension
+
+```bash
+./bin/compile
+```
+
+> **Note:** The `compile` Rake task **must** be run through `./bin/compile`, which sets the environment variables required to build V8 as a shared library (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
+
+### Run tests
+
+```bash
+bundle exec rake test
+```
+
+### Interactive console
+
+```bash
+bin/console
+```
+
+## Architecture
+
+See [`plans/architecture.md`](plans/architecture.md) for a detailed overview of the project architecture, component design, and data flow.
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/mdesantis/ssr-deno. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/mdesantis/ssr-deno/blob/main/CODE_OF_CONDUCT.md).
+Bug reports and pull requests are welcome on GitHub at https://github.com/mdesantis/ssr-deno.
 
 ## License
 
@@ -40,4 +99,4 @@ The gem is available as open source under the terms of the [MIT License](https:/
 
 ## Code of Conduct
 
-Everyone interacting in the Ssr::Deno project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/mdesantis/ssr-deno/blob/main/CODE_OF_CONDUCT.md).
+Everyone interacting in the ssr-deno project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/mdesantis/ssr-deno/blob/main/CODE_OF_CONDUCT.md).
