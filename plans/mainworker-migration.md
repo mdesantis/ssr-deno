@@ -1,8 +1,10 @@
-# MainWorker Migration Plan (Option C)
+# MainWorker Migration Plan (Option C) — ✅ Completed
 
 ## Goal
 
 Migrate [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) from using `JsRuntime` directly to using `deno_runtime::worker::MainWorker` with minimal bootstrap.
+
+**Status: ✅ Complete** — migrated, refactored into separate modules, compiled, tested, and committed.
 
 ## Why MainWorker?
 
@@ -24,7 +26,7 @@ pub fn bootstrap_from_options<
 ) -> Self
 ```
 
-## Required Types
+## Required Types — Implemented
 
 ### 1. `InNpmPackageChecker` (from `node_resolver` crate)
 
@@ -35,7 +37,7 @@ pub trait InNpmPackageChecker {
 }
 ```
 
-**Plan**: Define a minimal `NopInNpmPackageChecker` in our crate that always returns `false`.
+**Implementation**: [`NopInNpmPackageChecker`](../ext/ssr_deno/src/nop_types.rs) — always returns `false`.
 
 ### 2. `NpmPackageFolderResolver` (from `node_resolver` crate)
 
@@ -47,7 +49,7 @@ pub trait NpmPackageFolderResolver {
 }
 ```
 
-**Plan**: Define a minimal `NopNpmPackageFolderResolver` that returns errors (we don't use npm packages).
+**Implementation**: [`NopNpmPackageFolderResolver`](../ext/ssr_deno/src/nop_types.rs) — returns `PackageFolderResolveErrorKind::PackageNotFound` for all methods.
 
 ### 3. `ExtNodeSys` (from `deno_node` crate, uses `#[sys_traits::auto_impl]`)
 
@@ -56,9 +58,15 @@ This trait is automatically implemented for any type that implements:
 - `EnvCurrentDir` (from `sys_traits`)
 - `Clone`
 
-**Plan**: Use `deno_runtime::deno_fs::RealFs` which implements `FileSystem`, and check if it also satisfies the required traits. If not, define a minimal wrapper.
+**Implementation**: [`Sys`](../ext/ssr_deno/src/sys.rs) — a custom type implementing all required `sys_traits` traits, delegating to real filesystem/environment operations. Includes wrapper types `RealMetadata`, `RealDirEntry`, `RealFile` for the trait object requirements.
 
-### 4. `WorkerServiceOptions` fields
+### 4. `PermissionDescriptorParser` (from `deno_permissions` crate)
+
+Required by `PermissionsContainer::allow_all(Arc<dyn PermissionDescriptorParser>)`.
+
+**Implementation**: [`AllowAllPermissionDescriptorParser`](../ext/ssr_deno/src/nop_types.rs) — minimal parser implementing all ~14 trait methods with `unreachable!()` bodies (since permissions are allow-all, these are never called).
+
+### 5. `WorkerServiceOptions` fields
 
 ```rust
 pub struct WorkerServiceOptions<...> {
@@ -80,15 +88,15 @@ pub struct WorkerServiceOptions<...> {
 }
 ```
 
-**Plan**: Use defaults / minimal values for all:
+**Implementation**: All fields use defaults/minimal values:
 - `blob_store`: `Arc::new(BlobStore::default())`
 - `broadcast_channel`: `InMemoryBroadcastChannel::default()`
-- `feature_checker`: `Arc::new(FeatureChecker::default())` — need to check if `Default` exists
+- `feature_checker`: `Arc::new(FeatureChecker::default())`
 - `fs`: `Arc::new(deno_fs::RealFs)`
 - `module_loader`: `Rc::new(deno_core::FsModuleLoader)`
 - `node_services`: `None`
 - `npm_process_state_provider`: `None`
-- `permissions`: `PermissionsContainer::allow_all(...)` — requires a `PermissionDescriptorParser`
+- `permissions`: `PermissionsContainer::allow_all(Arc::new(AllowAllPermissionDescriptorParser))`
 - `root_cert_store_provider`: `None`
 - `fetch_dns_resolver`: `Default::default()`
 - `shared_array_buffer_store`: `None`
@@ -96,7 +104,7 @@ pub struct WorkerServiceOptions<...> {
 - `v8_code_cache`: `None`
 - `bundle_provider`: `None`
 
-### 5. `WorkerOptions` fields
+### 6. `WorkerOptions` fields
 
 ```rust
 pub struct WorkerOptions {
@@ -121,52 +129,61 @@ pub struct WorkerOptions {
 }
 ```
 
-**Plan**: Use `Default::default()` for most fields, with minimal overrides:
-- `bootstrap`: `BootstrapOptions::default()` (provides Deno version, user agent, etc.)
-- `extensions`: `vec![]` (the `from_options` method adds all standard extensions automatically)
-- `create_web_worker_cb`: Need to provide the default callback (unimplemented web workers)
-- `stdio`: `Stdio::default()` or `Stdio::inherit()`
+**Implementation**: `Default::default()` with minimal overrides:
+- `bootstrap`: `BootstrapOptions::default()`
+- `extensions`: `vec![]` (standard extensions added automatically by `from_options`)
+- `create_web_worker_cb`: `Arc::new(|_| unimplemented!("web workers are not supported"))`
+- `stdio`: `Default::default()`
+- All other fields use their default values
 
-## Implementation Steps
+## File Structure After Migration
 
-### Step 1: Add required dependencies to `Cargo.toml`
+```
+ext/ssr_deno/src/
+├── lib.rs                     # magnus entrypoint (unchanged API)
+├── deno_runtime_wrapper.rs    # DenoRuntimeWrapper only (MainWorker-based)
+├── sys.rs                     # Sys type + sys_traits implementations
+└── nop_types.rs               # NopInNpmPackageChecker, NopNpmPackageFolderResolver,
+                               # AllowAllPermissionDescriptorParser
+```
 
-We need to check which crates are already transitive dependencies and which need to be added explicitly. The `deno_runtime` crate re-exports most of them.
+## Key Technical Details
 
-### Step 2: Define minimal NOP types for generic parameters
+### V8 Scope API Pattern
 
-Create a small module (or inline types) for:
-- `NopInNpmPackageChecker` — always returns `false`
-- `NopNpmPackageFolderResolver` — always returns error
-- A type that implements `ExtNodeSys` (via `sys_traits::auto_impl`)
+The `MainWorker` migration required a specific V8 scope access pattern:
 
-### Step 3: Rewrite `DenoRuntimeWrapper`
+```rust
+let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+let mut scope = scope_storage.init();
+let context_local = v8::Local::new(&mut scope, context);
+let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+let global = context_local.global(&mut context_scope);
+```
 
-Replace `JsRuntime` with `MainWorker`:
-- Constructor calls `MainWorker::bootstrap_from_options`
-- `block_on_render` accesses `worker.js_runtime` (pub field) for V8 operations
-- Keep `UnsafeCell` pattern for thread safety
+- `HandleScope::new(isolate)` returns `ScopeStorage<HandleScope<'_>>`
+- `.init()` transitions to `PinnedRef<'_, HandleScope<'_>>`
+- `ContextScope::new(&mut scope, context_local)` enters the context
+- `context_local.global(&mut context_scope)` gets the global object
 
-### Step 4: Update `lib.rs` if needed
+### Dependencies Added to `Cargo.toml`
 
-The magnus bindings should remain unchanged since the `DenoRuntimeWrapper` API surface stays the same.
+```toml
+deno_semver = "=0.9.1"       # Version type for NpmPackageFolderResolver
+node_resolver = "=0.84.0"    # InNpmPackageChecker, NpmPackageFolderResolver traits
+sys_traits = "=0.1.27"       # FsCanonicalize, FsMetadata, etc. for ExtNodeSys
+libc = "0.2"                 # FsFileAsRaw on Unix
+```
 
-## Key Risks
+### Compilation Challenges
 
-1. **`PermissionsContainer::allow_all` requires `Arc<dyn PermissionDescriptorParser>`** — need to provide a minimal parser or find if there's a simpler constructor
-2. **`ExtNodeSys` auto-implementation** — may require implementing several filesystem traits on our type
-3. **`create_web_worker_cb`** — the default in `WorkerOptions::default()` already provides `unimplemented!("web workers are not supported")`, so this should be fine
-4. **Compile-time verification** — the generic types may require trial-and-error to get right
+1. **37 errors → 15 errors → 3 errors → 0 errors**: Iterative fixes for trait implementations, API mismatches, and V8 scope types
+2. **`PermissionDescriptorParser`**: Required implementing ~14 methods with specific return types (`ReadDescriptor`, `WriteDescriptor`, `AllowRunDescriptorParseResult`, etc.)
+3. **`FsFile` trait**: Required implementing 11 sub-traits (`Read + Write + Seek + FsFileIsTerminal + FsFileLock + FsFileMetadata + FsFileSetPermissions + FsFileSetTimes + FsFileSetLen + FsFileSyncAll + FsFileSyncData + FsFileAsRaw`)
+4. **`WhichSys` trait**: Required `EnvHomeDir + EnvCurrentDir + EnvVar + FsReadDir + FsMetadata + Clone + 'static`
 
 ## Verification
 
-After implementation, verify by:
-1. Running `./bin/compile` to build the native extension
-2. Testing from Ruby console:
-   ```ruby
-   require 'ssr/deno'
-   bundle_path = File.expand_path('samples/vite-ssr-app/dist/server/entry-server.js')
-   SSR::Deno.init_runtime(bundle_path)
-   result = SSR::Deno.render({component_data: {component_name: "hello_world"}, props: {name: "World"}, url: "/"}.to_json)
-   puts result
-   ```
+- ✅ `./bin/compile` — builds successfully with 0 warnings
+- ✅ `bundle exec ruby -e "require 'ssr/deno'; puts SSR::Deno.native_version"` — native extension loads
+- ✅ `bundle exec rake test` — all tests pass
