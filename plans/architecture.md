@@ -442,7 +442,7 @@ end
 **Completed steps:**
 
 1. ✅ **Updated [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml)**
-   - Added `deno_runtime = "0.254.0"`, `deno_semver`, `node_resolver`, `sys_traits`, `libc`
+   - Added `deno_runtime = { version = "0.254.0", features = ["transpile", "hmr"] }`, `deno_semver`, `node_resolver`, `sys_traits`, `libc`
 
 2. ✅ **Rewrote [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)**
    - Uses `MainWorker::bootstrap_from_options` with three generic type parameters
@@ -460,10 +460,39 @@ end
    - Added `mod sys;` and `mod nop_types;` declarations
    - Added `native_version` method
 
-6. ✅ **Compiled and verified**
-   - `./bin/compile` — builds with 0 warnings
-   - `bundle exec ruby -e "require 'ssr/deno'; puts SSR::Deno.native_version"` — works
-   - `bundle exec rake test` — all tests pass
+6. ✅ **Refactored into separate modules**
+   - [`ext/ssr_deno/src/sys.rs`](../ext/ssr_deno/src/sys.rs) — `Sys` type + all `sys_traits` impls
+   - [`ext/ssr_deno/src/nop_types.rs`](../ext/ssr_deno/src/nop_types.rs) — NOP types for generic params
+   - [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) — only `DenoRuntimeWrapper`
+
+7. ✅ **Fixed runtime issues for Vite SSR sample rendering**
+   - Added `features = ["transpile"]` to `deno_runtime` — enables TypeScript transpilation for `deno_telemetry` extension sources
+   - Added `features = ["hmr"]` to `deno_runtime` — makes `op_snapshot_options` use `try_take` + `unwrap_or_default` instead of panicking
+   - Added `let _enter = tokio_rt.enter();` before `MainWorker::bootstrap_from_options` — provides Tokio runtime context for internal `tokio::spawn` calls
+
+8. ✅ **Vite SSR sample renders successfully**
+   - `bundle exec ruby -e "require 'ssr/deno'; SSR::Deno.init_runtime('samples/vite-ssr-app/dist/server/entry-server.js'); puts SSR::Deno.render('{\"component_data\":{\"message\":\"Hello World!\"},\"props\":{},\"url\":\"/\"}')"`
+   - Returns full HTML with React SSR output
+
+9. ✅ **Added integration test**
+   - [`test/ssr/test_deno.rb`](../test/ssr/test_deno.rb) — tests `native_version`, `init_runtime`, and `render` with the Vite SSR sample
+   - All tests pass with Rubocop compliance
+
+10. ✅ **Added compile guard**
+    - [`Rakefile`](../Rakefile) — checks for `SSR_DENO_DEV_BIN_COMPILE` env var
+    - [`bin/compile`](../bin/compile) — sets `SSR_DENO_DEV_BIN_COMPILE=true` plus V8 build env vars
+    - Prevents running `rake compile` directly without the proper V8 build environment
+
+11. ✅ **Compiled and verified**
+    - `./bin/compile` — builds with 0 warnings, 0 errors
+    - `bundle exec ruby -e "require 'ssr/deno'; puts SSR::Deno.native_version"` — returns `0.1.0-alpha.1`
+    - `bundle exec rake test` — all tests pass
+
+12. ✅ **Versioned and tagged**
+    - Version bumped to `0.1.0-alpha.1` in [`lib/ssr/deno/version.rb`](../lib/ssr/deno/version.rb) and [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml)
+    - Gemspec populated with summary, description, and rubygems.org push host
+    - README rewritten with usage instructions, development guide, and architecture reference
+    - Git tag `v0.1.0-alpha.1` created
 
 ### Phase 3: Ruby API
 - Implement `SSR::Deno.render` method with keyword arguments

@@ -182,8 +182,21 @@ libc = "0.2"                 # FsFileAsRaw on Unix
 3. **`FsFile` trait**: Required implementing 11 sub-traits (`Read + Write + Seek + FsFileIsTerminal + FsFileLock + FsFileMetadata + FsFileSetPermissions + FsFileSetTimes + FsFileSetLen + FsFileSyncAll + FsFileSyncData + FsFileAsRaw`)
 4. **`WhichSys` trait**: Required `EnvHomeDir + EnvCurrentDir + EnvVar + FsReadDir + FsMetadata + Clone + 'static`
 
+### Runtime Issues (Post-Compilation)
+
+After compilation succeeded, three runtime issues were discovered when trying to render the Vite SSR sample:
+
+1. **`SyntaxError: Unexpected token ':'` in `deno_telemetry/telemetry.ts:80`** — The `deno_telemetry` extension's JS source contains TypeScript type annotations. Fixed by adding `features = ["transpile"]` to `deno_runtime` dependency, which enables `deno_ast` for transpiling TypeScript extension sources to JavaScript.
+
+2. **`required type deno_runtime::ops::bootstrap::SnapshotOptions is not present in GothamState container`** — The `op_snapshot_options` op requires `SnapshotOptions` in the op state, but no startup snapshot is provided. Fixed by adding `features = ["hmr"]` to `deno_runtime`, which makes `op_snapshot_options` use `try_take` + `unwrap_or_default` instead of panicking.
+
+3. **`there is no reactor running, must be called from the context of a Tokio 1.x runtime`** — `MainWorker::bootstrap_from_options` internally calls `tokio::spawn` (for SIGUSR2 signal handling and memory trimming). Fixed by adding `let _enter = tokio_rt.enter();` before the bootstrap call.
+
 ## Verification
 
 - ✅ `./bin/compile` — builds successfully with 0 warnings
 - ✅ `bundle exec ruby -e "require 'ssr/deno'; puts SSR::Deno.native_version"` — native extension loads
-- ✅ `bundle exec rake test` — all tests pass
+- ✅ Vite SSR sample renders successfully via `SSR::Deno.render`
+- ✅ `bundle exec rake test` — all tests pass (including integration test for Vite SSR sample)
+- ✅ Rubocop compliance — `bundle exec rubocop` passes
+- ✅ Git tag `v0.1.0-alpha.1` created
