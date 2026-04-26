@@ -33,20 +33,17 @@ require 'ssr/deno'
 SSR::Deno.init_runtime('path/to/dist/server/entry-server.js')
 
 # Render a component
-html = SSR::Deno.render(JSON.generate({
+html = SSR::Deno.render({
   component_data: { message: 'Hello World!' },
   props: {},
   url: '/'
-}))
+})
 
 puts html
 # => <html><head><title></title></head><body>...
 ```
 
-The `render` function expects a JSON string with:
-- `component_data` — data passed to the root component
-- `props` — additional props
-- `url` — the request URL
+The `render` function accepts a Hash with arbitrary data, which is serialized to JSON and passed to the SSR bundle's `render` function.
 
 ## Development
 

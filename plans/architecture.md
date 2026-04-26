@@ -309,31 +309,32 @@ Contains three types required by `MainWorker::bootstrap_from_options`:
 
 #### `SSR::Deno` Module
 
+The Ruby API provides a thin wrapper over the native Rust extension:
+
 ```ruby
 module SSR
   module Deno
+    class Error < StandardError; end
+
     class << self
-      def render(component_data: {}, props: {}, url: '/')
-        native_render({
-          component_data: component_data,
-          props: props,
-          url: url
-        }.to_json)
-      end
-
-      def configure
-        yield Configuration
-      end
-
-      def configuration
-        Configuration
+      # Accepts a Hash with arbitrary data, serializes to JSON automatically,
+      # and delegates to the native render method.
+      def render(data)
+        native_render(JSON.generate(data))
       end
     end
   end
 end
 ```
 
-#### `SSR::Deno::Configuration`
+The native extension registers three methods:
+- `init_runtime(bundle_path)` — initializes the singleton Deno runtime
+- `native_render(json_string)` — calls the JS `render` function with a JSON string
+- `native_version` — returns the crate version
+
+The Ruby `render` wrapper handles JSON serialization, keeping the native interface simple and the Ruby API ergonomic.
+
+#### `SSR::Deno::Configuration` (Planned)
 
 ```ruby
 module SSR
