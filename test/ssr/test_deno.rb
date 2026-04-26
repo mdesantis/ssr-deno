@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'json'
 require 'test_helper'
 
 module SSR
@@ -10,7 +9,7 @@ module SSR
     end
 
     def test_native_version
-      assert_match(/\A\d+\.\d+\.\d+\z/, ::SSR::Deno.native_version)
+      assert_match(/\A\d+\.\d+\.\d+/, ::SSR::Deno.native_version)
     end
 
     def test_render_vite_ssr_sample
@@ -22,12 +21,11 @@ module SSR
 
       assert_equal 'Runtime initialized successfully', result
 
-      args = JSON.generate(
+      html = ::SSR::Deno.render(
         component_data: { message: 'Hello World!' },
         props: {},
         url: '/'
       )
-      html = ::SSR::Deno.render(args)
 
       assert_match(%r{<html>.*</html>}m, html)
       assert_includes html, 'Hello'

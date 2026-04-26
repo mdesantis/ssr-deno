@@ -79,7 +79,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     let module = ruby.define_module("SSR")?;
     let deno_module = module.define_module("Deno")?;
     deno_module.define_singleton_method("init_runtime", function!(init_runtime, 1))?;
-    deno_module.define_singleton_method("render", function!(render, 1))?;
+    deno_module.define_singleton_method("native_render", function!(render, 1))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
     Ok(())
 }
