@@ -22,14 +22,13 @@ fn runtime_error(msg: impl Into<String>) -> Error {
 ///
 /// # Returns
 ///
-/// A success message string on success.
+/// `true` on first successful initialization, `nil` on subsequent calls.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The bundle file cannot be read
 /// - The bundle JavaScript cannot be evaluated
-/// - The runtime has already been initialized (call `init_runtime` only once)
 fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
     // If already initialized, return nil (None in Rust → nil in Ruby).
     if RUNTIME.get().is_some() {
