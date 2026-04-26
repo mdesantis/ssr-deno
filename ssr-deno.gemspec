@@ -7,7 +7,6 @@ Gem::Specification.new do |spec|
   spec.version = SSR::Deno::VERSION
   spec.authors = ['Maurizio De Santis']
   spec.email = ['desantis.maurizio@gmail.com']
-
   spec.summary = 'Server-side rendering for Ruby using Deno'
   spec.description = <<~TXT
     ssr-deno embeds a Deno V8 runtime in Ruby via a Rust native extension,
