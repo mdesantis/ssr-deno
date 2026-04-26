@@ -8,7 +8,9 @@ AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
   Exclude:
-    - 'ext/**/*'
+    - 'ext/ssr_deno/rusty_v8/**/*'
+    - 'ext/ssr_deno/src/**/*'
+    - 'ext/ssr_deno/target/**/*'
     - 'tmp/**/*'
     - 'samples/**/*'
 
