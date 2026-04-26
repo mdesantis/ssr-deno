@@ -14,4 +14,7 @@ export V8_FROM_SOURCE=true
 export GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 export LIBCLANG_PATH=/usr/lib/llvm-21/lib
 
+# Marker env var checked by Rakefile's compile guard.
+export SSR_DENO_DEV_BIN_COMPILE=true
+
 exec bundle exec rake compile "$@"
