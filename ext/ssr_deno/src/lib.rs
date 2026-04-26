@@ -30,15 +30,19 @@ fn runtime_error(msg: impl Into<String>) -> Error {
 /// - The bundle file cannot be read
 /// - The bundle JavaScript cannot be evaluated
 /// - The runtime has already been initialized (call `init_runtime` only once)
-fn init_runtime(bundle_path: String) -> Result<String, Error> {
+fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
+    // If already initialized, return nil (None in Rust → nil in Ruby).
+    if RUNTIME.get().is_some() {
+        return Ok(None);
+    }
+
     let runtime = DenoRuntimeWrapper::new(&bundle_path)
         .map_err(|e| runtime_error(format!("Failed to initialize runtime: {e}")))?;
 
-    RUNTIME.set(runtime).map_err(|_| {
-        runtime_error("Runtime already initialized. Call `init_runtime` only once.")
-    })?;
+    // `set` can only fail if already initialized, which we already checked above.
+    let _ = RUNTIME.set(runtime);
 
-    Ok("Runtime initialized successfully".to_string())
+    Ok(Some(true))
 }
 
 /// Renders a component by calling the `render` function in the SSR bundle.

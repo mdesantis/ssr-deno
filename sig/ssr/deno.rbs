@@ -6,7 +6,7 @@ module SSR
     end
 
     class << self
-      def init_runtime: (String bundle_path) -> String
+      def init_runtime: (String bundle_path) -> bool?
       def render: (Hash[untyped, untyped] data) -> String
       def native_render: (String json) -> String
       def native_version: () -> String

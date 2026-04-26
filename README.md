@@ -30,7 +30,9 @@ $ gem install ssr-deno
 require 'ssr/deno'
 
 # Initialize the runtime with a Vite SSR bundle
-SSR::Deno.init_runtime('path/to/dist/server/entry-server.js')
+result = SSR::Deno.init_runtime('path/to/dist/server/entry-server.js')
+# => true  (first call)
+# => nil   (subsequent calls)
 
 # Render a component
 html = SSR::Deno.render({

@@ -17,9 +17,13 @@ module SSR
 
       assert_path_exists bundle_path, "Bundle not found at #{bundle_path}"
 
+      # First call should return true
       result = ::SSR::Deno.init_runtime(bundle_path)
 
-      assert_equal 'Runtime initialized successfully', result
+      assert(result)
+
+      # Subsequent calls should return nil
+      assert_nil ::SSR::Deno.init_runtime(bundle_path)
 
       html = ::SSR::Deno.render(
         component_data: { message: 'Hello World!' },
