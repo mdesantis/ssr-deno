@@ -9,7 +9,11 @@ Gem::Specification.new do |spec|
   spec.email = ['desantis.maurizio@gmail.com']
 
   spec.summary = 'Server-side rendering for Ruby using Deno'
-  spec.description = 'ssr-deno embeds a Deno V8 runtime in Ruby via a Rust native extension, enabling server-side rendering of JavaScript/TypeScript frameworks (React, Vue, etc.) directly from Ruby.'
+  spec.description = <<~TXT
+    ssr-deno embeds a Deno V8 runtime in Ruby via a Rust native extension,
+    enabling server-side rendering of JavaScript/TypeScript frameworks
+    (React, Vue, etc.) directly from Ruby.
+  TXT
   spec.homepage = 'https://github.com/mdesantis/ssr-deno'
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.3.0'
