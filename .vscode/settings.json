@@ -9,5 +9,10 @@
   // to avoid conflicts between TS and Deno type checking
   "deno.config": "./samples/vite-ssr-app/deno.json",
   // Disable JSON schema fetching from remote hosts to avoid untrusted location errors
-  "json.schemaDownload.enable": false
+  "json.schemaDownload.enable": false,
+  // Point rust-analyzer to the nested Cargo.toml since the workspace root
+  // is a Ruby project, not a Rust project.
+  "rust-analyzer.linkedProjects": [
+    "ext/ssr_deno/Cargo.toml"
+  ]
 }

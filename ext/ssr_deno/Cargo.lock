@@ -6908,9 +6908,13 @@ name = "ssr_deno"
 version = "0.1.0"
 dependencies = [
  "deno_runtime",
+ "deno_semver",
+ "libc",
  "magnus",
+ "node_resolver",
  "serde",
  "serde_json",
+ "sys_traits",
  "tokio",
 ]
 

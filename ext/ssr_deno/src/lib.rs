@@ -1,4 +1,6 @@
 mod deno_runtime_wrapper;
+mod nop_types;
+mod sys;
 
 use deno_runtime_wrapper::DenoRuntimeWrapper;
 use magnus::{function, Error, Module, Object, Ruby};
