@@ -5,6 +5,7 @@ source 'https://rubygems.org'
 # Specify your gem's dependencies in ssr-deno.gemspec
 gemspec
 
+gem 'benchmark'
 gem 'irb'
 gem 'minitest', '~> 6.0'
 gem 'rake', '~> 13.0'
