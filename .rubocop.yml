@@ -7,6 +7,10 @@ plugins:
 AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
+  Exclude:
+    - 'ext/**/*'
+    - 'tmp/**/*'
+    - 'samples/**/*'
 
 Layout/HeredocIndentation:
   Enabled: false
