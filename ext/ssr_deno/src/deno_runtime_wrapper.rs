@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::nop_types::AllowAllPermissionDescriptorParser;
 use crate::nop_types::NopInNpmPackageChecker;
@@ -84,13 +84,10 @@ impl DenoRuntimeWrapper {
 
         // -- Build WorkerServiceOptions --
 
-        let module_loader = std::rc::Rc::new(
-            deno_runtime::deno_core::FsModuleLoader,
-        );
+        let module_loader = std::rc::Rc::new(deno_runtime::deno_core::FsModuleLoader);
 
-        let permissions = PermissionsContainer::allow_all(Arc::new(
-            AllowAllPermissionDescriptorParser,
-        ));
+        let permissions =
+            PermissionsContainer::allow_all(Arc::new(AllowAllPermissionDescriptorParser));
 
         let services = WorkerServiceOptions {
             blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()),
@@ -120,9 +117,7 @@ impl DenoRuntimeWrapper {
             create_params: None,
             unsafely_ignore_certificate_errors: None,
             seed: None,
-            create_web_worker_cb: Arc::new(|_| {
-                unimplemented!("web workers are not supported")
-            }),
+            create_web_worker_cb: Arc::new(|_| unimplemented!("web workers are not supported")),
             format_js_error_fn: None,
             should_break_on_first_statement: false,
             should_wait_for_inspector_session: false,
@@ -136,6 +131,11 @@ impl DenoRuntimeWrapper {
         };
 
         // -- Create the MainWorker --
+        //
+        // bootstrap_from_options internally calls tokio::spawn (e.g. for
+        // SIGUSR2 signal handling and memory trimming), so we must enter the
+        // Tokio runtime context first.
+        let _enter = tokio_rt.enter();
 
         let mut worker = MainWorker::bootstrap_from_options::<
             NopInNpmPackageChecker,
@@ -213,8 +213,7 @@ impl DenoRuntimeWrapper {
             let global = context_local.global(&mut context_scope);
 
             // Get the `render` function from globalThis
-            let render_key =
-                v8::String::new(&mut context_scope, "render").unwrap();
+            let render_key = v8::String::new(&mut context_scope, "render").unwrap();
             let render_val = global.get(&mut context_scope, render_key.into());
 
             let render_val = render_val.ok_or("`render` is not defined in the global scope")?;
@@ -223,8 +222,7 @@ impl DenoRuntimeWrapper {
                 .map_err(|_| "`render` is not a function")?;
 
             // Create the argument (JSON string)
-            let args_v8 =
-                v8::String::new(&mut context_scope, args_json).unwrap();
+            let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
             let undefined = v8::undefined(&mut context_scope);
 
             // Call the render function

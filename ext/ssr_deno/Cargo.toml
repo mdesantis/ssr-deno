@@ -11,7 +11,7 @@ magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-deno_runtime = "0.254.0"
+deno_runtime = { version = "0.254.0", features = ["transpile", "hmr"] }
 deno_semver = "=0.9.1"
 node_resolver = "=0.84.0"
 sys_traits = "=0.1.27"
