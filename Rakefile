@@ -34,12 +34,13 @@ end
 Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
   ext.source_pattern = '*.rs'
+  ext.extra_sources = FileList['ext/ssr_deno/src/*.rs']
 end
 
 # Prepend the guard as a prerequisite of the platform-specific compile task.
 # This is the innermost task that actually invokes cargo/gmake.
 platform_task = Rake::Task['compile:ssr_deno:x86_64-linux']
-old_prereqs = platform_task.prerequisites
+old_prereqs = platform_task.prerequisites.dup
 platform_task.clear_prerequisites
 platform_task.enhance([:guard_compile_env] + old_prereqs)
 
