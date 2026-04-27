@@ -12,8 +12,6 @@ require 'rubocop/rake_task'
 
 Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
-  ext.source_pattern = '*.rs'
-  ext.extra_sources = FileList['ext/ssr_deno/src/*.rs']
 end
 
 Minitest::TestTask.create
