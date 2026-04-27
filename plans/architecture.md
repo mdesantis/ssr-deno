@@ -479,13 +479,14 @@ end
    - [`test/ssr/test_deno.rb`](../test/ssr/test_deno.rb) — tests `native_version`, `init_runtime`, and `render` with the Vite SSR sample
    - All tests pass with Rubocop compliance
 
-10. ✅ **Added compile guard**
-    - [`Rakefile`](../Rakefile) — checks for `SSR_DENO_DEV_BIN_COMPILE` env var
-    - [`bin/compile`](../bin/compile) — sets `SSR_DENO_DEV_BIN_COMPILE=true` plus V8 build env vars
-    - Prevents running `rake compile` directly without the proper V8 build environment
+10. ✅ **Dotenv-based environment configuration**
+    - V8 build env vars moved from [`bin/compile`](../bin/compile) to [`.env`](../.env) (gitignored)
+    - [`.env.example`](../.env.example) committed as template
+    - [`dotenv`](https://rubygems.org/gems/dotenv) gem loads `.env` in [`Rakefile`](../Rakefile)
+    - [`bin/compile`](../bin/compile) removed — just run `bundle exec rake compile`
 
 11. ✅ **Compiled and verified**
-    - `./bin/compile` — builds with 0 warnings, 0 errors
+    - `bundle exec rake compile` — builds with 0 warnings, 0 errors
     - `bundle exec ruby -e "require 'ssr/deno'; puts SSR::Deno.native_version"` — returns `0.1.0-alpha.1`
     - `bundle exec rake test` — all tests pass
 

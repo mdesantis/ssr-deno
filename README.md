@@ -67,10 +67,11 @@ bin/setup
 ### Compile the native extension
 
 ```bash
-./bin/compile
+cp .env.example .env
+bundle exec rake compile
 ```
 
-> **Note:** The `compile` Rake task **must** be run through `./bin/compile`, which sets the environment variables required to build V8 as a shared library (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
+The V8 build environment variables (`V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH`) are loaded from the `.env` file via the `dotenv` gem. Copy `.env.example` to `.env` and adjust the paths for your system (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
 
 ### Run tests
 

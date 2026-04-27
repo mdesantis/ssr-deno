@@ -6,6 +6,7 @@ source 'https://rubygems.org'
 gemspec
 
 gem 'benchmark'
+gem 'dotenv', '~> 3.1'
 gem 'irb'
 gem 'minitest', '~> 6.0'
 gem 'rake', '~> 13.0'
