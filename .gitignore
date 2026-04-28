@@ -10,8 +10,8 @@
 /lib/ssr/deno/*.so
 /lib/ssr/deno/*.bundle
 /lib/ssr/deno/*.dll
+/.claude/settings.local.json
 
 # Local environment configuration (copy .env.example to .env and customize)
 /.env
 
-.claude/settings.local.json
