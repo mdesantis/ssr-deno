@@ -62,31 +62,24 @@ fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
     Ok(Some(true))
 }
 
-/// Renders a component by calling the `render` function in the SSR bundle.
-///
-/// # Arguments
-///
-/// * `args_json` - JSON string with `{ component_data, props, url }`
-///
-/// # Returns
-///
-/// The rendered HTML string.
-///
-/// # Errors
-///
-/// - `SSR::Deno::JsRuntimeNotInitializedError` if `init_runtime` was not called
-/// - `SSR::Deno::JsRuntimeWorkerError` if the worker thread died unexpectedly
-/// - `SSR::Deno::RenderError` if the JavaScript `render` function throws
-fn render(args_json: String) -> Result<String, Error> {
-    let runtime = RUNTIME
-        .get()
-        .ok_or_else(|| js_runtime_not_initialized_error("Runtime not initialized. Call `init_runtime` first."))?;
-
-    runtime.block_on_render(&args_json).map_err(|e| match e {
+fn map_render_error(e: DenoError) -> Error {
+    match e {
         DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
         DenoError::Render(msg) => render_error(msg),
         other => js_runtime_worker_error(other.to_string()),
-    })
+    }
+}
+
+fn get_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
+    RUNTIME
+        .get()
+        .ok_or_else(|| js_runtime_not_initialized_error("Runtime not initialized. Call `init_runtime` first."))
+}
+
+/// Returns the render result as a JSON string so any JS type survives the
+/// boundary. Ruby's `JSON.parse` reconstructs the value.
+fn render(args_json: String) -> Result<String, Error> {
+    get_runtime()?.block_on_render(&args_json).map_err(map_render_error)
 }
 
 /// Returns the version of the ssr_deno native extension.

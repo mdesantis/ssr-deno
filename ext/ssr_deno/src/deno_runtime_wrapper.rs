@@ -123,6 +123,7 @@ impl DenoRuntimeWrapper {
 
     /// Sends a render request to the worker thread and blocks until the result
     /// arrives. Safe to call from a non-async context (e.g. Ruby's GVL thread).
+    /// Returns the result as a JSON string so any JS type survives the boundary.
     pub fn block_on_render(&self, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
