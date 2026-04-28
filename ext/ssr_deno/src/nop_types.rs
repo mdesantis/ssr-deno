@@ -88,19 +88,16 @@ impl node_resolver::NpmPackageFolderResolver for NopNpmPackageFolderResolver {
 }
 
 // ---------------------------------------------------------------------------
-// AllowAllPermissionDescriptorParser
+// NopPermissionDescriptorParser
 // ---------------------------------------------------------------------------
 
-/// Minimal [`PermissionDescriptorParser`] that always succeeds with
-/// allow-all semantics.
-///
-/// Since we use `PermissionsContainer::allow_all()`, the parser is never
-/// actually invoked for permission checks — it only needs to exist to satisfy
-/// the constructor signature.
+/// Minimal [`PermissionDescriptorParser`] required by the `PermissionsContainer`
+/// constructor. The SSR worker runs with `Permissions::none_without_prompt()` so
+/// this parser is never invoked at runtime — it only satisfies the type signature.
 #[derive(Debug)]
-pub struct AllowAllPermissionDescriptorParser;
+pub struct NopPermissionDescriptorParser;
 
-impl PermissionDescriptorParser for AllowAllPermissionDescriptorParser {
+impl PermissionDescriptorParser for NopPermissionDescriptorParser {
     fn parse_read_descriptor(&self, text: &str) -> Result<ReadDescriptor, PathResolveError> {
         Ok(ReadDescriptor(PathDescriptor::new_known_absolute(
             std::borrow::Cow::Owned(PathBuf::from(text)),

@@ -5,20 +5,19 @@ Scope: `ext/ssr_deno/src/` (recent commits on `main`)
 
 ---
 
-## CRITICAL
+## ~~CRITICAL~~ ✅ FIXED
 
-### `PermissionsContainer::allow_all` — `deno_runtime_wrapper.rs:168`
+### ~~`PermissionsContainer::allow_all`~~ — `deno_runtime_wrapper.rs:168`
 
-The Deno worker runs with unrestricted permissions: network, filesystem read/write,
-environment variables, subprocess execution, and FFI. An SSR renderer needs none of
-these — it only evaluates a pre-bundled JS file.
-
-A compromised or malicious bundle has full host access.
-
-**Fix:** Replace with deny-all permissions:
+**Fixed.** Worker now runs with `Permissions::none_without_prompt()` — all Deno
+permissions (net, fs, env, run, ffi) denied. `AllowAllPermissionDescriptorParser`
+renamed to `NopPermissionDescriptorParser` to reflect its actual role.
 
 ```rust
-permissions: PermissionsContainer::new_deny_all(),
+permissions: PermissionsContainer::new(
+    Arc::new(NopPermissionDescriptorParser),
+    Permissions::none_without_prompt(),
+),
 ```
 
 ---
@@ -27,19 +26,19 @@ permissions: PermissionsContainer::new_deny_all(),
 
 ### `RealFs` — `deno_runtime_wrapper.rs:164`
 
-Real filesystem access is enabled. Combined with `allow_all`, the bundle can call
-`Deno.readFile("/etc/shadow")` or write arbitrary files.
+Real filesystem access is enabled. With `allow_all` now fixed (deny-all), permissions
+gate all `Deno.readFile`/`writeFile` calls. `RealFs` is no longer directly exploitable,
+but replacing it with a no-op fs adds defense in depth.
 
-**Fix:** Use a no-op or in-memory filesystem implementation, or lock down with deny-all
-permissions (see above).
+**Fix:** Switch to a no-op filesystem implementation (pending).
 
 ### `FsModuleLoader` — `deno_runtime_wrapper.rs:165`
 
-Dynamic `import()` from the filesystem is enabled. The bundle (or injected code) can
-`import("/attacker/payload.js")` with full permissions.
+Dynamic `import()` from the filesystem is enabled. With deny-all permissions the
+`import` permission is blocked, but the module loader should still be locked down
+explicitly since the SSR bundle is self-contained.
 
-**Fix:** Replace with a module loader that rejects all imports, since the SSR bundle is
-self-contained and should never need dynamic imports:
+**Fix:** Replace with a module loader that rejects all imports (pending):
 
 ```rust
 module_loader: std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader),
@@ -109,9 +108,9 @@ internally, return generic messages externally.
 
 | Severity | File | Line | Issue |
 |----------|------|------|-------|
-| Critical | `deno_runtime_wrapper.rs` | 168 | `allow_all` permissions |
-| High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — real filesystem access |
-| High | `deno_runtime_wrapper.rs` | 165 | `FsModuleLoader` — dynamic imports from fs |
+| ~~Critical~~ | `deno_runtime_wrapper.rs` | 168 | ~~`allow_all` permissions~~ ✅ |
+| High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — real filesystem access (mitigated, pending nop-fs) |
+| High | `deno_runtime_wrapper.rs` | 165 | `FsModuleLoader` — dynamic imports from fs (mitigated, pending nop-loader) |
 | Medium | `deno_runtime_wrapper.rs` | 49–52 | No bundle path boundary validation |
 | ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
 | Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded to 1) |

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -10,7 +11,7 @@ use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 
-use crate::nop_types::AllowAllPermissionDescriptorParser;
+use crate::nop_types::NopPermissionDescriptorParser;
 use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
 use crate::sys::Sys;
@@ -165,7 +166,10 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
         module_loader: std::rc::Rc::new(deno_runtime::deno_core::FsModuleLoader),
         node_services: None,
         npm_process_state_provider: None,
-        permissions: PermissionsContainer::allow_all(Arc::new(AllowAllPermissionDescriptorParser)),
+        permissions: PermissionsContainer::new(
+            Arc::new(NopPermissionDescriptorParser),
+            Permissions::none_without_prompt(),
+        ),
         root_cert_store_provider: None,
         fetch_dns_resolver: Default::default(),
         shared_array_buffer_store: None,
