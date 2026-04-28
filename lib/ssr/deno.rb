@@ -13,12 +13,14 @@ module SSR
       #
       # @param data [Hash] Arbitrary data to pass to the render function.
       #   Will be serialized to JSON automatically.
-      # @return [String] The rendered HTML string.
+      # @return [String, Hash, Array, Numeric, Boolean, nil] Deserialized return
+      #   value from the JavaScript `render` function. A plain String for standard
+      #   SSR; a Hash for richer payloads (e.g. `{ html:, styles: }`).
       # @raise [SSR::Deno::JsRuntimeNotInitializedError] if {init_runtime} has not been called
       # @raise [SSR::Deno::JsRuntimeWorkerError] if the Deno worker thread has exited
       # @raise [SSR::Deno::RenderError] if the JavaScript render function throws
       def render(data)
-        native_render(JSON.generate(data))
+        JSON.parse(native_render(JSON.generate(data)))
       end
     end
   end

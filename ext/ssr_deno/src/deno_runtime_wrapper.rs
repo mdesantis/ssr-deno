@@ -281,9 +281,10 @@ fn call_render(worker: &mut MainWorker, args_json: &str) -> Result<String, Box<d
         .call(&mut context_scope, undefined.into(), &[args_v8.into()])
         .ok_or("`render` function threw an exception")?;
 
-    let result_str = result
-        .to_string(&mut context_scope)
-        .ok_or("Cannot convert render result to string")?;
+    // JSON-serialize so any JS type (string, object, array, …) survives the
+    // V8→Rust→Ruby boundary. Ruby's JSON.parse reconstructs the value.
+    let json_str = v8::json::stringify(&mut context_scope, result)
+        .ok_or("Cannot serialize render result to JSON")?;
 
-    Ok(result_str.to_rust_string_lossy(&context_scope))
+    Ok(json_str.to_rust_string_lossy(&context_scope))
 }
