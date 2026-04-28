@@ -1,6 +1,21 @@
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use deno_runtime::deno_core::url::Url;
+use deno_runtime::deno_core::v8;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
+use deno_runtime::worker::WorkerServiceOptions;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
+
+use crate::nop_types::NopPermissionDescriptorParser;
+use crate::nop_types::NopInNpmPackageChecker;
+use crate::nop_types::NopNpmPackageFolderResolver;
+use crate::sys::Sys;
+
 // ---------------------------------------------------------------------------
 // Typed error enum
 // ---------------------------------------------------------------------------
@@ -25,21 +40,6 @@ impl std::fmt::Display for DenoError {
 }
 
 impl std::error::Error for DenoError {}
-
-use deno_runtime::deno_core::url::Url;
-use deno_runtime::deno_core::v8;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::worker::MainWorker;
-use deno_runtime::worker::WorkerOptions;
-use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-
-use crate::nop_types::NopPermissionDescriptorParser;
-use crate::nop_types::NopInNpmPackageChecker;
-use crate::nop_types::NopNpmPackageFolderResolver;
-use crate::sys::Sys;
 
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and the Deno worker thread
