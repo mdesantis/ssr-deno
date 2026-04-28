@@ -73,7 +73,11 @@ impl DenoRuntimeWrapper {
     /// - The bundle file cannot be read
     /// - The bundle JavaScript cannot be evaluated (syntax error, runtime error)
     pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let tokio_rt = tokio::runtime::Runtime::new()?;
+        // Deno's internals (deno_unsync, spawn_local) require current_thread flavor.
+        // A multi-threaded runtime triggers an assertion failure inside deno_unsync.
+        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
 
         // Resolve the bundle path to a file:// URL (the main module specifier).
         let main_module = Url::from_file_path(
