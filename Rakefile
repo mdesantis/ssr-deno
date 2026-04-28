@@ -15,7 +15,9 @@ Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
 end
 
-Minitest::TestTask.create
+Minitest::TestTask.create do |t|
+  t.test_prelude = 'require "test/test_helper"'
+end
 
 RuboCop::RakeTask.new
 
