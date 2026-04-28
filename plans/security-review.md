@@ -24,13 +24,12 @@ permissions: PermissionsContainer::new(
 
 ## HIGH
 
-### `RealFs` — `deno_runtime_wrapper.rs:164`
+### `RealFs` — `deno_runtime_wrapper.rs:164` — ACCEPTED RISK
 
-Real filesystem access is enabled. With `allow_all` now fixed (deny-all), permissions
-gate all `Deno.readFile`/`writeFile` calls. `RealFs` is no longer directly exploitable,
-but replacing it with a no-op fs adds defense in depth.
-
-**Fix:** Switch to a no-op filesystem implementation (pending).
+`RealFs` remains in place. With deny-all permissions + `NoopModuleLoader`, it is
+unreachable from JS. Only a Deno CVE bypassing the permissions layer would expose it.
+`FileSystem` trait has ~115 abstract methods — a `NopFs` impl would be substantial
+maintenance overhead for marginal gain. Accepted as residual risk.
 
 ### ~~`FsModuleLoader`~~ — `deno_runtime_wrapper.rs:165` ✅ FIXED
 
@@ -102,7 +101,7 @@ internally, return generic messages externally.
 | Severity | File | Line | Issue |
 |----------|------|------|-------|
 | ~~Critical~~ | `deno_runtime_wrapper.rs` | 168 | ~~`allow_all` permissions~~ ✅ |
-| High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — real filesystem access (mitigated, pending nop-fs) |
+| High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — accepted risk (mitigated by deny-all perms + NoopModuleLoader) |
 | ~~High~~ | `deno_runtime_wrapper.rs` | 165 | ~~`FsModuleLoader` — dynamic imports from fs~~ ✅ |
 | Medium | `deno_runtime_wrapper.rs` | 49–52 | No bundle path boundary validation |
 | ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
