@@ -79,7 +79,7 @@ bundle exec rake compile
 - `V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH` — required to build V8 as a
   shared library (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
 - `RB_SYS_CARGO_PROFILE=dev` — fast iterative builds, suitable for
-  `rake test`. Switch to `release` (or use `gem build`) for a shipping artifact.
+  `rake test`. Switch to `release` for a shipping artifact.
 - Optional `RUSTFLAGS` (`mold` linker) and `SCCACHE` for further speedups.
 
 Adjust the paths for your system after copying.

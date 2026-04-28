@@ -52,8 +52,8 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     subgraph Ruby Layer
-        R1[SSR::Deno.render] --> R2[SSR::Deno::Runtime]
-        R2 --> R3[SSR::Deno::Configuration]
+        R1[SSR::Deno.render Hash] --> R1b[JSON.generate]
+        R1b --> R1c[native_render]
     end
 
     subgraph Rust Native Extension ext/ssr_deno/
@@ -88,7 +88,7 @@ ssr-deno/
 │           ├── sys.rs               # Sys type + sys_traits implementations
 │           └── nop_types.rs         # NOP types for generic parameters
 ├── lib/
-│   └── ssr/deno/                    # Ruby module (version.rb, runtime.rb, configuration.rb)
+│   └── ssr/                         # Ruby module (deno.rb + deno/version.rb)
 ├── sig/                             # RBS type signatures
 ├── test/                            # Minitest suite
 ├── samples/
@@ -98,7 +98,7 @@ ssr-deno/
 │   └── extensions.json              # Recommended extensions
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
-│   └── mainworker-migration.md
+│   └── v8-tls-issue.md
 ├── Gemfile
 ├── ssr-deno.gemspec
 └── Rakefile
@@ -116,12 +116,21 @@ magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-deno_runtime = "0.254.0"
+deno_runtime = { version = "0.254.0", features = ["transpile", "hmr"] }
 deno_semver = "=0.9.1"
 node_resolver = "=0.84.0"
 sys_traits = "=0.1.27"
 libc = "0.2"
+
+[patch.crates-io]
+v8 = { path = "../../third_party/rusty_v8" }
 ```
+
+The `transpile` feature enables TypeScript transpilation for `deno_telemetry`
+extension sources. The `hmr` feature swaps `op_snapshot_options` to a
+non-panicking `try_take + unwrap_or_default` path. The `[patch.crates-io]`
+entry pins `v8` to a local checkout built with the TLS fix from
+[`plans/v8-tls-issue.md`](v8-tls-issue.md).
 
 #### `lib.rs` — magnus Entrypoint
 
@@ -130,7 +139,8 @@ libc = "0.2"
 - Registers `init_runtime` to initialize the Deno runtime with a bundle path
 - Registers `native_version` to return the crate version
 - Uses `std::sync::OnceLock` for a singleton `DenoRuntimeWrapper`
-- The Tokio runtime is embedded inside `DenoRuntimeWrapper`
+- The Tokio runtime + `MainWorker` live on a dedicated background thread
+  owned by `DenoRuntimeWrapper`
 
 ```rust
 use magnus::{function, Error, Module, Object, Ruby};
@@ -152,137 +162,138 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
 
 #### `deno_runtime_wrapper.rs` — Runtime Lifecycle
 
-This is the core module. It wraps a Tokio `current_thread` runtime and a
-`deno_runtime::MainWorker` instance.
+This is the core module. The Ruby thread holds only an mpsc `Sender`; the
+`deno_runtime::MainWorker` lives on a dedicated background thread
+(`"deno-worker"`) along with its own `current_thread` Tokio runtime and a
+`LocalSet`. Render calls are sent across the channel and the result is
+returned via a `oneshot`.
+
+**Why a dedicated worker thread instead of `UnsafeCell` + GVL:**
+
+`MainWorker` is `!Send + !Sync` (it owns a `v8::OwnedIsolate` and a
+`!Send` Tokio context). Earlier versions of this code wrapped it in
+`UnsafeCell` and forced `Send + Sync` via `unsafe impl`, relying on Ruby's
+GVL to serialize access. That is fragile: Ruby may release the GVL during
+blocking operations, and any future move to Ractors or a thread pool
+breaks the assumption silently. Pinning the worker to one OS thread and
+talking to it via channels removes all `unsafe` from the wrapper while
+keeping the public API blocking-friendly for Ruby.
 
 **Why `MainWorker` instead of `JsRuntime`:**
 
-The full `deno_runtime::MainWorker` provides all Deno Web API extensions out of the
-box — `MessageChannel`, `setTimeout`, `performance.now()`, `console`, etc.
-These are required by frontend frameworks like React 19 (whose scheduler uses
-`MessageChannel` for async task scheduling). Using `deno_core::JsRuntime` alone would
-require manually adding each extension or writing polyfills, effectively
-reimplementing `deno_runtime`.
+The full `deno_runtime::MainWorker` provides all Deno Web API extensions
+out of the box — `MessageChannel`, `setTimeout`, `performance.now()`,
+`console`, etc. These are required by frontend frameworks like React 19
+(whose scheduler uses `MessageChannel` for async task scheduling). Using
+`deno_core::JsRuntime` alone would require manually adding each extension
+or writing polyfills, effectively reimplementing `deno_runtime`.
 
 `MainWorker::bootstrap_from_options` is the public constructor that:
 1. Creates a `JsRuntime` with all standard Deno extensions
 2. Bootstraps the runtime (loads built-in JS modules, initializes ops)
 3. Returns a ready-to-use `MainWorker`
 
+**Why `current_thread` Tokio + `LocalSet`:**
+
+Deno's Web API extensions (e.g. `MessagePort` used by React 19's
+scheduler) call `deno_unsync::spawn_local` internally, which requires a
+`LocalSet` to be active. A multi-threaded runtime is unnecessary —
+`MainWorker` is single-threaded — and would also conflict with
+`deno_unsync`'s assumptions.
+
 ```rust
-use std::cell::UnsafeCell;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::nop_types::AllowAllPermissionDescriptorParser;
 use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
 use crate::sys::Sys;
 
-pub struct DenoRuntimeWrapper {
-    tokio_rt: tokio::runtime::Runtime,
-    worker: UnsafeCell<MainWorker>,
+enum WorkerMsg {
+    Render {
+        args_json: String,
+        reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+    },
 }
 
-// SAFETY: Ruby's GVL serializes all access.
-unsafe impl Send for DenoRuntimeWrapper {}
-unsafe impl Sync for DenoRuntimeWrapper {}
+pub struct DenoRuntimeWrapper {
+    tx: tokio::sync::mpsc::Sender<WorkerMsg>,
+}
 
 impl DenoRuntimeWrapper {
     pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let tokio_rt = tokio::runtime::Runtime::new()?;
-        let main_module = Url::from_file_path(
-            std::fs::canonicalize(bundle_path).map_err(...)?,
-        ).map_err(...)?;
-
-        // Build WorkerServiceOptions with defaults
-        let services = WorkerServiceOptions {
-            blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()),
-            broadcast_channel: Default::default(),
-            feature_checker: Arc::new(FeatureChecker::default()),
-            fs: Arc::new(deno_runtime::deno_fs::RealFs),
-            module_loader: Rc::new(deno_runtime::deno_core::FsModuleLoader),
-            permissions: PermissionsContainer::allow_all(
-                Arc::new(AllowAllPermissionDescriptorParser),
-            ),
-            // ... other fields set to None/Default
-        };
-
-        let options = WorkerOptions {
-            bootstrap: BootstrapOptions::default(),
-            extensions: vec![],
-            create_web_worker_cb: Arc::new(|_| {
-                unimplemented!("web workers are not supported")
-            }),
-            ..Default::default()
-        };
-
-        let mut worker = MainWorker::bootstrap_from_options::<
-            NopInNpmPackageChecker,
-            NopNpmPackageFolderResolver,
-            Sys,
-        >(&main_module, services, options);
-
+        let canonical = std::fs::canonicalize(bundle_path)?;
         let bundle_code = std::fs::read_to_string(bundle_path)?;
-        worker.execute_script("entry-server.js", bundle_code.into())?;
+        let script_name: &'static str = canonical
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
+            .unwrap_or("main.js");
 
-        Ok(Self { tokio_rt, worker: UnsafeCell::new(worker) })
+        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
+        let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+
+        std::thread::Builder::new()
+            .name("deno-worker".into())
+            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))?;
+
+        init_rx.recv()??; // wait for bundle eval to finish
+        Ok(Self { tx })
     }
 
     pub fn block_on_render(&self, args_json: &str)
         -> Result<String, Box<dyn std::error::Error>>
     {
-        self.tokio_rt.block_on(async {
-            let worker = self.worker_mut();
-            let js_runtime = &mut worker.js_runtime;
-
-            let context = js_runtime.main_context();
-            let isolate = js_runtime.v8_isolate();
-
-            // V8 scope: pin!/init()/ContextScope pattern
-            let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
-            let mut scope = scope_storage.init();
-            let context_local = v8::Local::new(&mut scope, context);
-            let mut context_scope = v8::ContextScope::new(
-                &mut scope, context_local
-            );
-
-            let global = context_local.global(&mut context_scope);
-            let render_key = v8::String::new(
-                &mut context_scope, "render"
-            ).unwrap();
-            let render_val = global.get(
-                &mut context_scope, render_key.into()
-            );
-            let render_fn: v8::Local<v8::Function> = render_val
-                .ok_or("render not defined")?.try_into()
-                .map_err(|_| "render is not a function")?;
-
-            let args_v8 = v8::String::new(
-                &mut context_scope, args_json
-            ).unwrap();
-            let undefined = v8::undefined(&mut context_scope);
-
-            let result = render_fn
-                .call(&mut context_scope, undefined.into(), &[args_v8.into()])
-                .ok_or("render threw an exception")?;
-
-            let result_str = result
-                .to_string(&mut context_scope)
-                .ok_or("Cannot convert result to string")?;
-            Ok(result_str.to_rust_string_lossy(&context_scope))
-        })
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        self.tx.blocking_send(WorkerMsg::Render {
+            args_json: args_json.to_string(),
+            reply: reply_tx,
+        })?;
+        reply_rx.blocking_recv()?.map_err(Into::into)
     }
 }
+
+fn worker_thread_main(
+    main_module_path: std::path::PathBuf,
+    bundle_code: String,
+    script_name: &'static str,
+    mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
+    init_tx: mpsc::SyncSender<Result<(), String>>,
+) {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    tokio::task::LocalSet::new().block_on(&rt, async move {
+        let url = Url::from_file_path(&main_module_path).unwrap();
+        let mut worker = build_worker(&url);
+        worker.execute_script(script_name, bundle_code.into()).unwrap();
+        let _ = init_tx.send(Ok(()));
+
+        while let Some(WorkerMsg::Render { args_json, reply }) = rx.recv().await {
+            let result = call_render(&mut worker, &args_json).map_err(|e| e.to_string());
+            let _ = reply.send(result);
+        }
+    });
+}
 ```
+
+`build_worker` constructs `WorkerServiceOptions` + `WorkerOptions` and
+returns a `MainWorker` via `bootstrap_from_options`. `call_render` enters
+the V8 `HandleScope` / `ContextScope`, looks up `globalThis.render`, and
+invokes it with the JSON string argument. See the source for the full
+boilerplate.
 
 #### `sys.rs` — System Type for `ExtNodeSys`
 
@@ -333,25 +344,6 @@ The native extension registers three methods:
 - `native_version` — returns the crate version
 
 The Ruby `render` wrapper handles JSON serialization, keeping the native interface simple and the Ruby API ergonomic.
-
-#### `SSR::Deno::Configuration` (Planned)
-
-```ruby
-module SSR
-  module Deno
-    module Configuration
-      mattr_accessor :bundle_path,
-                     default: -> { File.join(Dir.pwd, 'dist', 'server', 'entry-server.js') }
-
-      mattr_accessor :render_function_name,
-                     default: 'render'
-
-      mattr_accessor :runtime_pool_size,
-                     default: 1
-    end
-  end
-end
-```
 
 ### 3. Vite SSR Bundle Contract
 
@@ -405,27 +397,13 @@ globalThis.render = render
 
 ## Error Handling Strategy
 
-```mermaid
-flowchart TD
-    A[SSR::Deno.render] --> B{JS Execution}
-    B -->|Success| C[Return HTML string]
-    B -->|JS Runtime Error| D[Catch in Rust]
-    D --> E[Convert to Ruby RuntimeError]
-    E --> F[Raise SSR::Deno::Error]
-    B -->|Bundle Not Found| G[Catch in Rust]
-    G --> H[Raise SSR::Deno::BundleNotFoundError]
-    B -->|Timeout| I[Catch in Rust]
-    I --> J[Raise SSR::Deno::TimeoutError]
-```
-
-## Configuration
-
-```ruby
-SSR::Deno.configure do |config|
-  config.bundle_path = Rails.root.join('dist', 'server', 'entry-server.js')
-  config.render_function_name = 'render'
-end
-```
+All Rust-side failures (bundle path resolution, V8 evaluation, missing or
+non-callable `render`, JS exception, worker thread death) are converted
+to a `RuntimeError` at the magnus boundary in
+[`ext/ssr_deno/src/lib.rs`](../ext/ssr_deno/src/lib.rs) via
+`runtime_error(...)`. The Ruby layer exposes `SSR::Deno::Error` for
+callers to rescue. No timeout, retry, or bundle-reload behavior is
+implemented yet.
 
 ## Implementation Phases
 
@@ -448,7 +426,10 @@ end
 2. ✅ **Rewrote [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)**
    - Uses `MainWorker::bootstrap_from_options` with three generic type parameters
    - V8 scope access via `pin!/init()/ContextScope` pattern
-   - `UnsafeCell<MainWorker>` for interior mutability (safe under Ruby GVL)
+   - `MainWorker` pinned to a dedicated `"deno-worker"` thread with a
+     `current_thread` Tokio runtime + `LocalSet`; Ruby thread holds an
+     mpsc `Sender` and round-trips render calls via `oneshot`. No
+     `unsafe` and no `UnsafeCell` in the wrapper.
 
 3. ✅ **Created [`ext/ssr_deno/src/sys.rs`](../ext/ssr_deno/src/sys.rs)**
    - `Sys` type implementing all `sys_traits` for `ExtNodeSys`
@@ -496,29 +477,26 @@ end
     - README rewritten with usage instructions, development guide, and architecture reference
     - Git tag `v0.1.0-alpha.1` created
 
-### Phase 3: Ruby API
-- Implement `SSR::Deno.render` method with keyword arguments
-- Implement `SSR::Deno::Configuration`
-- Add RBS type signatures
-- Write Ruby-side tests
+### Phase 3: Threaded Worker ✅
+- Moved `MainWorker` to a dedicated `"deno-worker"` thread (commit
+  `4bdf1f5`). Removed all `unsafe` impls and `UnsafeCell`.
+- Switched the Tokio runtime to `current_thread` + `LocalSet` to satisfy
+  `deno_unsync::spawn_local` (commit `a8478e8`).
+- Pass the bundle file name to `execute_script` so V8 stack traces point
+  at the right script (commit `27df88b`).
+- Per-package `opt-level` overrides for fast dev builds without breaking
+  V8 / `deno_core` / `deno_runtime` (commit `d76ab6f`).
 
-### Phase 4: Bundle Loading & Execution
-- Implement `BundleLoader` to read Vite SSR output
-- Implement `JsExecutor` to call the render function
-- Wire up JSON serialization/deserialization
-- Handle return values and errors
-
-### Phase 5: Error Handling & Edge Cases
-- Implement custom error classes
-- Add timeout protection for JS execution
-- Handle bundle reload scenarios
-- Add logging
-
-### Phase 6: Documentation & Samples
-- Create a sample Vite SSR project
-- Write comprehensive README
-- Add CI configuration for Rust compilation
-- Document the Vite SSR bundle contract
+### Phase 4: Future work
+- Custom error classes (`BundleNotFoundError`, `TimeoutError`, …) once
+  the use cases justify them. Today everything raises
+  `SSR::Deno::Error`.
+- Timeout / cancellation for runaway JS renders.
+- Bundle reload (re-evaluate `entry-server.js` without restarting the
+  process).
+- Optional `SSR::Deno.configure` block if/when more knobs appear.
+- CI for Rust compilation (Linux is the only currently supported
+  platform).
 
 ## Key Design Decisions
 
@@ -536,7 +514,12 @@ end
 
 7. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
 
-8. **Tokio Runtime**: A Tokio runtime is embedded inside `DenoRuntimeWrapper` for async operations. Ruby's GVL ensures single-threaded access, making `UnsafeCell<MainWorker>` safe.
+8. **Dedicated worker thread**: `MainWorker` (and its
+   `current_thread` Tokio runtime + `LocalSet`) live on a dedicated
+   `"deno-worker"` OS thread. The Ruby thread only holds an
+   `mpsc::Sender<WorkerMsg>` and uses `oneshot` channels for replies. This
+   removes the need for `unsafe impl Send/Sync` and `UnsafeCell`, and makes
+   the design robust against future Ractor or thread-pool usage from Ruby.
 
 9. **Configuration via Ruby**: All configuration (bundle path, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
 

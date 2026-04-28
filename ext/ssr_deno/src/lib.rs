@@ -41,7 +41,6 @@ fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
     // `set` can only fail if already initialized, which we already checked above.
     let _ = RUNTIME.set(runtime);
 
-    // TEST: checking incremental compilation
     Ok(Some(true))
 }
 
