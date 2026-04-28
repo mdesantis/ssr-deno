@@ -91,6 +91,16 @@ fn native_version() -> String {
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
+    // Opt in to Ractor safety. All shared state (RUNTIME, INIT_LOCK) is
+    // Rust-level and protected by OnceLock/Mutex. Renders serialize through
+    // a tokio channel so concurrent Ractors queue and get isolated results.
+    unsafe {
+        extern "C" {
+            fn rb_ext_ractor_safe(flag: bool);
+        }
+        rb_ext_ractor_safe(true);
+    }
+
     let module = ruby.define_module("SSR")?;
     let deno_module = module.define_module("Deno")?;
 

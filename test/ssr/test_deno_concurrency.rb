@@ -24,15 +24,10 @@ module SSR
     def test_native_render_from_ractor
       skip 'Ractor not defined' unless defined?(Ractor)
 
-      ractor = Ractor.new { SSR::Deno.render(raw_input: '{"data":{"name":"Ractor"}}') }
+      ractor = Ractor.new { SSR::Deno.render('{"data":{"name":"Ractor"}}', raw_input: true) }
+      result = ractor.value
 
-      begin
-        result = ractor.value
-
-        assert_includes result, 'Ractor'
-      rescue Ractor::RemoteError => error
-        skip "native_render not Ractor-safe: #{error.cause&.class}: #{error.cause&.message}"
-      end
+      assert_includes result, 'Ractor'
     end
   end
 end
