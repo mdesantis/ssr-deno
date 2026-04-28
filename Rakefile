@@ -21,4 +21,11 @@ end
 
 RuboCop::RakeTask.new
 
-task default: %i[compile test rubocop]
+namespace :samples do
+  desc 'Build the vite-ssr-app SSR bundle'
+  task :build do
+    sh 'deno', 'task', 'build', chdir: 'samples/vite-ssr-app'
+  end
+end
+
+task default: %i[compile samples:build test rubocop]
