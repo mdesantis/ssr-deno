@@ -24,7 +24,7 @@ module SSR
     def test_native_render_from_ractor
       skip 'Ractor not defined' unless defined?(Ractor)
 
-      ractor = Ractor.new { SSR::Deno.native_render('{"data":{"name":"Ractor"}}') }
+      ractor = Ractor.new { SSR::Deno.render(raw_input: '{"data":{"name":"Ractor"}}') }
 
       begin
         result = ractor.value
