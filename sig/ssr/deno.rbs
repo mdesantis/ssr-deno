@@ -5,6 +5,18 @@ module SSR
     class Error < StandardError
     end
 
+    class JsRuntimeInitializationError < Error
+    end
+
+    class JsRuntimeNotInitializedError < Error
+    end
+
+    class JsRuntimeWorkerError < Error
+    end
+
+    class RenderError < Error
+    end
+
     class << self
       def init_runtime: (String bundle_path) -> bool?
       def render: (Hash[untyped, untyped] data) -> String

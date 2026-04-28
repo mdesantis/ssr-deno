@@ -1,6 +1,31 @@
 use std::sync::mpsc;
 use std::sync::Arc;
 
+// ---------------------------------------------------------------------------
+// Typed error enum
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+pub enum DenoError {
+    BundleLoad(String),
+    WorkerInit(String),
+    WorkerDied(String),
+    Render(String),
+}
+
+impl std::fmt::Display for DenoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BundleLoad(msg)
+            | Self::WorkerInit(msg)
+            | Self::WorkerDied(msg)
+            | Self::Render(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for DenoError {}
+
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_permissions::Permissions;
@@ -44,7 +69,7 @@ pub struct DenoRuntimeWrapper {
 impl DenoRuntimeWrapper {
     /// Spawns the Deno worker thread, evaluates the SSR bundle, and blocks
     /// until the worker signals that initialization is complete.
-    pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(bundle_path: &str) -> Result<Self, DenoError> {
         // Validate and read eagerly so errors surface in the caller's context,
         // not silently inside the background thread.
         let bundle_name = std::path::Path::new(bundle_path)
@@ -52,7 +77,7 @@ impl DenoRuntimeWrapper {
             .and_then(|s| s.to_str())
             .unwrap_or("(unknown)");
         let canonical = std::fs::canonicalize(bundle_path)
-            .map_err(|e| format!("Cannot resolve bundle path '{bundle_name}': {e}"))?;
+            .map_err(|e| DenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}")))?;
 
         // Reject symlink escapes: the resolved path must stay within the
         // directory that was originally specified (e.g. entry.js -> /etc/secret
@@ -62,16 +87,15 @@ impl DenoRuntimeWrapper {
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(std::path::Path::new("."));
         let canonical_parent = std::fs::canonicalize(original_parent)
-            .map_err(|e| format!("Cannot resolve bundle directory: {e}"))?;
+            .map_err(|e| DenoError::BundleLoad(format!("Cannot resolve bundle directory: {e}")))?;
         if !canonical.starts_with(&canonical_parent) {
-            return Err(format!(
+            return Err(DenoError::BundleLoad(format!(
                 "Bundle file '{bundle_name}' escapes its directory via symlink"
-            )
-            .into());
+            )));
         }
 
         let bundle_code = std::fs::read_to_string(bundle_path)
-            .map_err(|e| format!("Cannot read bundle file '{bundle_name}': {e}"))?;
+            .map_err(|e| DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}")))?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
         // name. One bounded leak per wrapper instance (process-lifetime here).
@@ -86,19 +110,20 @@ impl DenoRuntimeWrapper {
 
         std::thread::Builder::new()
             .name("deno-worker".into())
-            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))?;
+            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))
+            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
 
         init_rx
             .recv()
-            .map_err(|_| "Deno worker thread exited unexpectedly during init")?
-            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
+            .map_err(DenoError::WorkerInit)?;
 
         Ok(Self { tx })
     }
 
     /// Sends a render request to the worker thread and blocks until the result
     /// arrives. Safe to call from a non-async context (e.g. Ruby's GVL thread).
-    pub fn block_on_render(&self, args_json: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn block_on_render(&self, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         self.tx
@@ -106,12 +131,12 @@ impl DenoRuntimeWrapper {
                 args_json: args_json.to_string(),
                 reply: reply_tx,
             })
-            .map_err(|_| "Deno worker thread has exited")?;
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
         reply_rx
             .blocking_recv()
-            .map_err(|_| "Deno worker thread exited before sending a reply")?
-            .map_err(Into::into)
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
+            .map_err(DenoError::Render)
     }
 }
 
