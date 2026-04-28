@@ -21,7 +21,7 @@ module SSR
       # @raise [SSR::Deno::JsRuntimeNotInitializedError] if {init_runtime} has not been called
       # @raise [SSR::Deno::JsRuntimeWorkerError] if the Deno worker thread has exited
       # @raise [SSR::Deno::RenderError] if the JavaScript render function throws
-      def render(data, raw_input: false, raw_output: false)
+      def render(data = nil, raw_input: false, raw_output: false)
         json_input = raw_input ? data : JSON.generate(data)
         result = native_render(json_input)
         raw_output ? result : JSON.parse(result)
