@@ -25,11 +25,9 @@ module SSR
       # Subsequent calls should return nil
       assert_nil ::SSR::Deno.init_runtime(bundle_path)
 
-      html = ::SSR::Deno.render(
-        component_data: { message: 'Hello World!' },
-        props: {},
-        url: '/'
-      )
+      html = ::SSR::Deno.render({ component_data: { message: 'Hello World!' },
+                                  props: {},
+                                  url: '/' })
 
       assert_match(%r{<html>.*</html>}m, html)
       assert_includes html, 'Hello'
