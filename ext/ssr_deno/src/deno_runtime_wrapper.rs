@@ -49,6 +49,24 @@ impl DenoRuntimeWrapper {
         // not silently inside the background thread.
         let canonical = std::fs::canonicalize(bundle_path)
             .map_err(|e| format!("Cannot resolve bundle path '{bundle_path}': {e}"))?;
+
+        // Reject symlink escapes: the resolved path must stay within the
+        // directory that was originally specified (e.g. entry.js -> /etc/secret
+        // would escape /app/dist/ and be caught here).
+        let original_parent = std::path::Path::new(bundle_path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(std::path::Path::new("."));
+        let canonical_parent = std::fs::canonicalize(original_parent)
+            .map_err(|e| format!("Cannot resolve bundle directory: {e}"))?;
+        if !canonical.starts_with(&canonical_parent) {
+            return Err(format!(
+                "Bundle path '{}' escapes its directory via symlink",
+                bundle_path
+            )
+            .into());
+        }
+
         let bundle_code = std::fs::read_to_string(bundle_path)
             .map_err(|e| format!("Cannot read bundle file '{bundle_path}': {e}"))?;
 

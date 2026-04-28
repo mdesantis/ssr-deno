@@ -40,22 +40,12 @@ rejected at the loader level, independent of permissions.
 
 ## MEDIUM
 
-### No bundle path boundary check — `deno_runtime_wrapper.rs:49-52`
+### ~~No bundle path boundary check~~ — `deno_runtime_wrapper.rs:49-52` ✅ FIXED
 
-`canonicalize()` resolves symlinks and normalizes the path but never verifies the
-result is inside an expected directory. A Ruby caller can pass an arbitrary path and
-load any JS file on the system.
-
-**Fix:** Validate the canonical path is within the expected bundle directory:
-
-```rust
-let canonical = std::fs::canonicalize(bundle_path)
-    .map_err(|e| format!("Cannot resolve bundle path '{bundle_path}': {e}"))?;
-
-if !canonical.starts_with(&expected_bundle_dir) {
-    return Err(format!("Bundle path is outside the allowed directory").into());
-}
-```
+**Fixed.** After canonicalizing the bundle path, the canonical form of the original
+parent directory is computed and the resolved path is checked to remain within it.
+Catches symlink escapes (`/app/dist/entry.js → /etc/secret.js` is rejected because
+`/etc/secret.js` is not under the canonical `/app/dist/`).
 
 ### ~~TOCTOU in `init_runtime`~~ — `lib.rs:34-43` ✅ FIXED
 
@@ -103,7 +93,7 @@ internally, return generic messages externally.
 | ~~Critical~~ | `deno_runtime_wrapper.rs` | 168 | ~~`allow_all` permissions~~ ✅ |
 | High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — accepted risk (mitigated by deny-all perms + NoopModuleLoader) |
 | ~~High~~ | `deno_runtime_wrapper.rs` | 165 | ~~`FsModuleLoader` — dynamic imports from fs~~ ✅ |
-| Medium | `deno_runtime_wrapper.rs` | 49–52 | No bundle path boundary validation |
+| ~~Medium~~ | `deno_runtime_wrapper.rs` | 49–52 | ~~No bundle path boundary validation~~ ✅ |
 | ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
 | Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded to 1) |
 | Low | `deno_runtime_wrapper.rs` | 50,52,127 | Full paths in error messages |
