@@ -32,17 +32,10 @@ but replacing it with a no-op fs adds defense in depth.
 
 **Fix:** Switch to a no-op filesystem implementation (pending).
 
-### `FsModuleLoader` — `deno_runtime_wrapper.rs:165`
+### ~~`FsModuleLoader`~~ — `deno_runtime_wrapper.rs:165` ✅ FIXED
 
-Dynamic `import()` from the filesystem is enabled. With deny-all permissions the
-`import` permission is blocked, but the module loader should still be locked down
-explicitly since the SSR bundle is self-contained.
-
-**Fix:** Replace with a module loader that rejects all imports (pending):
-
-```rust
-module_loader: std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader),
-```
+**Fixed.** Replaced with `NoopModuleLoader` — all dynamic `import()` calls now
+rejected at the loader level, independent of permissions.
 
 ---
 
@@ -110,7 +103,7 @@ internally, return generic messages externally.
 |----------|------|------|-------|
 | ~~Critical~~ | `deno_runtime_wrapper.rs` | 168 | ~~`allow_all` permissions~~ ✅ |
 | High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — real filesystem access (mitigated, pending nop-fs) |
-| High | `deno_runtime_wrapper.rs` | 165 | `FsModuleLoader` — dynamic imports from fs (mitigated, pending nop-loader) |
+| ~~High~~ | `deno_runtime_wrapper.rs` | 165 | ~~`FsModuleLoader` — dynamic imports from fs~~ ✅ |
 | Medium | `deno_runtime_wrapper.rs` | 49–52 | No bundle path boundary validation |
 | ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
 | Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded to 1) |

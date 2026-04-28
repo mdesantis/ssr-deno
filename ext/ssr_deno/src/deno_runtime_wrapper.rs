@@ -163,7 +163,7 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
         deno_rt_native_addon_loader: None,
         feature_checker: Arc::new(FeatureChecker::default()),
         fs: Arc::new(deno_runtime::deno_fs::RealFs),
-        module_loader: std::rc::Rc::new(deno_runtime::deno_core::FsModuleLoader),
+        module_loader: std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader),
         node_services: None,
         npm_process_state_provider: None,
         permissions: PermissionsContainer::new(
