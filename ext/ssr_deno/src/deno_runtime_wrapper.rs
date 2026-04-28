@@ -278,14 +278,28 @@ fn call_render(worker: &mut MainWorker, args_json: &str) -> Result<String, Box<d
     let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
     let undefined = v8::undefined(&mut context_scope);
 
-    let result = render_fn
-        .call(&mut context_scope, undefined.into(), &[args_v8.into()])
-        .ok_or("`render` function threw an exception")?;
+    // TryCatch prevents V8 from marking the exception as unhandled, which would
+    // cause Deno's event loop to print "Uncaught ..." to stderr on the next tick.
+    let tc = std::pin::pin!(v8::TryCatch::new(&mut context_scope));
+    let try_catch = tc.init();
+
+    let call_result = render_fn.call(&try_catch, undefined.into(), &[args_v8.into()]);
+
+    let result = match call_result {
+        Some(v) => v,
+        None => {
+            let msg = try_catch
+                .message()
+                .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
+                .unwrap_or_else(|| "`render` function threw an exception".to_string());
+            return Err(msg.into());
+        }
+    };
 
     // JSON-serialize so any JS type (string, object, array, …) survives the
     // V8→Rust→Ruby boundary. Ruby's JSON.parse reconstructs the value.
-    let json_str = v8::json::stringify(&mut context_scope, result)
+    let json_str = v8::json::stringify(&try_catch, result)
         .ok_or("Cannot serialize render result to JSON")?;
 
-    Ok(json_str.to_rust_string_lossy(&context_scope))
+    Ok(json_str.to_rust_string_lossy(&try_catch))
 }
