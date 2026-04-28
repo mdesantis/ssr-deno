@@ -8,11 +8,10 @@ AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
   Exclude:
-    - 'ext/ssr_deno/rusty_v8/**/*'
-    - 'ext/ssr_deno/src/**/*'
     - 'ext/ssr_deno/target/**/*'
-    - 'tmp/**/*'
     - 'samples/**/*'
+    - 'third_party/**/*'
+    - 'tmp/**/*'
 
 Layout/HeredocIndentation:
   Enabled: false

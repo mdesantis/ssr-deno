@@ -23,4 +23,4 @@ codegen-units = 1
 strip = true
 
 [patch.crates-io]
-v8 = { path = "rusty_v8" }
+v8 = { path = "../../third_party/rusty_v8" }

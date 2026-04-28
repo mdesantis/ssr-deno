@@ -18,6 +18,6 @@
   // Exclude the rusty_v8 submodule from rust-analyzer analysis to avoid
   // errors from generated files that don't exist until build time.
   "rust-analyzer.files.excludeDirs": [
-    "ext/ssr_deno/rusty_v8"
+    "third_party/rusty_v8"
   ]
 }

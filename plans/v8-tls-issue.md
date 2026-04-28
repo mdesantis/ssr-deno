@@ -34,13 +34,7 @@ export LIBCLANG_PATH=/usr/lib/llvm-21/lib
 bundle exec rake compile
 ```
 
-Or use the provided wrapper script:
-
-```bash
-./bin/compile
-```
-
-This requires a local clone of the full [`rusty_v8`](https://github.com/denoland/rusty_v8) repository (not just the crate from crates.io) to get all vendored dependencies. The `[patch.crates-io]` section in [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml) points to the local checkout.
+This requires a local clone of the full [`rusty_v8`](https://github.com/denoland/rusty_v8) repository (not just the crate from crates.io) to get all vendored dependencies. The `[patch.crates-io]` section in [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml) points to the local checkout at [`third_party/rusty_v8`](../third_party/rusty_v8).
 
 ## Upstream Fix
 
