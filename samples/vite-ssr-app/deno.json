@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "exports": "./serve.deno.ts",
   "lock": "deno.lock",
+  "nodeModulesDir": "auto",
   "exclude": [
     "dist/",
     "node_modules/"
   ],
   "tasks": {
-    "build:ssr": "deno run -A npm:vite build --ssr",
+    "build": "deno run --unstable-bare-node-builtins -A npm:vite build --ssr",
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {

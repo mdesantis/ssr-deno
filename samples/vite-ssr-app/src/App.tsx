@@ -2,25 +2,24 @@ import HelloWorld from './components/HelloWorld.tsx'
 
 interface AppProps {
   data?: {
-    name?: string
+    [key: string]: unknown
   }
-  [key: string]: unknown
 }
 
-export default function App({ data, ...rest }: AppProps) {
-  const name = data?.name ?? 'World'
+export default function App({ data }: AppProps) {
+  const name = (data?.name as string | undefined) ?? 'World'
 
   return (
     <html>
       <head>
-        <title>SSR with Deno - {name}</title>
+        <title>SSR with Deno</title>
       </head>
       <body>
         <div id="root">
           <HelloWorld name={name} />
-          {Object.keys(rest).length > 0 && (
+          {Object.keys(data ?? {}).length > 0 && (
             <pre style={{ marginTop: '2rem', padding: '1rem', background: '#f5f5f5' }}>
-              {JSON.stringify(rest, null, 2)}
+              {JSON.stringify(data, null, 2)}
             </pre>
           )}
         </div>

@@ -3,17 +3,14 @@ import { createElement } from 'react'
 import App from './App.tsx'
 
 export interface RenderContext {
-  component_data: Record<string, unknown>
-  props: Record<string, unknown>
-  url: string
+  data: Record<string, unknown>
 }
 
 function render(argsJson: string): string {
   const context: RenderContext = JSON.parse(argsJson)
   const html = renderToString(
     createElement(App, {
-      data: context.component_data,
-      extra: context.props,
+      data: context.data
     })
   )
   return html

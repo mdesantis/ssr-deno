@@ -12,7 +12,7 @@ module SSR
       assert_match(/\A\d+\.\d+\.\d+/, ::SSR::Deno.native_version)
     end
 
-    def test_render_vite_ssr_sample
+    def test_that_it_renders_vite_ssr_sample
       bundle_path = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
 
       assert_path_exists bundle_path, "Bundle not found at #{bundle_path}"
@@ -25,13 +25,10 @@ module SSR
       # Subsequent calls should return nil
       assert_nil ::SSR::Deno.init_runtime(bundle_path)
 
-      html = ::SSR::Deno.render({ component_data: { message: 'Hello World!' },
-                                  props: {},
-                                  url: '/' })
+      html = ::SSR::Deno.render({ data: { name: 'Maurizio' } })
 
       assert_match(%r{<html>.*</html>}m, html)
-      assert_includes html, 'Hello'
-      assert_includes html, 'World'
+      assert_includes html, 'Maurizio'
       assert_includes html, '<div id="root">'
     end
   end
