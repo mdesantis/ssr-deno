@@ -47,8 +47,12 @@ impl DenoRuntimeWrapper {
     pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         // Validate and read eagerly so errors surface in the caller's context,
         // not silently inside the background thread.
+        let bundle_name = std::path::Path::new(bundle_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("(unknown)");
         let canonical = std::fs::canonicalize(bundle_path)
-            .map_err(|e| format!("Cannot resolve bundle path '{bundle_path}': {e}"))?;
+            .map_err(|e| format!("Cannot resolve bundle path '{bundle_name}': {e}"))?;
 
         // Reject symlink escapes: the resolved path must stay within the
         // directory that was originally specified (e.g. entry.js -> /etc/secret
@@ -61,14 +65,13 @@ impl DenoRuntimeWrapper {
             .map_err(|e| format!("Cannot resolve bundle directory: {e}"))?;
         if !canonical.starts_with(&canonical_parent) {
             return Err(format!(
-                "Bundle path '{}' escapes its directory via symlink",
-                bundle_path
+                "Bundle file '{bundle_name}' escapes its directory via symlink"
             )
             .into());
         }
 
         let bundle_code = std::fs::read_to_string(bundle_path)
-            .map_err(|e| format!("Cannot read bundle file '{bundle_path}': {e}"))?;
+            .map_err(|e| format!("Cannot read bundle file '{bundle_name}': {e}"))?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
         // name. One bounded leak per wrapper instance (process-lifetime here).
@@ -140,10 +143,7 @@ fn worker_thread_main(
         let main_module_url = match Url::from_file_path(&main_module_path) {
             Ok(url) => url,
             Err(_) => {
-                let _ = init_tx.send(Err(format!(
-                    "Cannot convert path to URL: {}",
-                    main_module_path.display()
-                )));
+                let _ = init_tx.send(Err("Cannot convert bundle path to URL".to_string()));
                 return;
             }
         };

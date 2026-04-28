@@ -76,13 +76,12 @@ fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
 One `Box::leak` per `DenoRuntimeWrapper::new()` call. Now bounded to exactly 1 (TOCTOU
 fixed). Acceptable for a process-lifetime singleton.
 
-### Filesystem paths in error messages — `deno_runtime_wrapper.rs:50,52,127`
+### ~~Filesystem paths in error messages~~ — `deno_runtime_wrapper.rs` ✅ FIXED
 
-Full canonical paths appear in error strings that propagate up to Ruby exceptions.
-Leaks server filesystem structure in error responses.
-
-**Fix:** Strip or sanitize paths from user-facing error messages. Log full paths
-internally, return generic messages externally.
+**Fixed.** All three locations updated:
+- Resolve/read errors: show filename only (via `Path::file_name()`), not full path
+- Symlink-escape error: same — filename only
+- Internal URL-conversion error: path removed entirely (canonical path, never user-visible)
 
 ---
 
@@ -96,6 +95,6 @@ internally, return generic messages externally.
 | ~~Medium~~ | `deno_runtime_wrapper.rs` | 49–52 | ~~No bundle path boundary validation~~ ✅ |
 | ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
 | Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded to 1) |
-| Low | `deno_runtime_wrapper.rs` | 50,52,127 | Full paths in error messages |
+| ~~Low~~ | `deno_runtime_wrapper.rs` | — | ~~Full paths in error messages~~ ✅ |
 
 **Priority:** Fix `allow_all` first — it is the root of the Critical + both High findings.
