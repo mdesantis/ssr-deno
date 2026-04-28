@@ -51,12 +51,20 @@ impl DenoRuntimeWrapper {
         let bundle_code = std::fs::read_to_string(bundle_path)
             .map_err(|e| format!("Cannot read bundle file '{bundle_path}': {e}"))?;
 
+        // `MainWorker::execute_script` requires `&'static str` for the script
+        // name. One bounded leak per wrapper instance (process-lifetime here).
+        let script_name: &'static str = canonical
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
+            .unwrap_or("main.js");
+
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         std::thread::Builder::new()
             .name("deno-worker".into())
-            .spawn(move || worker_thread_main(canonical, bundle_code, rx, init_tx))?;
+            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))?;
 
         init_rx
             .recv()
@@ -92,6 +100,7 @@ impl DenoRuntimeWrapper {
 fn worker_thread_main(
     main_module_path: std::path::PathBuf,
     bundle_code: String,
+    script_name: &'static str,
     mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
 ) {
@@ -128,7 +137,7 @@ fn worker_thread_main(
             }
         };
 
-        if let Err(e) = worker.execute_script("entry-server.js", bundle_code.into()) {
+        if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
             let _ = init_tx.send(Err(format!("Failed to evaluate SSR bundle: {e}")));
             return;
         }
