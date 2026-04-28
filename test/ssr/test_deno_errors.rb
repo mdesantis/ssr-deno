@@ -1,0 +1,58 @@
+# frozen_string_literal: true
+
+require 'test_helper'
+require 'open3'
+require 'rbconfig'
+
+module SSR
+  class TestDenoErrors < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
+    GEM_ROOT = File.expand_path('../..', __dir__)
+
+    def setup
+      SSR::Deno.init_runtime(BUNDLE_PATH)
+    end
+
+    def test_render_when_js_throws_raises_render_error
+      assert_raises(SSR::Deno::RenderError) do
+        SSR::Deno.render('invalid-json', raw_input: true)
+      end
+    end
+
+    def test_init_runtime_when_bundle_not_found_raises_js_runtime_initialization_error
+      script = <<~RUBY
+        $LOAD_PATH.unshift('lib')
+        require 'ssr/deno'
+        begin
+          SSR::Deno.init_runtime('/nonexistent/entry-server.js')
+        rescue SSR::Deno::JsRuntimeInitializationError
+          exit 0
+        end
+        exit 1
+      RUBY
+      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
+
+      assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeInitializationError to be raised'
+    end
+
+    def test_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
+      script = <<~RUBY
+        $LOAD_PATH.unshift('lib')
+        require 'ssr/deno'
+        begin
+          SSR::Deno.render({})
+        rescue SSR::Deno::JsRuntimeNotInitializedError
+          exit 0
+        end
+        exit 1
+      RUBY
+      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
+
+      assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeNotInitializedError to be raised'
+    end
+
+    def test_render_when_worker_dies_raises_js_runtime_worker_error
+      skip 'No public API to terminate the Deno worker thread from Ruby'
+    end
+  end
+end
