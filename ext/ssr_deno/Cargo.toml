@@ -22,5 +22,23 @@ lto = true
 codegen-units = 1
 strip = true
 
+[profile.dev]
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+opt-level = 1
+
+# V8 and Deno's core crates rely on opt-level=3: the pre-built V8 static
+# library is compiled at full optimization, and the Rust FFI/snapshot code
+# behaves incorrectly at lower levels (panics, JIT failures, bad codegen).
+[profile.dev.package.v8]
+opt-level = 3
+
+[profile.dev.package.deno_core]
+opt-level = 3
+
+[profile.dev.package.deno_runtime]
+opt-level = 3
+
 [patch.crates-io]
 v8 = { path = "../../third_party/rusty_v8" }

@@ -66,12 +66,23 @@ bin/setup
 
 ### Compile the native extension
 
+Copy `.env.example` to `.env` before the first compile — without it, the build
+falls back to release mode (slow) and is missing required V8 build variables:
+
 ```bash
 cp .env.example .env
 bundle exec rake compile
 ```
 
-The V8 build environment variables (`V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH`) are loaded from the `.env` file via the `dotenv` gem. Copy `.env.example` to `.env` and adjust the paths for your system (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
+`.env` configures, via `dotenv`:
+
+- `V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH` — required to build V8 as a
+  shared library (see [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md)).
+- `RB_SYS_CARGO_PROFILE=dev` — fast iterative builds, suitable for
+  `rake test`. Switch to `release` (or use `gem build`) for a shipping artifact.
+- Optional `RUSTFLAGS` (`mold` linker) and `SCCACHE` for further speedups.
+
+Adjust the paths for your system after copying.
 
 ### Run tests
 

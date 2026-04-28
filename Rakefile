@@ -6,9 +6,10 @@ require 'rake/extensiontask'
 require 'minitest/test_task'
 require 'rubocop/rake_task'
 
-# The V8 build environment variables (V8_FROM_SOURCE, GN_ARGS, LIBCLANG_PATH)
-# are loaded from the .env file via dotenv (see .env.example).
-# These are required to build V8 as a shared library (see plans/v8-tls-issue.md).
+# Build-time environment variables (V8_FROM_SOURCE, GN_ARGS, LIBCLANG_PATH,
+# RB_SYS_CARGO_PROFILE) are loaded from the .env file via dotenv. See
+# .env.example for the documented defaults and plans/v8-tls-issue.md for the
+# V8 build constraints.
 
 Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
