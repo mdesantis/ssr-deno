@@ -13,3 +13,5 @@
 
 # Local environment configuration (copy .env.example to .env and customize)
 /.env
+
+.claude/settings.local.json
