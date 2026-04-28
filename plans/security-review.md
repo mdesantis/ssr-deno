@@ -66,40 +66,25 @@ if !canonical.starts_with(&expected_bundle_dir) {
 }
 ```
 
-### TOCTOU in `init_runtime` — `lib.rs:34-43`
+### ~~TOCTOU in `init_runtime`~~ — `lib.rs:34-43` ✅ FIXED
+
+**Fixed** via double-checked locking with a static `INIT_LOCK: Mutex<()>`:
 
 ```rust
-if RUNTIME.get().is_some() {    // <- thread A passes here
-    return Ok(None);
-}
-// thread B also passes here
-let runtime = DenoRuntimeWrapper::new(&bundle_path)...
-let _ = RUNTIME.set(runtime);   // one wins, one silently loses
-```
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
-Two concurrent callers both pass the `is_some()` guard, both spawn a worker thread and
-evaluate the bundle, and both trigger `Box::leak`. The loser's runtime is silently
-dropped. Outcome: double bundle execution + double memory leak.
-
-**Fix:** Remove the precheck. `OnceLock::set` returns `Err` if already set — handle
-that instead:
-
-```rust
 fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
-    if RUNTIME.get().is_some() {
-        return Ok(None); // fast path (racy but safe to keep for perf)
-    }
+    if RUNTIME.get().is_some() { return Ok(None); }   // fast path (no lock)
+    let _guard = INIT_LOCK.lock().unwrap();
+    if RUNTIME.get().is_some() { return Ok(None); }   // re-check under lock
     let runtime = DenoRuntimeWrapper::new(&bundle_path)
         .map_err(|e| runtime_error(format!("Failed to initialize runtime: {e}")))?;
-    match RUNTIME.set(runtime) {
-        Ok(_) => Ok(Some(true)),
-        Err(_) => Ok(None), // lost the race, already initialized
-    }
+    let _ = RUNTIME.set(runtime);
+    Ok(Some(true))
 }
 ```
 
-This still has the double-init race but eliminates the silent discard and makes intent
-explicit. A proper fix uses a `Mutex<Option<...>>` or `OnceCell` from `once_cell` crate.
+`DenoRuntimeWrapper::new()` now runs exactly once. `Box::leak` bounded to 1.
 
 ---
 
@@ -107,9 +92,8 @@ explicit. A proper fix uses a `Mutex<Option<...>>` or `OnceCell` from `once_cell
 
 ### `Box::leak` per init — `deno_runtime_wrapper.rs:56-60`
 
-One `Box::leak` per `DenoRuntimeWrapper::new()` call. Bounded to 1 with a correct
-singleton, but the TOCTOU above allows 2+. Fix the TOCTOU first; the leak itself is
-acceptable for a process-lifetime singleton.
+One `Box::leak` per `DenoRuntimeWrapper::new()` call. Now bounded to exactly 1 (TOCTOU
+fixed). Acceptable for a process-lifetime singleton.
 
 ### Filesystem paths in error messages — `deno_runtime_wrapper.rs:50,52,127`
 
@@ -129,8 +113,8 @@ internally, return generic messages externally.
 | High | `deno_runtime_wrapper.rs` | 164 | `RealFs` — real filesystem access |
 | High | `deno_runtime_wrapper.rs` | 165 | `FsModuleLoader` — dynamic imports from fs |
 | Medium | `deno_runtime_wrapper.rs` | 49–52 | No bundle path boundary validation |
-| Medium | `lib.rs` | 34–43 | TOCTOU between `is_some()` check and `set()` |
-| Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded after TOCTOU fix) |
+| ~~Medium~~ | `lib.rs` | 34–43 | ~~TOCTOU between `is_some()` check and `set()`~~ ✅ |
+| Low | `deno_runtime_wrapper.rs` | 56–60 | `Box::leak` per init (bounded to 1) |
 | Low | `deno_runtime_wrapper.rs` | 50,52,127 | Full paths in error messages |
 
 **Priority:** Fix `allow_all` first — it is the root of the Critical + both High findings.

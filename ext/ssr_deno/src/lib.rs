@@ -4,10 +4,10 @@ mod sys;
 
 use deno_runtime_wrapper::DenoRuntimeWrapper;
 use magnus::{function, Error, Module, Object, Ruby};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
-/// Singleton Deno runtime wrapper, initialized once via `init_runtime`.
 static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Helper to create a Ruby runtime error using the current Ruby instance.
 fn runtime_error(msg: impl Into<String>) -> Error {
@@ -30,17 +30,16 @@ fn runtime_error(msg: impl Into<String>) -> Error {
 /// - The bundle file cannot be read
 /// - The bundle JavaScript cannot be evaluated
 fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
-    // If already initialized, return nil (None in Rust → nil in Ruby).
     if RUNTIME.get().is_some() {
         return Ok(None);
     }
-
+    let _guard = INIT_LOCK.lock().unwrap();
+    if RUNTIME.get().is_some() {
+        return Ok(None);
+    }
     let runtime = DenoRuntimeWrapper::new(&bundle_path)
         .map_err(|e| runtime_error(format!("Failed to initialize runtime: {e}")))?;
-
-    // `set` can only fail if already initialized, which we already checked above.
     let _ = RUNTIME.set(runtime);
-
     Ok(Some(true))
 }
 
