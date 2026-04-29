@@ -78,9 +78,9 @@ fn native_load_bundle(bundle_id: String, bundle_path: String) -> Result<(), Erro
 
 /// Returns the render result as a JSON string so any JS type survives the
 /// boundary. Ruby's `JSON.parse` reconstructs the value.
-fn native_render(bundle_id: String, args_json: String) -> Result<String, Error> {
+fn native_render(bundle_id: String, fn_name: String, args_json: String) -> Result<String, Error> {
     get_runtime()?
-        .block_on_render(&bundle_id, &args_json)
+        .block_on_render(&bundle_id, &fn_name, &args_json)
         .map_err(map_render_error)
 }
 
@@ -114,7 +114,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("RenderError", base_error)?;
 
     deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
-    deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
+    deno_module.define_singleton_method("native_render", function!(native_render, 3))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
     Ok(())
 }

@@ -18,6 +18,7 @@ function render(argsJson: string): string {
 
 // Assign to globalThis so the function is accessible from the embedded V8 isolate
 // when the bundle is evaluated via execute_script (not as an ES module).
-// The Rust extension looks for globalThis.render to call it.
 // @ts-ignore: globalThis augmentation
 globalThis.render = render
+// @ts-ignore: globalThis augmentation
+globalThis.renderSSR = render

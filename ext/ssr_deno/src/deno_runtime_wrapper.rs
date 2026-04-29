@@ -56,6 +56,7 @@ enum WorkerMsg {
     },
     Render {
         bundle_id: String,
+        fn_name: String,
         args_json: String,
         reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
     },
@@ -95,7 +96,7 @@ impl DenoRuntimeWrapper {
         Ok(Self { tx })
     }
 
-    /// Evaluates a Vite SSR bundle and registers its `render` function under
+    /// Evaluates a Vite SSR bundle and registers its exported functions under
     /// `globalThis.__ssr_bundles[bundle_id]`. Safe to call for multiple bundles.
     pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), DenoError> {
         let bundle_name = std::path::Path::new(bundle_path)
@@ -151,12 +152,13 @@ impl DenoRuntimeWrapper {
     /// Sends a render request to the worker thread and blocks until the result
     /// arrives. Safe to call from a non-async context (e.g. Ruby's GVL thread).
     /// Returns the result as a JSON string so any JS type survives the boundary.
-    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
+    pub fn block_on_render(&self, bundle_id: &str, fn_name: &str, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         self.tx
             .blocking_send(WorkerMsg::Render {
                 bundle_id: bundle_id.to_string(),
+                fn_name: fn_name.to_string(),
                 args_json: args_json.to_string(),
                 reply: reply_tx,
             })
@@ -216,8 +218,8 @@ fn worker_thread_main(
                     let result = load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
                     let _ = reply.send(result);
                 }
-                WorkerMsg::Render { bundle_id, args_json, reply } => {
-                    let result = call_render(&mut worker, &bundle_id, &args_json);
+                WorkerMsg::Render { bundle_id, fn_name, args_json, reply } => {
+                    let result = call_render(&mut worker, &bundle_id, &fn_name, &args_json);
                     let _ = reply.send(result);
                 }
             }
@@ -225,31 +227,62 @@ fn worker_thread_main(
     });
 }
 
-/// Evaluates the bundle code and moves `globalThis.render` into the bundle
-/// namespace: `globalThis.__ssr_bundles[bundle_id] = { render: globalThis.render }`.
+/// Evaluates the bundle code and registers its exported functions under
+/// `globalThis.__ssr_bundles[bundle_id]`.
+///
+/// The bundle is wrapped in an IIFE so top-level `function` and `var`
+/// declarations stay IIFE-local and do not pollute globalThis. Only explicit
+/// `globalThis.name = fn` assignments inside the bundle escape the scope,
+/// creating new configurable, deletable properties — exactly the intended
+/// exports. A name-snapshot taken before eval identifies those new properties;
+/// each is captured into the bundle namespace and deleted from globalThis so
+/// the next bundle load sees a clean baseline.
 fn load_bundle_in_worker(
     worker: &mut MainWorker,
     bundle_id: &str,
     bundle_code: String,
     script_name: &'static str,
 ) -> Result<(), String> {
-    if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
+    let snapshot_script = r#"(function() {
+        globalThis.__ssr_snapshot = new Set(Object.getOwnPropertyNames(globalThis));
+        globalThis.__ssr_snapshot.add('__ssr_snapshot');
+    })();"#;
+
+    if let Err(e) = worker.execute_script("<ssr-deno:snapshot>", snapshot_script.to_string().into()) {
+        return Err(format!("Failed to snapshot globalThis: {e}"));
+    }
+
+    // IIFE wrapper keeps all function/var declarations local; only
+    // `globalThis.name = fn` assignments reach the global object.
+    let wrapped_code = format!("(function(){{\n{bundle_code}\n}})();");
+    if let Err(e) = worker.execute_script(script_name, wrapped_code.into()) {
         return Err(format!("Failed to evaluate SSR bundle: {e}"));
     }
 
-    // Move globalThis.render into the bundle namespace so multiple bundles
-    // can coexist in the same V8 context without overwriting each other.
-    // bundle_id is validated to [a-zA-Z0-9_-] before reaching here.
+    // Every new function property is a bundle export (the IIFE ensures no
+    // accidental leakage from declarations). Delete after capture so the next
+    // bundle load starts with a clean snapshot.
+    // bundle_id is numeric (Ruby object_id) so interpolation is safe.
     let namespace_script = format!(
         r#"(function(id) {{
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
                 globalThis.__ssr_bundles = {{}};
             }}
-            if (typeof globalThis.render !== 'function') {{
-                throw new Error('Bundle did not assign a function to globalThis.render');
+            var snap = globalThis.__ssr_snapshot;
+            var ns = {{}};
+            var found = false;
+            for (var key of Object.getOwnPropertyNames(globalThis)) {{
+                if (!snap.has(key) && typeof globalThis[key] === 'function') {{
+                    ns[key] = globalThis[key];
+                    delete globalThis[key];
+                    found = true;
+                }}
             }}
-            globalThis.__ssr_bundles[id] = {{ render: globalThis.render }};
-            globalThis.render = undefined;
+            if (!found) {{
+                throw new Error('Bundle did not assign any functions to globalThis');
+            }}
+            globalThis.__ssr_bundles[id] = ns;
+            globalThis.__ssr_snapshot = undefined;
         }})("{bundle_id}");"#
     );
 
@@ -313,7 +346,7 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
 // V8 render call
 // ---------------------------------------------------------------------------
 
-fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
+fn call_render(worker: &mut MainWorker, bundle_id: &str, fn_name: &str, args_json: &str) -> Result<String, DenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
@@ -347,16 +380,16 @@ fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Res
         .try_into()
         .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object")))?;
 
-    // globalThis.__ssr_bundles[bundle_id].render
-    let render_key = v8::String::new(&mut context_scope, "render").unwrap();
+    // globalThis.__ssr_bundles[bundle_id][fn_name]
+    let fn_key = v8::String::new(&mut context_scope, fn_name).unwrap();
     let render_val = entry_obj
-        .get(&mut context_scope, render_key.into())
+        .get(&mut context_scope, fn_key.into())
         .filter(|v| !v.is_undefined() && !v.is_null())
-        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function")))?;
+        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no function '{fn_name}'")))?;
 
     let render_fn: v8::Local<v8::Function> = render_val
         .try_into()
-        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function")))?;
+        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' '{fn_name}' is not a function")))?;
 
     let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
     let undefined = v8::undefined(&mut context_scope);
@@ -374,7 +407,7 @@ fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Res
             let msg = try_catch
                 .message()
                 .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
-                .unwrap_or_else(|| "`render` function threw an exception".to_string());
+                .unwrap_or_else(|| format!("'{fn_name}' function threw an exception"));
             return Err(DenoError::Render(msg));
         }
     };

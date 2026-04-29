@@ -40,7 +40,7 @@ module SSR
         $LOAD_PATH.unshift('lib')
         require 'ssr/deno'
         begin
-          SSR::Deno.native_render('some_id', '{}')
+          SSR::Deno.native_render('some_id', 'render', '{}')
         rescue SSR::Deno::JsRuntimeNotInitializedError
           exit 0
         end

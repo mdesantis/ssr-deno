@@ -51,9 +51,15 @@ module SSR
       assert_includes html_b, 'Bob'
     end
 
+    def test_render_with_custom_fn_name
+      html = @bundle.render({ data: { name: 'Custom' } }, fn_name: 'renderSSR')
+
+      assert_includes html, 'Custom'
+    end
+
     def test_bundle_not_found_raises_bundle_not_found_error
       assert_raises(SSR::Deno::BundleNotFoundError) do
-        SSR::Deno.native_render('nonexistent_bundle_id', '{}')
+        SSR::Deno.native_render('nonexistent_bundle_id', 'render', '{}')
       end
     end
   end

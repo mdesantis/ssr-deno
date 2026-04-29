@@ -25,7 +25,7 @@ module SSR
       bundle_id = @bundle.instance_variable_get(:@bundle_id)
       prev_experimental = Warning[:experimental]
       Warning[:experimental] = false
-      ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}') }
+      ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, 'render', '{"data":{"name":"Ractor"}}') }
       Warning[:experimental] = prev_experimental
       result = ractor.value
 

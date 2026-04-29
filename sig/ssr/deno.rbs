@@ -22,12 +22,12 @@ module SSR
 
     class Bundle
       def initialize: (String bundle_path) -> void
-      def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
+      def render: (?(Hash[untyped, untyped] | String) data, ?fn_name: String, ?raw_input: bool, ?raw_output: bool) -> untyped
     end
 
     class << self
       def native_load_bundle: (String bundle_id, String bundle_path) -> nil
-      def native_render: (String bundle_id, String json) -> String
+      def native_render: (String bundle_id, String fn_name, String json) -> String
       def native_version: () -> String
     end
   end
