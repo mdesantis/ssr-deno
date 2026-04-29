@@ -25,9 +25,10 @@ module SSR
       skip 'Ractor not defined' unless defined?(Ractor)
 
       bundle_id = @bundle.instance_variable_get(:@bundle_id)
-      ractor = Ractor.new(bundle_id) do |id|
-        SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}')
-      end
+      prev_experimental = Warning[:experimental]
+      Warning[:experimental] = false
+      ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}') }
+      Warning[:experimental] = prev_experimental
       result = ractor.value
 
       assert_includes result, 'Ractor'
