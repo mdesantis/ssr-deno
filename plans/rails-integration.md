@@ -455,7 +455,7 @@ lib/
 - [x] Create [`lib/ssr/deno/rails/railtie.rb`](lib/ssr/deno/rails/railtie.rb) — Railtie with config namespace, init bundles via `SSR::Deno::Bundle.registry.register`
 - [x] Create [`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb) — `ssr_render(data, bundle: :application, **options)` view helper using `SSR::Deno::Bundle.registry[name]`
 - [x] Add development auto-reload (mtime check)
-- [ ] Write tests with a Rails dummy app (using `rails app:template` or `combustion` gem)
+- [x] Write tests with a Rails dummy app (using `rails app:template` or `combustion` gem)
 
 ### Phase 2: Generator
 - [x] Create [`lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb`](lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb)
