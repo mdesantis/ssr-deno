@@ -38,6 +38,23 @@ jobs:
           bundler-cache: true
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Install V8 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq --no-install-suggests --no-install-recommends \
+            ninja-build \
+            python3
+      - name: Install Clang 19 (required by V8)
+        run: |
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | \
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-19.list
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | \
+            sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          sudo apt-get update
+          sudo apt-get -qq remove 'clang-*' 2>/dev/null || true
+          sudo apt-get install -yq --no-install-suggests --no-install-recommends \
+            lld-19 clang-19 libclang-19-dev
+          echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> $GITHUB_ENV
       - name: Compile native extension
         run: bundle exec rake compile
       - name: Build Vite SSR sample bundle
