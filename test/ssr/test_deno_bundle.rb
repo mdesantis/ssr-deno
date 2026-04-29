@@ -56,5 +56,39 @@ module SSR
         SSR::Deno.native_render('nonexistent_bundle_id', '{}')
       end
     end
+
+    def test_reload
+      @bundle.reload
+
+      html = @bundle.render({ data: { name: 'Reloaded' } })
+
+      assert_includes html, 'Reloaded'
+    end
+
+    def test_auto_reload_triggers_reload_if_changed
+      @bundle.auto_reload = true
+
+      html = @bundle.render({ data: { name: 'AutoReload' } })
+
+      assert_includes html, 'AutoReload'
+    end
+
+    def test_reload_updates_mtime
+      orig_mtime = @bundle.instance_variable_get(:@mtime)
+      FileUtils.touch(BUNDLE_PATH)
+      @bundle.reload
+      new_mtime = @bundle.instance_variable_get(:@mtime)
+
+      assert_operator new_mtime, :>, orig_mtime
+    end
+
+    def test_auto_reload_triggers_reload_when_file_changed
+      @bundle.auto_reload = true
+      FileUtils.touch(BUNDLE_PATH)
+
+      html = @bundle.render({ data: { name: 'Changed' } })
+
+      assert_includes html, 'Changed'
+    end
   end
 end
