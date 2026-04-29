@@ -64,7 +64,24 @@ fn map_render_error(e: DenoError) -> Error {
 
 /// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
 /// Must be called before any native_load_bundle or native_render call.
+///
+/// Validates that the value doesn't overflow when converted to bytes.
+/// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
+/// which is far beyond any practical V8 heap limit.
 fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
+    // Check that mb * 1024 * 1024 doesn't overflow usize.
+    // On 64-bit: max ≈ 16,384,000 MB (16 TB). On 32-bit: max ≈ 4,096 MB.
+    mb.checked_mul(1024 * 1024)
+        .ok_or_else(|| {
+            Error::new(
+                Ruby::get().unwrap().exception_arg_error(),
+                format!(
+                    "max_heap_size_mb={mb} overflows when converted to bytes (max: {})",
+                    usize::MAX / 1024 / 1024
+                ),
+            )
+        })?;
+
     CONFIG
         .set(Config {
             max_heap_size_mb: mb,
