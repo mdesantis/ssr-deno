@@ -43,7 +43,6 @@ module SSR
 
     def test_multiple_bundles_coexist
       bundle_b = SSR::Deno::Bundle.new(BUNDLE_PATH)
-
       html_a = @bundle.render({ data: { name: 'Alice' } })
       html_b = bundle_b.render({ data: { name: 'Bob' } })
 
