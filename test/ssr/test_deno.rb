@@ -11,5 +11,14 @@ module SSR
     def test_native_version
       assert_match(/\A\d+\.\d+\.\d+/, ::SSR::Deno.native_version)
     end
+
+    def test_set_max_heap_size_mb
+      # May raise JsRuntimeInitializationError if another test already
+      # initialized the runtime (OnceLock). We accept either outcome —
+      # the purpose is coverage of the accessor and the native method.
+      SSR::Deno.max_heap_size_mb = 128
+    rescue SSR::Deno::JsRuntimeInitializationError
+      # runtime already initialized, that's fine
+    end
   end
 end

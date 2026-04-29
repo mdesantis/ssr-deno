@@ -78,13 +78,16 @@ pub struct DenoRuntimeWrapper {
 impl DenoRuntimeWrapper {
     /// Spawns the Deno worker thread and blocks until it is ready to accept
     /// bundle-load and render requests. No bundle is evaluated at this stage.
-    pub fn new() -> Result<Self, DenoError> {
+    ///
+    /// `max_heap_size_mb` — optional V8 heap size limit in MB.
+    /// Pass 0 for unlimited (V8 default).
+    pub fn new(max_heap_size_mb: usize) -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         std::thread::Builder::new()
             .name("deno-worker".into())
-            .spawn(move || worker_thread_main(rx, init_tx))
+            .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb))
             .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
 
         init_rx
@@ -175,6 +178,7 @@ impl DenoRuntimeWrapper {
 fn worker_thread_main(
     mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
+    max_heap_size_mb: usize,
 ) {
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -200,7 +204,7 @@ fn worker_thread_main(
             }
         };
 
-        let mut worker = match build_worker(&main_module_url) {
+        let mut worker = match build_worker(&main_module_url, max_heap_size_mb) {
             Ok(w) => w,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
@@ -259,7 +263,7 @@ fn load_bundle_in_worker(
         .map_err(|e| format!("Failed to namespace bundle '{bundle_id}': {e}"))
 }
 
-fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
+fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker, String> {
     let services = WorkerServiceOptions {
         blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()),
         broadcast_channel: Default::default(),
@@ -281,12 +285,24 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
         bundle_provider: None,
     };
 
+    // Apply optional V8 heap size limit. When set (> 0), V8 will not exceed
+    // this cap for the old generation. When 0, V8 uses its default
+    // (typically ~1.4 GB on 64-bit).
+    let create_params = if max_heap_size_mb > 0 {
+        Some(
+            v8::CreateParams::default()
+                .set_max_old_generation_size_in_bytes(max_heap_size_mb * 1024 * 1024),
+        )
+    } else {
+        None
+    };
+
     let options = WorkerOptions {
         bootstrap: BootstrapOptions::default(),
         extensions: vec![],
         startup_snapshot: None,
         skip_op_registration: false,
-        create_params: None,
+        create_params,
         unsafely_ignore_certificate_errors: None,
         seed: None,
         create_web_worker_cb: Arc::new(|_| unimplemented!("web workers are not supported")),

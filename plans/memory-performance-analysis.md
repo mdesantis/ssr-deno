@@ -329,7 +329,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 3. **Add V8 heap metrics** to `ActiveSupport::Notifications` — see [`plans/v8-heap-metrics.md`](v8-heap-metrics.md).
 
-4. **Add a V8 heap size limit** — `WorkerOptions.create_params` already accepts `v8::CreateParams` but is set to `None`. Passing `max_old_generation_size_in_bytes` via the `SSR_DENO_MAX_HEAP_SIZE_MB` env var caps V8 heap growth, preventing runaway memory from leaky components. See [`plans/v8-heap-limit.md`](v8-heap-limit.md).
+4. **Add a V8 heap size limit** — `WorkerOptions.create_params` already accepts `v8::CreateParams` but is set to `None`. Passing `max_old_generation_size_in_bytes` via the Ruby → Rust bridge (`SSR::Deno.max_heap_size_mb=`) caps V8 heap growth, preventing runaway memory from leaky components. See [`plans/v8-heap-limit.md`](v8-heap-limit.md).
 
 ### 6.2 Medium Term
 

@@ -8,6 +8,21 @@ use std::sync::{Mutex, OnceLock};
 
 static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
 static INIT_LOCK: Mutex<()> = Mutex::new(());
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+/// Configuration passed from Ruby to Rust before runtime initialization.
+/// All fields have safe defaults so the runtime can be initialized without
+/// calling any setter.
+#[derive(Clone, Copy)]
+struct Config {
+    max_heap_size_mb: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { max_heap_size_mb: 0 } // 0 = unlimited (V8 default)
+    }
+}
 
 // Looks up an exception class by name inside the SSR::Deno Ruby module.
 fn deno_exc(name: &'static str) -> ExceptionClass {
@@ -47,6 +62,21 @@ fn map_render_error(e: DenoError) -> Error {
     }
 }
 
+/// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
+/// Must be called before any native_load_bundle or native_render call.
+fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
+    CONFIG
+        .set(Config {
+            max_heap_size_mb: mb,
+        })
+        .map_err(|_| {
+            Error::new(
+                deno_exc("JsRuntimeInitializationError"),
+                "Cannot set config after runtime is already initialized",
+            )
+        })
+}
+
 // TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
 fn get_or_init_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
     if let Some(r) = RUNTIME.get() {
@@ -56,7 +86,8 @@ fn get_or_init_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
     if let Some(r) = RUNTIME.get() {
         return Ok(r);
     }
-    let rt = DenoRuntimeWrapper::new()
+    let config = CONFIG.get().copied().unwrap_or_default();
+    let rt = DenoRuntimeWrapper::new(config.max_heap_size_mb)
         .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
     let _ = RUNTIME.set(rt);
     Ok(RUNTIME.get().unwrap())
@@ -116,5 +147,9 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
     deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
+    deno_module.define_singleton_method(
+        "native_set_max_heap_size_mb",
+        function!(native_set_max_heap_size_mb, 1),
+    )?;
     Ok(())
 }

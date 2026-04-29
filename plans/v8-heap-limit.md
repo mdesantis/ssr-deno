@@ -19,14 +19,37 @@ Without a cap:
 
 ## Approach
 
-Pass a configured `v8::CreateParams` to `WorkerOptions.create_params` in [`build_worker`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:262), setting `max_old_generation_size_in_bytes` to a configurable limit. Expose the limit via an environment variable (`SSR_DENO_MAX_HEAP_SIZE_MB`) and optionally a Ruby-side config.
+Pass a configured `v8::CreateParams` to `WorkerOptions.create_params` in [`build_worker`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:262), setting `max_old_generation_size_in_bytes` to a configurable limit.
+
+The config flows through a **Ruby → Rust bridge** — no env var reading in Rust:
+
+```
+Ruby: SSR::Deno.native_set_max_heap_size_mb(64)
+        │
+        ▼
+Rust:  static CONFIG: OnceLock<Config>   ← stores the value
+        │
+        ▼
+       DenoRuntimeWrapper::new(max_heap_size_mb)
+        │
+        ▼
+       worker_thread_main(rx, init_tx, max_heap_size_mb)
+        │
+        ▼
+       build_worker(&main_module_url, max_heap_size_mb)
+        │
+        ▼
+       WorkerOptions { create_params: Some(v8::CreateParams::default()
+           .set_max_old_generation_size_in_bytes(64 * 1024 * 1024)) }
+```
 
 ### Why this approach
 
 - **Zero new dependencies** — `CreateParams` is already part of the `v8` crate, and `WorkerOptions.create_params` is already wired in `deno_runtime`
-- **Minimal diff** — one field change in `build_worker`, one env var read
+- **Clean separation** — Ruby owns configuration, Rust owns execution. No env var reading in native code.
 - **V8-native** — the limit is enforced by V8's GC, not a separate watchdog
 - **Composes with heap metrics** — `HeapStatistics::heap_size_limit` will report the configured value, giving operators visibility into whether the limit is being approached
+- **Extensible** — the `Config` struct can hold future configuration values without adding more env var reads or more Ruby methods
 
 ### How V8 enforces the limit
 
@@ -54,23 +77,128 @@ This means the limit is a **hard cap** — V8 will not exceed it. The process wi
 
 ## Changes
 
-### 1. [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+### 1. [`ext/ssr_deno/src/lib.rs`](../ext/ssr_deno/src/lib.rs) — Add `Config` struct and `native_set_max_heap_size_mb`
 
-**In `build_worker`, replace `create_params: None` with a configured `CreateParams`:**
+Add a static config that Ruby writes to before runtime initialization:
 
 ```rust
-fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
-    // Read max heap size from environment (MB), default 0 = unlimited
-    let max_heap_mb: usize = std::env::var("SSR_DENO_MAX_HEAP_SIZE_MB")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+/// Configuration passed from Ruby to Rust before runtime initialization.
+/// All fields have safe defaults so the runtime can be initialized without
+/// calling any setter.
+#[derive(Clone, Copy)]
+struct Config {
+    max_heap_size_mb: usize,
+}
 
-    let create_params = if max_heap_mb > 0 {
-        let limit_bytes = max_heap_mb * 1024 * 1024;
+impl Default for Config {
+    fn default() -> Self {
+        Self { max_heap_size_mb: 0 } // 0 = unlimited (V8 default)
+    }
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+```
+
+Add a Ruby-callable function to set the config:
+
+```rust
+/// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
+/// Must be called before any native_load_bundle or native_render call.
+fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
+    CONFIG
+        .set(Config {
+            max_heap_size_mb: mb,
+        })
+        .map_err(|_| {
+            Error::new(
+                deno_exc("JsRuntimeInitializationError"),
+                "Cannot set config after runtime is already initialized",
+            )
+        })
+}
+```
+
+Register it in the `init` function alongside the other native methods:
+
+```rust
+deno_module.define_singleton_method(
+    "native_set_max_heap_size_mb",
+    function!(native_set_max_heap_size_mb, 1),
+)?;
+```
+
+Update `get_or_init_runtime` to pass the config value to `DenoRuntimeWrapper::new`:
+
+```rust
+fn get_or_init_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
+    if let Some(r) = RUNTIME.get() {
+        return Ok(r);
+    }
+    let _guard = INIT_LOCK.lock().unwrap();
+    if let Some(r) = RUNTIME.get() {
+        return Ok(r);
+    }
+    let config = CONFIG.get().copied().unwrap_or_default();
+    let rt = DenoRuntimeWrapper::new(config.max_heap_size_mb)
+        .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
+    let _ = RUNTIME.set(rt);
+    Ok(RUNTIME.get().unwrap())
+}
+```
+
+### 2. [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) — Thread config through to `build_worker`
+
+**`DenoRuntimeWrapper::new`** accepts `max_heap_size_mb`:
+
+```rust
+pub fn new(max_heap_size_mb: usize) -> Result<Self, DenoError> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
+    let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+
+    std::thread::Builder::new()
+        .name("deno-worker".into())
+        .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb))
+        .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
+
+    init_rx
+        .recv()
+        .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
+        .map_err(DenoError::WorkerInit)?;
+
+    Ok(Self { tx })
+}
+```
+
+**`worker_thread_main`** accepts and forwards `max_heap_size_mb`:
+
+```rust
+fn worker_thread_main(
+    mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
+    init_tx: mpsc::SyncSender<Result<(), String>>,
+    max_heap_size_mb: usize,
+) {
+    // ... tokio runtime setup unchanged ...
+
+    let mut worker = match build_worker(&main_module_url, max_heap_size_mb) {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = init_tx.send(Err(e));
+            return;
+        }
+    };
+
+    // ... rest unchanged ...
+}
+```
+
+**`build_worker`** accepts `max_heap_size_mb` and uses it for `create_params` — **no `std::env::var` call**:
+
+```rust
+fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker, String> {
+    let create_params = if max_heap_size_mb > 0 {
         Some(
             v8::CreateParams::default()
-                .max_old_generation_size_in_bytes(limit_bytes),
+                .set_max_old_generation_size_in_bytes(max_heap_size_mb * 1024 * 1024),
         )
     } else {
         None
@@ -81,39 +209,51 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
         // ... rest unchanged
     };
 
-    // ... rest of function unchanged
+    // ... rest unchanged ...
 }
 ```
 
-**Alternative (simpler inline):**
-
-```rust
-let max_heap = std::env::var("SSR_DENO_MAX_HEAP_SIZE_MB")
-    .ok().and_then(|v| v.parse::<usize>().ok())
-    .map(|mb| v8::CreateParams::default()
-        .max_old_generation_size_in_bytes(mb * 1024 * 1024));
-
-let options = WorkerOptions {
-    create_params: max_heap,
-    // ...
-};
-```
-
-### 2. No changes needed elsewhere
-
-- [`lib.rs`](../ext/ssr_deno/src/lib.rs) — no new Ruby method needed; env var is read at worker initialization time
-- [`deno.rb`](../lib/ssr/deno.rb) — optional: add a Ruby accessor for documentation purposes
-- [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb) — optional: add `config.ssr_deno.max_heap_size_mb`
-
-### 3. Optional: Ruby-side config in [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb)
+### 3. [`lib/ssr/deno.rb`](../lib/ssr/deno.rb) — Add Ruby accessor
 
 ```ruby
-config.ssr_deno.max_heap_size_mb = 64  # nil = use env var or default (unlimited)
+module SSR
+  module Deno
+    class << self
+      # Set the maximum V8 heap size in megabytes before initializing the runtime.
+      # Must be called before any Bundle.new call.
+      # @param mb [Integer] heap size in MB, or 0 for unlimited (V8 default)
+      def max_heap_size_mb=(mb)
+        native_set_max_heap_size_mb(mb.to_i)
+      end
+    end
+  end
+end
 ```
 
-This would require passing the value from Ruby to Rust at initialization time, which is more complex (requires changing the `native_load_bundle` or adding an init method). **Recommendation:** Start with env var only. Add Ruby config if users request it.
+### 4. [`lib/ssr/deno/rails/railtie.rb`](../lib/ssr/deno/rails/railtie.rb) — Rails config
 
-### 4. Optional: `NearHeapLimitCallback`
+```ruby
+config.ssr_deno.max_heap_size_mb = nil  # nil = unlimited (V8 default)
+```
+
+In `init_bundles`, before any `Bundle.new`:
+
+```ruby
+initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |_app|
+  next unless config.ssr_deno.enabled
+
+  # Apply V8 heap size limit before runtime initialization
+  if config.ssr_deno.max_heap_size_mb
+    SSR::Deno.max_heap_size_mb = config.ssr_deno.max_heap_size_mb
+  end
+
+  config.ssr_deno.bundles.each do |name, path|
+    # ... rest unchanged
+  end
+end
+```
+
+### 3. Optional: `NearHeapLimitCallback`
 
 For extra safety, register a callback that logs a warning before the OOM crash:
 
@@ -136,49 +276,32 @@ This is optional and adds `unsafe` code. **Not recommended for v1** — start wi
 
 ## Testing
 
-### Manual test
-
-```bash
-# Set a very low limit (8 MB)
-SSR_DENO_MAX_HEAP_SIZE_MB=8 bundle exec ruby -e "
-  require 'ssr/deno'
-  bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
-  puts bundle.render({data: {message: 'Hello'}})
-"
-# Expected: V8 OOM crash or render succeeds if 8 MB is enough
-```
-
 ### Ruby unit test — [`test/ssr/test_deno.rb`](../test/ssr/test_deno.rb)
 
 ```ruby
-def test_heap_size_limit_env_var
-  # Can't easily test in-process (env var read at worker init, OnceLock)
-  # Instead, verify the env var parsing logic
-  # This is better tested at the Rust level
+def test_set_max_heap_size_mb
+  # Must be called before any Bundle.new (OnceLock)
+  SSR::Deno.max_heap_size_mb = 64
+  # Verify it was stored (no error raised)
+  assert true
 end
-```
 
-### Rust unit test
-
-```rust
-#[test]
-fn test_create_params_with_limit() {
-    std::env::set_var("SSR_DENO_MAX_HEAP_SIZE_MB", "64");
-    // Re-init would require resetting OnceLock — difficult
-    // Instead, test the parsing logic directly
-    let max_heap_mb: usize = std::env::var("SSR_DENO_MAX_HEAP_SIZE_MB")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-    assert_eq!(max_heap_mb, 64);
-}
+def test_set_max_heap_size_mb_after_init_raises
+  SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
+  assert_raises(SSR::Deno::JsRuntimeInitializationError) do
+    SSR::Deno.max_heap_size_mb = 64
+  end
+end
 ```
 
 ### Integration test
 
 ```ruby
 def test_render_with_heap_limit
-  # Start a separate Ruby process with the env var set
-  output = `SSR_DENO_MAX_HEAP_SIZE_MB=64 bundle exec ruby -e "
+  # Start a separate Ruby process — config via Ruby API, not env var
+  output = `bundle exec ruby -e "
     require 'ssr/deno'
+    SSR::Deno.max_heap_size_mb = 64
     b = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
     puts b.render({data: {message: 'test'}})
   "`
@@ -187,15 +310,30 @@ def test_render_with_heap_limit
 end
 ```
 
+### Manual test (low limit to trigger OOM)
+
+```bash
+bundle exec ruby -e "
+  require 'ssr/deno'
+  SSR::Deno.max_heap_size_mb = 8
+  bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
+  puts bundle.render({data: {message: 'Hello'}})
+"
+# Expected: V8 OOM crash or render succeeds if 8 MB is enough
+```
+
 ---
 
 ## Implementation Order
 
-1. Modify `build_worker` in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) to read `SSR_DENO_MAX_HEAP_SIZE_MB` and pass `create_params`
-2. Add Rust unit test for env var parsing
-3. Add Ruby integration test (subprocess with env var)
-4. Run `bundle exec rake` to verify full pipeline
-5. (Optional) Add Ruby-side config in [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb)
+1. ✅ Modify `build_worker` in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) to accept `max_heap_size_mb` parameter — **Done**
+2. ✅ Remove `std::env::var` call from `build_worker` — Rust no longer reads env vars directly — **Done**
+3. Add `Config` struct and `native_set_max_heap_size_mb` to [`lib.rs`](../ext/ssr_deno/src/lib.rs)
+4. Thread `max_heap_size_mb` through `DenoRuntimeWrapper::new` → `worker_thread_main` → `build_worker`
+5. Add `SSR::Deno.max_heap_size_mb=` accessor in [`deno.rb`](../lib/ssr/deno.rb)
+6. Add `config.ssr_deno.max_heap_size_mb` in [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb)
+7. Add Ruby unit tests and integration test
+8. Run `bundle exec rake` to verify full pipeline
 
 ---
 

@@ -8,6 +8,7 @@ module SSR
       config.ssr_deno.enabled = true
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
+      config.ssr_deno.max_heap_size_mb = nil # nil = unlimited (V8 default)
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
@@ -17,6 +18,10 @@ module SSR
 
       initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |_app|
         next unless config.ssr_deno.enabled
+
+        # Apply V8 heap size limit before runtime initialization.
+        # Must be set before any Bundle.new call (triggers OnceLock init).
+        SSR::Deno.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
 
         config.ssr_deno.bundles.each do |name, path|
           path ||= default_bundle_path(name)
