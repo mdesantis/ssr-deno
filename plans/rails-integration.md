@@ -458,9 +458,9 @@ lib/
 - [ ] Write tests with a Rails dummy app (using `rails app:template` or `combustion` gem)
 
 ### Phase 2: Generator
-- [ ] Create [`lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb`](lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb)
-- [ ] Create initializer template at `lib/ssr/deno/rails/generators/ssr/deno/templates/ssr_deno.rb`
-- [ ] Write generator tests
+- [x] Create [`lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb`](lib/ssr/deno/rails/generators/ssr/deno/install_generator.rb)
+- [x] Create initializer template at `lib/ssr/deno/rails/generators/ssr/deno/templates/ssr_deno.rb`
+- [x] Write generator tests
 
 ### Phase 3: Production Hardening
 - [ ] Add Content-Security-Policy nonce support (for inline `<script>` tags in SSR output)
