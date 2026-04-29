@@ -21,10 +21,67 @@ module SSR
     end
 
     class Bundle
+      @bundle_path: String
       @bundle_id: String
+      @mtime: Time
+      @auto_reload: bool
+
+      self.@registry: Registry
+
+      def self.registry: () -> Registry
 
       def initialize: (String bundle_path) -> void
+
+      attr_writer auto_reload: bool
+
+      def reload: () -> void
+
       def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
+
+      private
+
+      def load: () -> void
+
+      def reload_if_changed: () -> void
+
+      class Registry
+        include Enumerable[ [Symbol, untyped] ]
+
+        @bundles: Hash[Symbol, untyped]
+        @mutex: Thread::Mutex
+
+        def initialize: () -> void
+
+        def []: (?Symbol name) -> untyped
+
+        alias bundle []
+
+        def register: (Symbol name, untyped bundle) -> void
+
+        def replace: (Symbol name, untyped bundle) -> void
+
+        def remove: (Symbol name) -> untyped?
+
+        def each: () { (Symbol, untyped) -> void } -> Hash[Symbol, untyped]
+
+        def size: () -> Integer
+      end
+    end
+
+    module Helper
+      def ssr_render: (?untyped? data, **untyped options) -> String
+
+      private
+
+      def find_bundle!: (untyped bundle_name) -> Bundle
+    end
+
+    # Rails-only class — loaded via require: 'ssr/deno/rails'.
+    # Superclass Rails::Railtie is not available in standalone RBS validation.
+    class Railtie
+      private
+
+      def default_bundle_path: (Symbol name) -> String
     end
 
     def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
