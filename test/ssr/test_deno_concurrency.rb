@@ -22,8 +22,6 @@ module SSR
     end
 
     def test_native_render_from_ractor
-      skip 'Ractor not defined' unless defined?(Ractor)
-
       bundle_id = @bundle.instance_variable_get(:@bundle_id)
       prev_experimental = Warning[:experimental]
       Warning[:experimental] = false

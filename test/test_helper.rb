@@ -4,7 +4,7 @@ require 'simplecov'
 
 SimpleCov.start do
   enable_coverage :branch
-  add_filter '/test_/'
+  add_filter 'test/'
   formatter SimpleCov::Formatter::MultiFormatter.new(
     [
       SimpleCov::Formatter::SimpleFormatter,

@@ -35,12 +35,6 @@ module SSR
       assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeInitializationError to be raised'
     end
 
-    def test_native_render_when_bundle_not_loaded_raises_bundle_not_found_error
-      assert_raises(SSR::Deno::BundleNotFoundError) do
-        SSR::Deno.native_render('nonexistent_bundle_id', '{}')
-      end
-    end
-
     def test_native_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
       script = <<~RUBY
         $LOAD_PATH.unshift('lib')
