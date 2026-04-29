@@ -28,4 +28,4 @@ namespace :samples do
   end
 end
 
-task default: %i[compile samples:build test rubocop]
+task default: %i[compile samples:build test rubocop rbs]
