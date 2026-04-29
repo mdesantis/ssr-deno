@@ -88,17 +88,34 @@ ssr-deno/
 │           ├── sys.rs               # Sys type + sys_traits implementations
 │           └── nop_types.rs         # NOP types for generic parameters
 ├── lib/
-│   └── ssr/                         # Ruby module (deno.rb + deno/version.rb)
+│   └── ssr/
+│       └── deno/                    # Ruby module
+│           ├── deno.rb              # Core entry point
+│           ├── version.rb           # VERSION constant
+│           ├── bundle.rb            # Bundle class (multi-bundle support)
+│           ├── bundle/
+│           │   └── registry.rb      # Thread-safe Bundle::Registry
+│           ├── rails.rb             # Rails integration entry point (opt-in)
+│           └── rails/
+│               ├── railtie.rb       # Railtie (config, init bundles)
+│               ├── helper.rb        # View helper (ssr_render)
+│               └── generators/
+│                   └── ssr/deno/
+│                       ├── install_generator.rb
+│                       └── templates/
+│                           └── ssr_deno.rb
 ├── sig/                             # RBS type signatures
 ├── test/                            # Minitest suite
 ├── samples/
 │   └── vite-ssr-app/                # Sample Vite SSR project (deno.json, src/, dist/)
-├── .vscode/                         # VSCode settings + recommended extensions
-│   ├── settings.json                # Deno + rust-analyzer config
-│   └── extensions.json              # Recommended extensions
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
+│   ├── rails-integration.md
+│   ├── security-review.md
 │   └── v8-tls-issue.md
+├── .github/
+│   └── workflows/
+│       └── ci.yml                   # CI pipeline
 ├── Gemfile
 ├── ssr-deno.gemspec
 └── Rakefile
@@ -134,27 +151,37 @@ entry pins `v8` to a local checkout built with the TLS fix from
 
 #### `lib.rs` — magnus Entrypoint
 
-- Defines the `SSR::Deno` Ruby module
-- Registers the `render` class method (takes JSON string, returns HTML string)
-- Registers `init_runtime` to initialize the Deno runtime with a bundle path
+- Defines the `SSR::Deno` Ruby module with a full error hierarchy
+- Registers `native_load_bundle(bundle_id, bundle_path)` to evaluate a bundle
+- Registers `native_render(bundle_id, json_string)` to call a bundle's render function
 - Registers `native_version` to return the crate version
 - Uses `std::sync::OnceLock` for a singleton `DenoRuntimeWrapper`
+- Double-checked locking via `INIT_LOCK: Mutex<()>` prevents TOCTOU races
 - The Tokio runtime + `MainWorker` live on a dedicated background thread
   owned by `DenoRuntimeWrapper`
 
 ```rust
 use magnus::{function, Error, Module, Object, Ruby};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use crate::deno_runtime_wrapper::DenoRuntimeWrapper;
 
 static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     let module = ruby.define_module("SSR")?;
     let deno_module = module.define_module("Deno")?;
-    deno_module.define_singleton_method("init_runtime", function!(init_runtime, 1))?;
-    deno_module.define_singleton_method("render", function!(render, 1))?;
+    // Error hierarchy
+    let base_error = deno_module.define_error("Error", ruby.exception_standard_error())?;
+    deno_module.define_error("JsRuntimeInitializationError", base_error)?;
+    deno_module.define_error("JsRuntimeNotInitializedError", base_error)?;
+    deno_module.define_error("JsRuntimeWorkerError", base_error)?;
+    deno_module.define_error("BundleNotFoundError", base_error)?;
+    deno_module.define_error("RenderError", base_error)?;
+    // Methods
+    deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
+    deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
     Ok(())
 }
@@ -231,42 +258,50 @@ pub struct DenoRuntimeWrapper {
 }
 
 impl DenoRuntimeWrapper {
-    pub fn new(bundle_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let canonical = std::fs::canonicalize(bundle_path)?;
-        let bundle_code = std::fs::read_to_string(bundle_path)?;
-        let script_name: &'static str = canonical
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
-            .unwrap_or("main.js");
-
+    /// Spawns the Deno worker thread and blocks until it is ready. No bundle
+    /// is evaluated at this stage — bundles are loaded later via `load_bundle`.
+    pub fn new() -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         std::thread::Builder::new()
             .name("deno-worker".into())
-            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))?;
+            .spawn(move || worker_thread_main(rx, init_tx))
+            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
 
-        init_rx.recv()??; // wait for bundle eval to finish
+        init_rx
+            .recv()
+            .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
+            .map_err(DenoError::WorkerInit)?;
+
         Ok(Self { tx })
     }
 
-    pub fn block_on_render(&self, args_json: &str)
-        -> Result<String, Box<dyn std::error::Error>>
-    {
+    /// Evaluates a Vite SSR bundle and registers its `render` function under
+    /// `globalThis.__ssr_bundles[bundle_id]`. Safe to call for multiple bundles.
+    pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), DenoError> {
+        // Canonicalizes path, checks symlink-escape, reads file, sends to worker
+        // ...
+    }
+
+    /// Sends a render request to the worker thread and blocks until the result
+    /// arrives. Returns the result as a JSON string.
+    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx.blocking_send(WorkerMsg::Render {
-            args_json: args_json.to_string(),
-            reply: reply_tx,
-        })?;
-        reply_rx.blocking_recv()?.map_err(Into::into)
+        self.tx
+            .blocking_send(WorkerMsg::Render {
+                bundle_id: bundle_id.to_string(),
+                args_json: args_json.to_string(),
+                reply: reply_tx,
+            })
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
     }
 }
 
 fn worker_thread_main(
-    main_module_path: std::path::PathBuf,
-    bundle_code: String,
-    script_name: &'static str,
     mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
 ) {
@@ -276,14 +311,21 @@ fn worker_thread_main(
         .unwrap();
 
     tokio::task::LocalSet::new().block_on(&rt, async move {
-        let url = Url::from_file_path(&main_module_path).unwrap();
-        let mut worker = build_worker(&url);
-        worker.execute_script(script_name, bundle_code.into()).unwrap();
+        let main_module_url = Url::parse("https://ssr-deno.local/").unwrap();
+        let mut worker = build_worker(&main_module_url).unwrap();
         let _ = init_tx.send(Ok(()));
 
-        while let Some(WorkerMsg::Render { args_json, reply }) = rx.recv().await {
-            let result = call_render(&mut worker, &args_json).map_err(|e| e.to_string());
-            let _ = reply.send(result);
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                WorkerMsg::LoadBundle { bundle_id, bundle_code, script_name, reply } => {
+                    let result = load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::Render { bundle_id, args_json, reply } => {
+                    let result = call_render(&mut worker, &bundle_id, &args_json);
+                    let _ = reply.send(result);
+                }
+            }
         }
     });
 }
@@ -318,20 +360,33 @@ Contains three types required by `MainWorker::bootstrap_from_options`:
 
 ### 2. Ruby Layer
 
-#### `SSR::Deno` Module
+#### `SSR::Deno::Bundle` Class
 
-The Ruby API provides a thin wrapper over the native Rust extension:
+The Ruby API is built around the `Bundle` class, which wraps a single Vite SSR bundle and manages its lifecycle:
 
 ```ruby
 module SSR
   module Deno
-    class Error < StandardError; end
+    class Bundle
+      class << self
+        attr_reader :registry
+      end
 
-    class << self
-      # Accepts a Hash with arbitrary data, serializes to JSON automatically,
-      # and delegates to the native render method.
-      def render(data)
-        native_render(JSON.generate(data))
+      @registry = Registry.new
+
+      def initialize(bundle_path)
+        @bundle_path = bundle_path.to_s
+        @bundle_id = object_id.to_s
+        @mtime = File.mtime(@bundle_path)
+        @auto_reload = false
+        load
+      end
+
+      def render(data = nil, raw_input: false, raw_output: false)
+        reload_if_changed if @auto_reload
+        json_input = raw_input ? data : JSON.generate(data)
+        result = SSR::Deno.native_render(@bundle_id, json_input)
+        raw_output ? result : JSON.parse(result)
       end
     end
   end
@@ -339,11 +394,22 @@ end
 ```
 
 The native extension registers three methods:
-- `init_runtime(bundle_path)` — initializes the singleton Deno runtime
-- `native_render(json_string)` — calls the JS `render` function with a JSON string
+- `native_load_bundle(bundle_id, bundle_path)` — evaluates a bundle and registers its render function under `globalThis.__ssr_bundles[bundle_id]`
+- `native_render(bundle_id, json_string)` — calls the JS `render` function for a specific bundle
 - `native_version` — returns the crate version
 
-The Ruby `render` wrapper handles JSON serialization, keeping the native interface simple and the Ruby API ergonomic.
+The Ruby `Bundle` class handles JSON serialization, mtime-based auto-reload, and `ActiveSupport::Notifications` instrumentation, keeping the native interface simple and the Ruby API ergonomic.
+
+#### `SSR::Deno::Bundle::Registry`
+
+A thread-safe registry for named bundles, used primarily by the Rails integration:
+
+```ruby
+registry = SSR::Deno::Bundle::Registry.new
+registry.register(:application, bundle)
+registry[:application]  # => bundle
+registry.bundle(:application)  # => bundle
+```
 
 ### 3. Vite SSR Bundle Contract
 
@@ -421,7 +487,7 @@ implemented yet.
 **Completed steps:**
 
 1. ✅ **Updated [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml)**
-   - Added `deno_runtime = { version = "0.254.0", features = ["transpile", "hmr"] }`, `deno_semver`, `node_resolver`, `sys_traits`, `libc`
+   - Added `deno_runtime`, `deno_semver`, `node_resolver`, `sys_traits`, `libc`
 
 2. ✅ **Rewrote [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)**
    - Uses `MainWorker::bootstrap_from_options` with three generic type parameters
@@ -436,7 +502,7 @@ implemented yet.
    - Wrapper types: `RealMetadata`, `RealDirEntry`, `RealFile`
 
 4. ✅ **Created [`ext/ssr_deno/src/nop_types.rs`](../ext/ssr_deno/src/nop_types.rs)**
-   - `NopInNpmPackageChecker`, `NopNpmPackageFolderResolver`, `AllowAllPermissionDescriptorParser`
+   - `NopInNpmPackageChecker`, `NopNpmPackageFolderResolver`, `NopPermissionDescriptorParser`
 
 5. ✅ **Updated [`ext/ssr_deno/src/lib.rs`](../ext/ssr_deno/src/lib.rs)**
    - Added `mod sys;` and `mod nop_types;` declarations
@@ -450,14 +516,13 @@ implemented yet.
 7. ✅ **Fixed runtime issues for Vite SSR sample rendering**
    - Added `features = ["transpile"]` to `deno_runtime` — enables TypeScript transpilation for `deno_telemetry` extension sources
    - Added `features = ["hmr"]` to `deno_runtime` — makes `op_snapshot_options` use `try_take` + `unwrap_or_default` instead of panicking
-   - Added `let _enter = tokio_rt.enter();` before `MainWorker::bootstrap_from_options` — provides Tokio runtime context for internal `tokio::spawn` calls
 
 8. ✅ **Vite SSR sample renders successfully**
-   - `bundle exec ruby -e "require 'ssr/deno'; SSR::Deno.init_runtime('samples/vite-ssr-app/dist/server/entry-server.js'); puts SSR::Deno.render('{\"component_data\":{\"message\":\"Hello World!\"},\"props\":{},\"url\":\"/\"}')"`
+   - `bundle exec ruby -e "require 'ssr/deno'; bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js'); puts bundle.render({data: {message: 'Hello World!'}})"`
    - Returns full HTML with React SSR output
 
 9. ✅ **Added integration test**
-   - [`test/ssr/test_deno.rb`](../test/ssr/test_deno.rb) — tests `native_version`, `init_runtime`, and `render` with the Vite SSR sample
+   - [`test/ssr/test_deno_bundle.rb`](../test/ssr/test_deno_bundle.rb) — tests `Bundle.new`, `render`, `reload`, auto-reload, raw I/O modes
    - All tests pass with Rubocop compliance
 
 10. ✅ **Dotenv-based environment configuration**
@@ -477,26 +542,23 @@ implemented yet.
     - README rewritten with usage instructions, development guide, and architecture reference
     - Git tag `v0.1.0-alpha.1` created
 
-### Phase 3: Threaded Worker ✅
-- Moved `MainWorker` to a dedicated `"deno-worker"` thread (commit
-  `4bdf1f5`). Removed all `unsafe` impls and `UnsafeCell`.
-- Switched the Tokio runtime to `current_thread` + `LocalSet` to satisfy
-  `deno_unsync::spawn_local` (commit `a8478e8`).
-- Pass the bundle file name to `execute_script` so V8 stack traces point
-  at the right script (commit `27df88b`).
-- Per-package `opt-level` overrides for fast dev builds without breaking
-  V8 / `deno_core` / `deno_runtime` (commit `d76ab6f`).
+### Phase 3: Multi-Bundle & Rails Integration ✅
+- Refactored from single `init_runtime`/`render` to `SSR::Deno::Bundle` class with per-bundle IDs
+- Added `Bundle::Registry` for thread-safe named bundle storage
+- Added `native_load_bundle(bundle_id, bundle_path)` for dynamic bundle loading
+- Added `DenoError` typed error enum in Rust, mapped to Ruby exception hierarchy
+- Added `ActiveSupport::Notifications` instrumentation (`render.ssr_deno`, `bundle_load.ssr_deno`, `bundle_miss.ssr_deno`)
+- Added Rails integration: `Railtie`, `Helper` (`ssr_render`), `InstallGenerator`
+- Added security hardening: `Permissions::none_without_prompt()`, `NoopModuleLoader`, symlink-escape check, TOCTOU fix, path redaction in errors
+- Added `test/ssr/test_deno_bundle.rb`, `test/ssr/test_deno_registry.rb`, `test/ssr/test_deno_errors.rb`, `test/ssr/test_deno_concurrency.rb`, `test/ssr/test_deno_install_generator.rb`, `test/ssr/integration_deno_rails.rb`
 
 ### Phase 4: Future work
-- Custom error classes (`BundleNotFoundError`, `TimeoutError`, …) once
-  the use cases justify them. Today everything raises
-  `SSR::Deno::Error`.
-- Timeout / cancellation for runaway JS renders.
-- Bundle reload (re-evaluate `entry-server.js` without restarting the
-  process).
-- Optional `SSR::Deno.configure` block if/when more knobs appear.
-- CI for Rust compilation (Linux is the only currently supported
-  platform).
+- Timeout / cancellation for runaway JS renders
+- Content-Security-Policy nonce support for inline `<script>` tags in SSR output
+- Document deployment considerations (V8 binary size, memory)
+- Streaming SSR via `renderToPipeableStream` + `ActionController::Live`
+- Template handler (`.ssr` files with YAML frontmatter)
+- CI for Rust compilation (Linux is the only currently supported platform)
 
 ## Key Design Decisions
 

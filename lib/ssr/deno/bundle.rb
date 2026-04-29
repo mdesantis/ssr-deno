@@ -65,6 +65,7 @@ module SSR
       # :nocov: — the ActiveSupport::Notifications branch is exercised by Rails
       # integration tests (test/ssr/integration_deno_rails.rb), which are
       # excluded from SimpleCov because they require a full Rails boot.
+      # :nocov:
       def instrument(name, payload = {}, &)
         return yield unless defined?(ActiveSupport::Notifications)
 

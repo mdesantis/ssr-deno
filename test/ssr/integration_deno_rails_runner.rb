@@ -4,7 +4,7 @@
 #
 # Usage:
 #   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
-#     test/ssr/test_deno_rails_integration_runner.rb
+#     test/ssr/integration_deno_rails_runner.rb
 #
 # This runner is separate from the main test suite because it requires
 # a full Rails application boot with its own Gemfile.

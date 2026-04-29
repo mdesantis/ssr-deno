@@ -5,11 +5,8 @@
 # Helper, and Generator work correctly together.
 #
 # Run with:
-#   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby -I test/dummy -I lib -I test -e '
-#     require "test_helper"
-#     require "ssr/deno/rails"
-#     require "test/ssr/test_deno_rails_integration"
-#   '
+#   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
+#     test/ssr/integration_deno_rails_runner.rb
 
 module SSR
   module Deno

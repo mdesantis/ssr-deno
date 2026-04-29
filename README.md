@@ -29,23 +29,47 @@ $ gem install ssr-deno
 ```ruby
 require 'ssr/deno'
 
-# Initialize the runtime with a Vite SSR bundle
-result = SSR::Deno.init_runtime('path/to/dist/server/entry-server.js')
-# => true  (first call)
-# => nil   (subsequent calls)
+# Create a bundle from a Vite SSR production build
+bundle = SSR::Deno::Bundle.new('path/to/dist/server/entry-server.js')
 
-# Render a component
-html = SSR::Deno.render({
-  component_data: { message: 'Hello World!' },
-  props: {},
-  url: '/'
+# Render a component — data is automatically JSON-serialized
+html = bundle.render({
+  data: { message: 'Hello World!' }
 })
 
 puts html
 # => <html><head><title></title></head><body>...
 ```
 
-The `render` function accepts a Hash with arbitrary data, which is serialized to JSON and passed to the SSR bundle's `render` function.
+The `render` method accepts a Hash with arbitrary data, which is serialized to JSON and passed to the SSR bundle's `render` function. Multiple bundles can coexist in the same process:
+
+```ruby
+application = SSR::Deno::Bundle.new('dist/server/entry-server.js')
+admin       = SSR::Deno::Bundle.new('dist/server/admin/entry-server.js')
+
+application.render({ page: 'home' })
+admin.render({ page: 'dashboard' })
+```
+
+### Rails integration
+
+Add to your Gemfile:
+
+```ruby
+gem 'ssr-deno', require: 'ssr/deno/rails'
+```
+
+Then run the generator:
+
+```bash
+rails generate ssr:deno:install
+```
+
+Use the `ssr_render` helper in your views:
+
+```erb
+<%= ssr_render({ page: 'home', user: @user }) %>
+```
 
 ## Development
 

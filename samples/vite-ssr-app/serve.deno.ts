@@ -1,16 +1,17 @@
 /**
  * Deno test server for the Vite SSR bundle.
  *
- * This simulates what the Ruby gem will do via deno_core::JsRuntime:
+ * This simulates what the Ruby gem will do via deno_runtime::MainWorker:
  * 1. Load the built SSR bundle (self-contained, all deps inlined)
  * 2. Evaluate it in a V8 context
  * 3. Call the render() function with JSON data
  * 4. Serve the resulting HTML via HTTP
  *
  * The bundle uses __commonJSMin wrappers for inlined CJS deps (react, react-dom)
- * and has `export { render }` at the end. Since deno_core::JsRuntime evaluates JS
- * directly via V8 (not through Deno's module loader), we strip the ESM export
- * and evaluate as a plain script — exactly what the Rust extension will do.
+ * and has `export { render }` at the end. Since MainWorker evaluates JS
+ * directly via V8's execute_script (not through Deno's module loader), we strip
+ * the ESM export and evaluate as a plain script — exactly what the Rust extension
+ * will do.
  *
  * Usage:
  *   deno run --allow-read --allow-net serve.deno.ts
@@ -26,7 +27,7 @@ const bundleCode = await Deno.readTextFile(BUNDLE_PATH);
 
 // Strip the ESM export line — the bundle uses __commonJSMin wrappers for
 // inlined CJS deps, so it can't be imported as ESM. We evaluate it as a
-// plain script, which is exactly what deno_core::JsRuntime will do via V8.
+// plain script, which is exactly what MainWorker::execute_script will do.
 const scriptCode = bundleCode.replace(/export\s+\{[^}]+\};?\s*$/, "");
 
 const fn = new Function(`
