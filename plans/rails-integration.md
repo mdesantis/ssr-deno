@@ -17,64 +17,141 @@ Goal: Rails app does `gem 'ssr_deno', require: 'ssr/deno/rails'` in Gemfile + `r
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph Rails App
-        A[Controller] --> B[View template .html.erb]
-        A --> C[SSR::Deno::Helper]
-        C --> D[SSR::Deno::Bundle.registry]
-        D --> E1[Bundle :application]
-        D --> E2[Bundle :admin]
-        E1 --> F1[Deno Worker Thread]
-        E2 --> F2[Deno Worker Thread]
-        F1 --> G1[Vite SSR Bundle app]
-        F2 --> G2[Vite SSR Bundle admin]
-        G1 -->|HTML| E1
-        G2 -->|HTML| E2
-        E1 --> D
-        E2 --> D
-        D --> C
-        C --> A
-
-        H[Rails.configuration.ssr_deno] --> I[SSR::Deno::Railtie]
-        I --> J[init bundles via registry.register]
-    end
-
-    subgraph Build Time
-        K[Vite + React/Vue/Svelte] --> L[dist/server/entry-server.js]
-    end
-
-    subgraph Activation
-        M[gem 'ssr_deno', require: 'ssr/deno/rails'] --> N[lib/ssr/deno/rails.rb]
-        N --> O[Railtie]
-        N --> P[Helper]
-        N --> Q[Generator]
-    end
+```
+  ┌─────────────────────────────────────────────────────────────────────────────────┐
+  │                                   Rails App                                     │
+  │                                                                                 │
+  │   ┌────────────┐     ┌──────────────────────┐     ┌─────────────────────────┐  │
+  │   │            │     │                      │     │                         │  │
+  │   │ Controller │────>│ View template        │     │ SSR::Deno::Helper       │  │
+  │   │            │     │ .html.erb            │     │                         │  │
+  │   │            │<────│                      │<────│                         │  │
+  │   └─────┬──────┘     └──────────────────────┘     └───────────┬─────────────┘  │
+  │         │                                                     │                │
+  │         │                                                     ▼                │
+  │         │                                          ┌──────────────────────┐    │
+  │         │                                          │ SSR::Deno::Bundle    │    │
+  │         │                                          │ .registry            │    │
+  │         │                                          └──┬───────────────┬───┘    │
+  │         │                                             │               │       │
+  │         │                          ┌──────────────────┘               └──────┐ │
+  │         │                          ▼                                        ▼ │
+  │         │              ┌──────────────────────┐              ┌────────────────┐│
+  │         │              │ Bundle :application  │              │ Bundle :admin  ││
+  │         │              └──────────┬───────────┘              └───────┬────────┘│
+  │         │                         │                                  │         │
+  │         │                         ▼                                  ▼         │
+  │         │              ┌──────────────────────┐              ┌────────────────┐│
+  │         │              │ Deno Worker Thread   │              │ Deno Worker    ││
+  │         │              │                      │              │ Thread         ││
+  │         │              └──────────┬───────────┘              └───────┬────────┘│
+  │         │                         │                                  │         │
+  │         │                         ▼                                  ▼         │
+  │         │              ┌──────────────────────┐              ┌────────────────┐│
+  │         │              │ Vite SSR Bundle app  │              │ Vite SSR Bundle││
+  │         │              │                      │              │ admin          ││
+  │         │              └──────────────────────┘              └────────────────┘│
+  │         │                                                                      │
+  │         │   ┌────────────────────────────┐    ┌────────────────────────────┐   │
+  │         │   │ Rails.configuration        │    │ SSR::Deno::Railtie         │   │
+  │         │   │ .ssr_deno                  │───>│                            │   │
+  │         │   └────────────────────────────┘    │ init bundles via           │   │
+  │         │                                    │ registry.register           │   │
+  │         │                                    └────────────────────────────┘   │
+  └─────────┼─────────────────────────────────────────────────────────────────────┘
+            │
+  ┌─────────┼─────────────────────────────────────────────────────────────────────┐
+  │         │                          Build Time                                 │
+  │         │                                                                     │
+  │         │   ┌────────────────────────────┐    ┌────────────────────────────┐  │
+  │         │   │ Vite + React/Vue/Svelte    │───>│ dist/server/entry-         │  │
+  │         │   └────────────────────────────┘    │ server.js                  │  │
+  │         │                                     └────────────────────────────┘  │
+  └─────────┼─────────────────────────────────────────────────────────────────────┘
+            │
+  ┌─────────┼─────────────────────────────────────────────────────────────────────┐
+  │         │                          Activation                                 │
+  │         │                                                                     │
+  │         │   ┌────────────────────────────┐    ┌────────────────────────────┐  │
+  │         │   │ gem 'ssr_deno',            │───>│ lib/ssr/deno/rails.rb      │  │
+  │         │   │ require: 'ssr/deno/rails'  │    └──┬─────────────────────┬───┘  │
+  │         │   └────────────────────────────┘       │                     │      │
+  │         │                                        ▼                     ▼      │
+  │         │                              ┌────────────────┐  ┌────────────────┐ │
+  │         │                              │ Railtie        │  │ Helper         │ │
+  │         │                              ├────────────────┤  ├────────────────┤ │
+  │         │                              │ Generator      │  │                │ │
+  │         │                              └────────────────┘  └────────────────┘ │
+  └─────────┼─────────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+     ┌────────────┐
+     │            │
+     │ Controller │
+     │            │
+     └────────────┘
 ```
 
 ## Data Flow
 
-```mermaid
-sequenceDiagram
-    participant C as Controller
-    participant H as Helper
-    participant R as SSR::Deno::Bundle.registry
-    participant B as Bundle :application
-    participant W as Deno Worker
-    participant V as Vite Bundle
-
-    C->>H: ssr_render {page: "home"}, bundle: :admin
-    H->>R: registry[:admin]
-    R-->>H: Bundle instance
-    H->>B: render data
-    B->>W: WorkerMsg::Render {args_json}
-    W->>V: globalThis.render(json)
-    V->>V: renderToString createElement App, props
-    V-->>W: HTML string
-    W-->>B: Result String
-    B-->>H: parsed JSON result
-    H-->>C: HTML string html_safe
-    C->>C: render in layout
+```
+  ┌──────────┐   ┌──────────┐   ┌──────────────────┐   ┌───────────────┐   ┌────────────┐   ┌──────────────┐
+  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │   │ Vite Bundle  │
+  │          │   │          │   │ .registry        │   │ :application  │   │            │   │              │
+  └────┬─────┘   └────┬─────┘   └────────┬─────────┘   └──────┬────────┘   └─────┬──────┘   └──────┬───────┘
+       │              │                  │                    │                  │                  │
+       │ ssr_render   │                  │                    │                  │                  │
+       │ {page:"home"}│                  │                    │                  │                  │
+       │ bundle::admin│                  │                    │                  │                  │
+       │─────────────>│                  │                    │                  │                  │
+       │              │                  │                    │                  │                  │
+       │              │ registry[:admin] │                    │                  │                  │
+       │              │─────────────────>│                    │                  │                  │
+       │              │                  │                    │                  │                  │
+       │              │ Bundle instance  │                    │                  │                  │
+       │              │<─────────────────│                    │                  │                  │
+       │              │                  │                    │                  │                  │
+       │              │ render data      │                    │                  │                  │
+       │              │──────────────────────────────────────>│                  │                  │
+       │              │                  │                    │                  │                  │
+       │              │                  │                    │ WorkerMsg::Render│                  │
+       │              │                  │                    │ {args_json}      │                  │
+       │              │                  │                    │─────────────────>│                  │
+       │              │                  │                    │                  │                  │
+       │              │                  │                    │                  │ globalThis.render│
+       │              │                  │                    │                  │ (json)           │
+       │              │                  │                    │                  │─────────────────>│
+       │              │                  │                    │                  │                  │
+       │              │                  │                    │                  │  renderToString  │
+       │              │                  │                    │                  │  createElement   │
+       │              │                  │                    │                  │  App, props      │
+       │              │                  │                    │                  │──┐               │
+       │              │                  │                    │                  │  │               │
+       │              │                  │                    │                  │<─┘               │
+       │              │                  │                    │                  │                  │
+       │              │                  │                    │                  │ HTML string      │
+       │              │                  │                    │                  │<─────────────────│
+       │              │                  │                    │                  │                  │
+       │              │                  │                    │ Result String    │                  │
+       │              │                  │                    │<─────────────────│                  │
+       │              │                  │                    │                  │                  │
+       │              │ parsed JSON      │                    │                  │                  │
+       │              │ result           │                    │                  │                  │
+       │              │<──────────────────────────────────────│                  │                  │
+       │              │                  │                    │                  │                  │
+       │ HTML string  │                  │                    │                  │                  │
+       │ html_safe    │                  │                    │                  │                  │
+       │<─────────────│                  │                    │                  │                  │
+       │              │                  │                    │                  │                  │
+       │ render in    │                  │                    │                  │                  │
+       │ layout       │                  │                    │                  │                  │
+       │──┐           │                  │                    │                  │                  │
+       │  │           │                  │                    │                  │                  │
+       │<─┘           │                  │                    │                  │                  │
+  ┌────┴─────┐   ┌────┴─────┐   ┌────────┴─────────┐   ┌──────┴────────┐   ┌─────┴──────┐   ┌──────┴───────┐
+  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │   │ Vite Bundle  │
+  │          │   │          │   │ .registry        │   │ :application  │   │            │   │              │
+  └──────────┘   └──────────┘   └──────────────────┘   └───────────────┘   └────────────┘   └──────────────┘
 ```
 
 ---
