@@ -13,7 +13,9 @@ permissions:
 env:
   V8_FROM_SOURCE: 'true'
   GN_ARGS: 'v8_monolithic=true v8_monolithic_for_shared_library=true'
-  RB_SYS_CARGO_PROFILE: 'dev'
+  RB_SYS_CARGO_PROFILE: 'release'
+  SCCACHE: /home/runner/.cargo/bin/sccache
+  RUSTFLAGS: '-C link-arg=-fuse-ld=mold'
 
 jobs:
   build-and-test:
@@ -46,6 +48,7 @@ jobs:
             ninja-build \
             python3 \
             libglib2.0-dev \
+            mold \
             pkg-config
       - name: Install Clang 19 (required by V8)
         run: |
@@ -58,6 +61,8 @@ jobs:
           sudo apt-get install -yq --no-install-suggests --no-install-recommends \
             lld-19 clang-19 libclang-19-dev
           echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> $GITHUB_ENV
+      - name: Install sccache (V8 C++ compilation cache)
+        run: cargo install sccache --locked
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
