@@ -62,7 +62,7 @@ module SSR
 
       # Instrument a block with ActiveSupport::Notifications.
       # No-ops when ActiveSupport::Notifications is not loaded (core gem mode).
-      # :nocov: — the ActiveSupport::Notifications branch is exercised by Rails
+      # The ActiveSupport::Notifications branch is exercised by Rails
       # integration tests (test/ssr/integration_deno_rails.rb), which are
       # excluded from SimpleCov because they require a full Rails boot.
       # :nocov:
