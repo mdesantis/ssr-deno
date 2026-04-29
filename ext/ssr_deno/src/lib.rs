@@ -9,6 +9,7 @@ use std::sync::{Mutex, OnceLock};
 static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
+// Looks up an exception class by name inside the SSR::Deno Ruby module.
 fn deno_exc(name: &'static str) -> ExceptionClass {
     let ruby = Ruby::get().unwrap();
     ruby.define_module("SSR")
