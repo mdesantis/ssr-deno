@@ -1,12 +1,35 @@
 # frozen_string_literal: true
 
+require_relative 'bundle/registry'
+
 module SSR
   module Deno
     class Bundle
+      class << self
+        attr_reader :registry
+      end
+
+      @registry = Registry.new
+
       # @param bundle_path [String] Path to the Vite SSR bundle (entry-server.js)
       def initialize(bundle_path)
+        @bundle_path = bundle_path.to_s
         @bundle_id = object_id.to_s
-        SSR::Deno.native_load_bundle(@bundle_id, bundle_path.to_s)
+        @mtime = File.mtime(@bundle_path)
+        @auto_reload = false
+        load
+      end
+
+      # Enable or disable auto-reload (mtime check before each render).
+      # @param value [Boolean]
+      attr_writer :auto_reload
+
+      # Reload the bundle from disk. Called automatically when +auto_reload+
+      # is enabled and the file mtime has changed.
+      def reload
+        @mtime = File.mtime(@bundle_path)
+
+        load
       end
 
       # @param data [Hash, String] Data to pass to the render function.
@@ -20,9 +43,28 @@ module SSR
       # @raise [SSR::Deno::JsRuntimeWorkerError] if the Deno worker thread has exited
       # @raise [SSR::Deno::RenderError] if the JavaScript render function throws
       def render(data = nil, raw_input: false, raw_output: false)
+        reload_if_changed if @auto_reload
+
         json_input = raw_input ? data : JSON.generate(data)
         result = SSR::Deno.native_render(@bundle_id, json_input)
+
         raw_output ? result : JSON.parse(result)
+      end
+
+      private
+
+      # Load (or reload) the bundle into the Deno runtime.
+      def load
+        SSR::Deno.native_load_bundle(@bundle_id, @bundle_path)
+      end
+
+      # Reload the bundle if the file has changed on disk.
+      def reload_if_changed
+        current_mtime = File.mtime(@bundle_path)
+
+        return unless current_mtime > @mtime
+
+        reload
       end
     end
   end

@@ -19,20 +19,20 @@ module SSR
       end
     end
 
-    def test_native_load_bundle_when_bundle_not_found_raises_js_runtime_initialization_error
+    def test_native_load_bundle_when_bundle_not_found_raises_bundle_not_found_error
       script = <<~RUBY
         $LOAD_PATH.unshift('lib')
         require 'ssr/deno'
         begin
           SSR::Deno::Bundle.new('/nonexistent/entry-server.js')
-        rescue SSR::Deno::JsRuntimeInitializationError
+        rescue Errno::ENOENT
           exit 0
         end
         exit 1
       RUBY
       _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
 
-      assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeInitializationError to be raised'
+      assert_predicate status.exitstatus, :zero?, 'Expected Errno::ENOENT to be raised'
     end
 
     def test_native_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
