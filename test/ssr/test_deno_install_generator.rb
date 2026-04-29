@@ -4,7 +4,7 @@ require 'test_helper'
 require 'rails/generators/test_case'
 require 'ssr/deno/rails/generators/ssr/deno/install_generator'
 
-module Ssr
+module SSR
   module Deno
     class TestInstallGenerator < Rails::Generators::TestCase
       tests InstallGenerator

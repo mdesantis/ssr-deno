@@ -86,17 +86,12 @@ module SSR
       def default_bundle_path: (Symbol name) -> String
     end
 
-    def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
-    def self.native_render: (String bundle_id, String json) -> String
-    def self.native_version: () -> String
-  end
-end
-
-# Rails generator uses Ssr::Deno (capital S, lowercase sr) per Rails convention.
-module Ssr
-  module Deno
     class InstallGenerator
       def create_initializer: () -> void
     end
+
+    def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
+    def self.native_render: (String bundle_id, String json) -> String
+    def self.native_version: () -> String
   end
 end

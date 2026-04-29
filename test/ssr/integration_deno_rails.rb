@@ -11,7 +11,7 @@
 #     require "test/ssr/test_deno_rails_integration"
 #   '
 
-module Ssr
+module SSR
   module Deno
     class TestRailsIntegration < ::Minitest::Test
       def setup

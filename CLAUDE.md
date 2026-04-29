@@ -1,5 +1,9 @@
 # ssr-deno project preferences
 
+## Conventions
+
+- **`SSR` Ruby constant is always uppercased.** `SSR` is the acronym of "Server-Side Rendering". Never use `Ssr`.
+
 ## Workflow
 
 - **Always run `bundle exec rake` after a changeset.** This runs the full pipeline: compilation (Rust native extension), Vite SSR sample build, tests, RuboCop linting, SimpleCov coverage check (must be 100% line + 100% branch), and RBS signature validation. Do not consider a changeset complete until `bundle exec rake` exits 0.

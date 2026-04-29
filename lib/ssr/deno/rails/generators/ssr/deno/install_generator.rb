@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Ssr
+module SSR
   module Deno
     class InstallGenerator < Rails::Generators::Base
       source_root File.expand_path('templates', __dir__)
