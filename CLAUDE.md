@@ -78,3 +78,15 @@
 
     assert_operator new_mtime, :>, orig_mtime
     ```
+
+## Pre-completion gate
+
+Before calling `attempt_completion`, you **must** re-read this file from the top and execute every applicable item in the Workflow section. This is not optional. The checklist items that apply to every changeset are:
+
+1. **Assignment-blank-line rule** — read every modified Ruby file and verify compliance
+2. **`bundle exec rake`** (full pipeline) — must exit 0
+3. **`sig/ssr/deno.rbs`** — verify it's in sync with any signature/type changes
+4. **Stale docs/plans/comments audit** — check all modified areas per the list above
+5. **`CHANGELOG.md`** — if the change is user-facing, add an entry
+
+Do not skip any step. Do not assume a step passes without verifying.

@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- V8 heap size limit via `SSR::Deno.max_heap_size_mb=` (default: 64 MB) — caps V8 old-generation memory to prevent runaway growth. Configurable in Rails via `config.ssr_deno.max_heap_size_mb`. See [`plans/v8-heap-limit.md`](plans/v8-heap-limit.md).
+
 ## [0.1.0-alpha.2] - 2026-04-29
 
 ### Added

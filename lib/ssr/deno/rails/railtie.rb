@@ -8,7 +8,7 @@ module SSR
       config.ssr_deno.enabled = true
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
-      config.ssr_deno.max_heap_size_mb = nil # nil = unlimited (V8 default)
+      config.ssr_deno.max_heap_size_mb = nil # nil = 64 MB (default)
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do

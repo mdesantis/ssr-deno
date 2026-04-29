@@ -20,7 +20,7 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { max_heap_size_mb: 0 } // 0 = unlimited (V8 default)
+        Self { max_heap_size_mb: 64 } // 64 MB — sensible for SSR workloads
     }
 }
 

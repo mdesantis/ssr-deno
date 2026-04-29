@@ -286,8 +286,8 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
     };
 
     // Apply optional V8 heap size limit. When set (> 0), V8 will not exceed
-    // this cap for the old generation. When 0, V8 uses its default
-    // (typically ~1.4 GB on 64-bit).
+    // this cap for the old generation. When 0, no CreateParams is passed and
+    // V8 uses its built-in default (~1.4 GB on 64-bit).
     let create_params = if max_heap_size_mb > 0 {
         Some(
             v8::CreateParams::default()

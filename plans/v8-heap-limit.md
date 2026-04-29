@@ -71,7 +71,7 @@ This means the limit is a **hard cap** — V8 will not exceed it. The process wi
 | Multiple bundles (2–3) | 128–256 MB | ~20 MB baseline + 10–15 MB bundles + headroom |
 | Multiple isolates (4×) | 64 MB per isolate | 256 MB total for 4 isolates |
 
-**Default if unset:** 0 (unlimited, current behavior) — preserve backward compatibility.
+**Default if unset:** 64 MB — sensible for typical SSR workloads (~20 MB baseline + headroom). Can be overridden via `SSR::Deno.max_heap_size_mb = 0` for unlimited (V8 default, ~1.4 GB) or any other value.
 
 ---
 
