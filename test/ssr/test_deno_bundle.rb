@@ -8,6 +8,7 @@ module SSR
 
     def setup
       assert_path_exists BUNDLE_PATH, "Bundle not found at #{BUNDLE_PATH}"
+
       @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
     end
 

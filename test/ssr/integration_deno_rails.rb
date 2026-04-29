@@ -88,6 +88,7 @@ module SSR
 
       def build_view
         lookup = ActionView::LookupContext.new([])
+
         ActionView::Base.new(lookup, {}, nil)
       end
     end
