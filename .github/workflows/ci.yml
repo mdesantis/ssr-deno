@@ -43,7 +43,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -yq --no-install-suggests --no-install-recommends \
             ninja-build \
-            python3
+            python3 \
+            libglib2.0-dev \
+            pkg-config
       - name: Install Clang 19 (required by V8)
         run: |
           echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | \
