@@ -11,6 +11,16 @@
 - **Never auto-commit.** Only commit when explicitly asked with "commit please" or similar.
 - **Compile with `bundle exec rake compile`, never raw `cargo build`.** Rake wires the correct linker flags and installs the `.so` into `lib/ssr/deno/` where Ruby can load it. Plain `cargo build` skips that and produces an artifact Ruby cannot load.
 - **Keep `sig/ssr/deno.rbs` in sync.** When changing method signatures, return types, or exception classes in `lib/ssr/deno.rb` or `ext/ssr_deno/src/lib.rs`, update `sig/ssr/deno.rbs` in the same step.
+- **Check for stale docs, plans, and comments after every changeset.** Before marking any task complete, audit all modified areas for content that no longer matches the code. This includes:
+  - `README.md` — usage examples, API references, setup instructions
+  - `plans/*.md` — architecture docs, integration plans, security reviews
+  - `CHANGELOG.md` — missing entries for new features, fixes, or breaking changes
+  - Source file comments — stale references to old APIs, renamed types, or outdated reasoning
+  - `lib/ssr/deno/bundle.rb` — `:nocov:` directives that may have drifted from their intended scope
+  - `.github/workflows/ci.yml` — steps that may be missing or out of sync with `Rakefile`
+  - Test files — stale run instructions, wrong file paths in comments
+  - Sample files — comments referencing old crate names or APIs
+  Do not consider the changeset complete until this audit passes.
 
 ## Code style
 
