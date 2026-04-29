@@ -37,6 +37,19 @@ module SSR
         end
       end
 
+      # Subscribe to ssr-deno instrumentation events for logging.
+      initializer 'ssr_deno.subscribe_events' do |_app|
+        ActiveSupport::Notifications.subscribe(/\.ssr_deno$/) do |name, start, finish, _id, payload|
+          duration = ((finish - start) * 1000).round(2)
+
+          if payload[:error]
+            Rails.logger.warn "[ssr-deno] #{name} failed: #{payload[:error]} (#{duration}ms)"
+          else
+            Rails.logger.debug "[ssr-deno] #{name} completed (#{duration}ms)"
+          end
+        end
+      end
+
       private
 
       def default_bundle_path(name)

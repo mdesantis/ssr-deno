@@ -91,5 +91,13 @@ module SSR
 
       assert_includes html, 'Changed'
     end
+
+    def test_instrument_noop_when_active_support_notifications_not_loaded
+      # instrument is a private no-op when ActiveSupport::Notifications is
+      # not defined (core gem mode, no Rails). Verify render still works.
+      html = @bundle.render({ data: { name: 'NoInstrument' } })
+
+      assert_includes html, 'NoInstrument'
+    end
   end
 end

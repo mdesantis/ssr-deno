@@ -464,8 +464,26 @@ lib/
 
 ### Phase 3: Production Hardening
 - [ ] Add Content-Security-Policy nonce support (for inline `<script>` tags in SSR output)
-- [ ] Add metrics/instrumentation (`ActiveSupport::Notifications`)
+- [x] Add metrics/instrumentation (`ActiveSupport::Notifications`)
 - [ ] Document deployment considerations (V8 binary size, memory)
+
+### 12. Instrumentation — `ActiveSupport::Notifications`
+
+Three events emitted:
+
+| Event | When | Payload | Source |
+|---|---|---|---|
+| `render.ssr_deno` | After `Bundle#render` (success or failure) | `bundle_name` | [`lib/ssr/deno/bundle.rb`](lib/ssr/deno/bundle.rb) |
+| `bundle_load.ssr_deno` | After bundle loaded/reloaded from disk | `bundle_name`, `path` | [`lib/ssr/deno/bundle.rb`](lib/ssr/deno/bundle.rb) |
+| `bundle_miss.ssr_deno` | When bundle name not found in registry | `bundle_name` | [`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb) |
+
+**Core layer** ([`lib/ssr/deno/bundle.rb`](lib/ssr/deno/bundle.rb)): `instrument` private helper wraps `ActiveSupport::Notifications.instrument` with `defined?` guard. No-ops when AS::Notifications not loaded — core gem stays Rails-free.
+
+**Rails layer** ([`lib/ssr/deno/rails/railtie.rb`](lib/ssr/deno/rails/railtie.rb)): Subscriber initializer logs all `*.ssr_deno` events to `Rails.logger` (debug on success, warn on error).
+
+**Helper layer** ([`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb)): `bundle_miss.ssr_deno` fires before `BundleNotFoundError` is raised, so subscribers see it even on error paths.
+
+Third-party APM tools (Datadog, Scout, AppSignal) can subscribe to these events for tracing and metrics.
 
 ---
 

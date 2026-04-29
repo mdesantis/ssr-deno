@@ -38,11 +38,19 @@ module SSR
         bundle = SSR::Deno::Bundle.registry[bundle_name]
 
         unless bundle
+          instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name
+
           raise SSR::Deno::BundleNotFoundError,
                 "SSR bundle #{bundle_name.inspect} not registered"
         end
 
         bundle
+      end
+
+      def instrument(name, payload = {})
+        return unless defined?(ActiveSupport::Notifications)
+
+        ActiveSupport::Notifications.instrument(name, payload)
       end
     end
   end

@@ -18,7 +18,9 @@ module SSR
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
 
-        load
+        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
+          load
+        end
       end
 
       # Enable or disable auto-reload (mtime check before each render).
@@ -30,7 +32,9 @@ module SSR
       def reload
         @mtime = File.mtime(@bundle_path)
 
-        load
+        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
+          load
+        end
       end
 
       # @param data [Hash, String] Data to pass to the render function.
@@ -47,12 +51,26 @@ module SSR
         reload_if_changed if @auto_reload
 
         json_input = raw_input ? data : JSON.generate(data)
-        result = SSR::Deno.native_render(@bundle_id, json_input)
 
-        raw_output ? result : JSON.parse(result)
+        instrument 'render.ssr_deno', bundle_name: @bundle_id do
+          result = SSR::Deno.native_render(@bundle_id, json_input)
+          raw_output ? result : JSON.parse(result)
+        end
       end
 
       private
+
+      # Instrument a block with ActiveSupport::Notifications.
+      # No-ops when ActiveSupport::Notifications is not loaded (core gem mode).
+      # :nocov: — the ActiveSupport::Notifications branch is exercised by Rails
+      # integration tests (test/ssr/integration_deno_rails.rb), which are
+      # excluded from SimpleCov because they require a full Rails boot.
+      def instrument(name, payload = {}, &)
+        return yield unless defined?(ActiveSupport::Notifications)
+
+        ActiveSupport::Notifications.instrument(name, payload, &)
+      end
+      # :nocov:
 
       # Load (or reload) the bundle into the Deno runtime.
       def load

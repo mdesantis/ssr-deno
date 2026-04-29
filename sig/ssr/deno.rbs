@@ -42,6 +42,8 @@ module SSR
 
       private
 
+      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
+
       def load: () -> void
 
       def reload_if_changed: () -> void
@@ -74,6 +76,8 @@ module SSR
       def ssr_render: (?untyped? data, **untyped options) -> String
 
       private
+
+      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) -> (nil | untyped)
 
       def find_bundle!: (untyped bundle_name) -> Bundle
     end

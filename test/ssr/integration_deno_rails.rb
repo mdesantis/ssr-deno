@@ -68,6 +68,22 @@ module SSR
         assert_match(/nonexistent/, error.message)
       end
 
+      def test_instrumentation_fires_bundle_miss_event
+        events = []
+        callback = ->(name, *) { events << name }
+
+        ActiveSupport::Notifications.subscribed(callback, /\.ssr_deno$/) do
+          error = assert_raises SSR::Deno::BundleNotFoundError do
+            @view.ssr_render({ page: 'home' })
+          end
+
+          assert_match(/not registered/, error.message)
+        end
+
+        assert_includes events, 'bundle_miss.ssr_deno',
+                        'bundle_miss.ssr_deno event should fire when bundle not found'
+      end
+
       private
 
       def build_view
