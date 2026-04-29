@@ -62,8 +62,7 @@ module SSR
       @registry.register(:application, Object.new)
       @registry.register(:admin, Object.new)
 
-      names = []
-      @registry.each { |name, _b| names << name }
+      names = @registry.map(&:first)
 
       assert_includes names, :application
       assert_includes names, :admin
@@ -87,8 +86,8 @@ module SSR
     def test_thread_safety
       @registry.register(:app, Object.new)
 
-      threads = 10.times.map do |i|
-        Thread.new do
+      threads = Array.new(10) do |i|
+        Thread.new do # rubocop:disable ThreadSafety/NewThread
           100.times do
             @registry[:app]
           end

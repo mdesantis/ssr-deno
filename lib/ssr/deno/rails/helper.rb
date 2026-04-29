@@ -21,12 +21,7 @@ module SSR
       #   when +raise_on_render_error+ is true.
       def ssr_render(data = nil, **options)
         bundle_name = options.delete(:bundle) || :application
-        bundle = SSR::Deno::Bundle.registry[bundle_name]
-        unless bundle
-          raise SSR::Deno::BundleNotFoundError,
-                "SSR bundle #{bundle_name.inspect} not registered"
-        end
-
+        bundle = find_bundle!(bundle_name)
         bundle.render(data, **options).html_safe
       rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError => error
         raise if Rails.application.config.ssr_deno.raise_on_render_error
@@ -34,6 +29,18 @@ module SSR
         Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \
                            "falling back to CSR: #{error.message}"
         ''.html_safe
+      end
+
+      private
+
+      def find_bundle!(bundle_name)
+        bundle = SSR::Deno::Bundle.registry[bundle_name]
+        unless bundle
+          raise SSR::Deno::BundleNotFoundError,
+                "SSR bundle #{bundle_name.inspect} not registered"
+        end
+
+        bundle
       end
     end
   end
