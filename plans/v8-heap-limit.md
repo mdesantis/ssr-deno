@@ -92,19 +92,36 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { max_heap_size_mb: 0 } // 0 = unlimited (V8 default)
+        Self { max_heap_size_mb: 64 } // 64 MB — sensible for SSR workloads
     }
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 ```
 
-Add a Ruby-callable function to set the config:
+Add a Ruby-callable function to set the config, with overflow-safe validation:
 
 ```rust
 /// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
 /// Must be called before any native_load_bundle or native_render call.
+///
+/// Validates that the value doesn't overflow when converted to bytes.
+/// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
+/// which is far beyond any practical V8 heap limit.
 fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
+    // Check that mb * 1024 * 1024 doesn't overflow usize.
+    // On 64-bit: max ≈ 16,384,000 MB (16 TB). On 32-bit: max ≈ 4,096 MB.
+    mb.checked_mul(1024 * 1024)
+        .ok_or_else(|| {
+            Error::new(
+                Ruby::get().unwrap().exception_arg_error(),
+                format!(
+                    "max_heap_size_mb={mb} overflows when converted to bytes (max: {})",
+                    usize::MAX / 1024 / 1024
+                ),
+            )
+        })?;
+
     CONFIG
         .set(Config {
             max_heap_size_mb: mb,
@@ -233,7 +250,7 @@ end
 ### 4. [`lib/ssr/deno/rails/railtie.rb`](../lib/ssr/deno/rails/railtie.rb) — Rails config
 
 ```ruby
-config.ssr_deno.max_heap_size_mb = nil  # nil = unlimited (V8 default)
+config.ssr_deno.max_heap_size_mb = nil  # nil = 64 MB (default)
 ```
 
 In `init_bundles`, before any `Bundle.new`:
@@ -328,12 +345,12 @@ bundle exec ruby -e "
 
 1. ✅ Modify `build_worker` in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) to accept `max_heap_size_mb` parameter — **Done**
 2. ✅ Remove `std::env::var` call from `build_worker` — Rust no longer reads env vars directly — **Done**
-3. Add `Config` struct and `native_set_max_heap_size_mb` to [`lib.rs`](../ext/ssr_deno/src/lib.rs)
-4. Thread `max_heap_size_mb` through `DenoRuntimeWrapper::new` → `worker_thread_main` → `build_worker`
-5. Add `SSR::Deno.max_heap_size_mb=` accessor in [`deno.rb`](../lib/ssr/deno.rb)
-6. Add `config.ssr_deno.max_heap_size_mb` in [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb)
-7. Add Ruby unit tests and integration test
-8. Run `bundle exec rake` to verify full pipeline
+3. ✅ Add `Config` struct and `native_set_max_heap_size_mb` to [`lib.rs`](../ext/ssr_deno/src/lib.rs) — **Done**
+4. ✅ Thread `max_heap_size_mb` through `DenoRuntimeWrapper::new` → `worker_thread_main` → `build_worker` — **Done**
+5. ✅ Add `SSR::Deno.max_heap_size_mb=` accessor in [`deno.rb`](../lib/ssr/deno.rb) — **Done**
+6. ✅ Add `config.ssr_deno.max_heap_size_mb` in [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb) — **Done**
+7. ✅ Add Ruby unit tests — **Done**
+8. ✅ Run `bundle exec rake` to verify full pipeline — **Done**
 
 ---
 

@@ -186,6 +186,53 @@ end
 
 The timeout implementation from [`render-timeout.md`](render-timeout.md) applies per-isolate. Each worker thread has its own `recv_timeout` on the reply channel. A timeout on one isolate doesn't affect others.
 
+### Interaction with Heap Size Limit
+
+The V8 heap size limit from [`v8-heap-limit.md`](v8-heap-limit.md) applies **per-isolate**. When the isolate pool is active, the configured `max_heap_size_mb` is divided equally among isolates to ensure predictable total memory:
+
+```
+total_limit = SSR::Deno.max_heap_size_mb  # e.g. 256 MB
+pool_size   = isolate_pool_size            # e.g. 4
+per_isolate = total_limit / pool_size      # = 64 MB each
+```
+
+This means:
+
+- **Each isolate** gets `max_heap_size_mb / pool_size` as its `v8::CreateParams::set_max_old_generation_size_in_bytes`
+- **Total V8 memory** across all isolates is bounded by `max_heap_size_mb` (plus overhead for bytecode, which is outside the old generation)
+- **Operators** can reason: "This Puma worker uses at most X MB for SSR" regardless of pool size
+
+If `max_heap_size_mb` is left at the default (64 MB), a 4-isolate pool would give each isolate 16 MB — which may be too tight for complex pages. **Recommendation:** When configuring an isolate pool, increase `max_heap_size_mb` proportionally:
+
+| Pool Size | Recommended `max_heap_size_mb` | Per-Isolate Budget |
+|-----------|-------------------------------|--------------------|
+| 1         | 64 MB (default)               | 64 MB              |
+| 2         | 128 MB                        | 64 MB              |
+| 4         | 256 MB                        | 64 MB              |
+| 8         | 512 MB                        | 64 MB              |
+
+The division is implemented in `IsolatePool::new`:
+
+```rust
+pub fn new(size: usize, total_heap_mb: usize) -> Result<Self, DenoError> {
+    let per_isolate_mb = if size > 0 {
+        std::cmp::max(1, total_heap_mb / size)  // at least 1 MB per isolate
+    } else {
+        total_heap_mb
+    };
+
+    let mut handles = Vec::with_capacity(size);
+    for i in 0..size {
+        let handle = spawn_isolate_thread(i, per_isolate_mb)?;
+        handles.push(handle);
+    }
+    Ok(Self {
+        handles,
+        counter: AtomicUsize::new(0),
+    })
+}
+```
+
 ### Interaction with Heap Metrics
 
 The heap metrics from [`v8-heap-metrics.md`](v8-heap-metrics.md) need to be extended to report per-isolate stats:
