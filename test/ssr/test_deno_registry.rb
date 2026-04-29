@@ -15,6 +15,7 @@ module SSR
 
     def test_register_and_lookup
       bundle = Object.new
+
       @registry.register(:application, bundle)
 
       assert_same bundle, @registry[:application]
@@ -23,6 +24,7 @@ module SSR
 
     def test_default_name_is_application
       bundle = Object.new
+
       @registry.register(:application, bundle)
 
       assert_same bundle, @registry[]
@@ -37,6 +39,7 @@ module SSR
     def test_replace_overwrites_existing
       bundle_a = Object.new
       bundle_b = Object.new
+
       @registry.register(:admin, bundle_a)
       @registry.replace(:admin, bundle_b)
 
@@ -45,6 +48,7 @@ module SSR
 
     def test_replace_creates_if_not_exists
       bundle = Object.new
+
       @registry.replace(:new_bundle, bundle)
 
       assert_same bundle, @registry[:new_bundle]
@@ -52,6 +56,7 @@ module SSR
 
     def test_remove
       bundle = Object.new
+
       @registry.register(:temp, bundle)
       @registry.remove(:temp)
 

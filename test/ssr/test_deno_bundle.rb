@@ -66,7 +66,6 @@ module SSR
 
     def test_auto_reload_triggers_reload_if_changed
       @bundle.auto_reload = true
-
       html = @bundle.render({ data: { name: 'AutoReload' } })
 
       assert_includes html, 'AutoReload'
@@ -74,8 +73,10 @@ module SSR
 
     def test_reload_updates_mtime
       orig_mtime = @bundle.instance_variable_get(:@mtime)
+
       FileUtils.touch(BUNDLE_PATH)
       @bundle.reload
+
       new_mtime = @bundle.instance_variable_get(:@mtime)
 
       assert_operator new_mtime, :>, orig_mtime
@@ -83,6 +84,7 @@ module SSR
 
     def test_auto_reload_triggers_reload_when_file_changed
       @bundle.auto_reload = true
+
       FileUtils.touch(BUNDLE_PATH)
 
       html = @bundle.render({ data: { name: 'Changed' } })
