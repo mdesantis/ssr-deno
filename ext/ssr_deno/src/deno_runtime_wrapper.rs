@@ -25,6 +25,7 @@ pub enum DenoError {
     BundleLoad(String),
     WorkerInit(String),
     WorkerDied(String),
+    BundleNotFound(String),
     Render(String),
 }
 
@@ -34,6 +35,7 @@ impl std::fmt::Display for DenoError {
             Self::BundleLoad(msg)
             | Self::WorkerInit(msg)
             | Self::WorkerDied(msg)
+            | Self::BundleNotFound(msg)
             | Self::Render(msg) => write!(f, "{msg}"),
         }
     }
@@ -46,9 +48,16 @@ impl std::error::Error for DenoError {}
 // ---------------------------------------------------------------------------
 
 enum WorkerMsg {
+    LoadBundle {
+        bundle_id: String,
+        bundle_code: String,
+        script_name: &'static str,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     Render {
+        bundle_id: String,
         args_json: String,
-        reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
     },
 }
 
@@ -67,11 +76,28 @@ pub struct DenoRuntimeWrapper {
 }
 
 impl DenoRuntimeWrapper {
-    /// Spawns the Deno worker thread, evaluates the SSR bundle, and blocks
-    /// until the worker signals that initialization is complete.
-    pub fn new(bundle_path: &str) -> Result<Self, DenoError> {
-        // Validate and read eagerly so errors surface in the caller's context,
-        // not silently inside the background thread.
+    /// Spawns the Deno worker thread and blocks until it is ready to accept
+    /// bundle-load and render requests. No bundle is evaluated at this stage.
+    pub fn new() -> Result<Self, DenoError> {
+        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
+        let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+
+        std::thread::Builder::new()
+            .name("deno-worker".into())
+            .spawn(move || worker_thread_main(rx, init_tx))
+            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
+
+        init_rx
+            .recv()
+            .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
+            .map_err(DenoError::WorkerInit)?;
+
+        Ok(Self { tx })
+    }
+
+    /// Evaluates a Vite SSR bundle and registers its `render` function under
+    /// `globalThis.__ssr_bundles[bundle_id]`. Safe to call for multiple bundles.
+    pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), DenoError> {
         let bundle_name = std::path::Path::new(bundle_path)
             .file_name()
             .and_then(|s| s.to_str())
@@ -98,37 +124,39 @@ impl DenoRuntimeWrapper {
             .map_err(|e| DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}")))?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
-        // name. One bounded leak per wrapper instance (process-lifetime here).
+        // name. One bounded leak per bundle load (process-lifetime here).
         let script_name: &'static str = canonical
             .file_name()
             .and_then(|s| s.to_str())
             .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
             .unwrap_or("main.js");
 
-        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
-        let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
-        std::thread::Builder::new()
-            .name("deno-worker".into())
-            .spawn(move || worker_thread_main(canonical, bundle_code, script_name, rx, init_tx))
-            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
+        self.tx
+            .blocking_send(WorkerMsg::LoadBundle {
+                bundle_id: bundle_id.to_string(),
+                bundle_code,
+                script_name,
+                reply: reply_tx,
+            })
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        init_rx
-            .recv()
-            .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
-            .map_err(DenoError::WorkerInit)?;
-
-        Ok(Self { tx })
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
+            .map_err(DenoError::BundleLoad)
     }
 
     /// Sends a render request to the worker thread and blocks until the result
     /// arrives. Safe to call from a non-async context (e.g. Ruby's GVL thread).
     /// Returns the result as a JSON string so any JS type survives the boundary.
-    pub fn block_on_render(&self, args_json: &str) -> Result<String, DenoError> {
+    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         self.tx
             .blocking_send(WorkerMsg::Render {
+                bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
                 reply: reply_tx,
             })
@@ -137,7 +165,6 @@ impl DenoRuntimeWrapper {
         reply_rx
             .blocking_recv()
             .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
-            .map_err(DenoError::Render)
     }
 }
 
@@ -146,9 +173,6 @@ impl DenoRuntimeWrapper {
 // ---------------------------------------------------------------------------
 
 fn worker_thread_main(
-    main_module_path: std::path::PathBuf,
-    bundle_code: String,
-    script_name: &'static str,
     mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
 ) {
@@ -166,10 +190,12 @@ fn worker_thread_main(
     // LocalSet is required by deno_unsync::spawn_local, which Deno's Web API
     // extensions (e.g. MessagePort used by React 19's scheduler) call internally.
     tokio::task::LocalSet::new().block_on(&rt, async move {
-        let main_module_url = match Url::from_file_path(&main_module_path) {
+        // Synthetic URL — only required as metadata for MainWorker bootstrap.
+        // All bundles are loaded via execute_script, not ES module resolution.
+        let main_module_url = match Url::parse("https://ssr-deno.local/") {
             Ok(url) => url,
-            Err(_) => {
-                let _ = init_tx.send(Err("Cannot convert bundle path to URL".to_string()));
+            Err(e) => {
+                let _ = init_tx.send(Err(format!("Cannot build worker URL: {e}")));
                 return;
             }
         };
@@ -182,22 +208,55 @@ fn worker_thread_main(
             }
         };
 
-        if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
-            let _ = init_tx.send(Err(format!("Failed to evaluate SSR bundle: {e}")));
-            return;
-        }
-
         let _ = init_tx.send(Ok(()));
 
         while let Some(msg) = rx.recv().await {
             match msg {
-                WorkerMsg::Render { args_json, reply } => {
-                    let result = call_render(&mut worker, &args_json).map_err(|e| e.to_string());
+                WorkerMsg::LoadBundle { bundle_id, bundle_code, script_name, reply } => {
+                    let result = load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::Render { bundle_id, args_json, reply } => {
+                    let result = call_render(&mut worker, &bundle_id, &args_json);
                     let _ = reply.send(result);
                 }
             }
         }
     });
+}
+
+/// Evaluates the bundle code and moves `globalThis.render` into the bundle
+/// namespace: `globalThis.__ssr_bundles[bundle_id] = { render: globalThis.render }`.
+fn load_bundle_in_worker(
+    worker: &mut MainWorker,
+    bundle_id: &str,
+    bundle_code: String,
+    script_name: &'static str,
+) -> Result<(), String> {
+    if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
+        return Err(format!("Failed to evaluate SSR bundle: {e}"));
+    }
+
+    // Move globalThis.render into the bundle namespace so multiple bundles
+    // can coexist in the same V8 context without overwriting each other.
+    // bundle_id is validated to [a-zA-Z0-9_-] before reaching here.
+    let namespace_script = format!(
+        r#"(function(id) {{
+            if (typeof globalThis.__ssr_bundles === 'undefined') {{
+                globalThis.__ssr_bundles = {{}};
+            }}
+            if (typeof globalThis.render !== 'function') {{
+                throw new Error('Bundle did not assign a function to globalThis.render');
+            }}
+            globalThis.__ssr_bundles[id] = {{ render: globalThis.render }};
+            globalThis.render = undefined;
+        }})("{bundle_id}");"#
+    );
+
+    worker
+        .execute_script("<ssr-deno:namespace>", namespace_script.into())
+        .map(|_| ())
+        .map_err(|e| format!("Failed to namespace bundle '{bundle_id}': {e}"))
 }
 
 fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
@@ -254,7 +313,7 @@ fn build_worker(main_module: &Url) -> Result<MainWorker, String> {
 // V8 render call
 // ---------------------------------------------------------------------------
 
-fn call_render(worker: &mut MainWorker, args_json: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
@@ -266,14 +325,38 @@ fn call_render(worker: &mut MainWorker, args_json: &str) -> Result<String, Box<d
 
     let global = context_local.global(&mut context_scope);
 
+    // globalThis.__ssr_bundles
+    let bundles_key = v8::String::new(&mut context_scope, "__ssr_bundles").unwrap();
+    let bundles_val = global
+        .get(&mut context_scope, bundles_key.into())
+        .filter(|v| !v.is_undefined() && !v.is_null())
+        .ok_or_else(|| DenoError::BundleNotFound(format!("No bundles loaded (id: {bundle_id})")))?;
+
+    let bundles_obj: v8::Local<v8::Object> = bundles_val
+        .try_into()
+        .map_err(|_| DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})")))?;
+
+    // globalThis.__ssr_bundles[bundle_id]
+    let id_key = v8::String::new(&mut context_scope, bundle_id).unwrap();
+    let entry_val = bundles_obj
+        .get(&mut context_scope, id_key.into())
+        .filter(|v| !v.is_undefined() && !v.is_null())
+        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' not found")))?;
+
+    let entry_obj: v8::Local<v8::Object> = entry_val
+        .try_into()
+        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object")))?;
+
+    // globalThis.__ssr_bundles[bundle_id].render
     let render_key = v8::String::new(&mut context_scope, "render").unwrap();
-    let render_val = global
+    let render_val = entry_obj
         .get(&mut context_scope, render_key.into())
-        .ok_or("`render` is not defined in the global scope")?;
+        .filter(|v| !v.is_undefined() && !v.is_null())
+        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function")))?;
 
     let render_fn: v8::Local<v8::Function> = render_val
         .try_into()
-        .map_err(|_| "`render` is not a function")?;
+        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function")))?;
 
     let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
     let undefined = v8::undefined(&mut context_scope);
@@ -292,14 +375,14 @@ fn call_render(worker: &mut MainWorker, args_json: &str) -> Result<String, Box<d
                 .message()
                 .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
                 .unwrap_or_else(|| "`render` function threw an exception".to_string());
-            return Err(msg.into());
+            return Err(DenoError::Render(msg));
         }
     };
 
     // JSON-serialize so any JS type (string, object, array, …) survives the
     // V8→Rust→Ruby boundary. Ruby's JSON.parse reconstructs the value.
     let json_str = v8::json::stringify(&try_catch, result)
-        .ok_or("Cannot serialize render result to JSON")?;
+        .ok_or_else(|| DenoError::Render("Cannot serialize render result to JSON".to_string()))?;
 
     Ok(json_str.to_rust_string_lossy(&try_catch))
 }

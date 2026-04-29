@@ -10,21 +10,21 @@ module SSR
     GEM_ROOT = File.expand_path('../..', __dir__)
 
     def setup
-      SSR::Deno.init_runtime(BUNDLE_PATH)
+      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
     end
 
     def test_render_when_js_throws_raises_render_error
       assert_raises(SSR::Deno::RenderError) do
-        SSR::Deno.render('invalid-json', raw_input: true)
+        @bundle.render('invalid-json', raw_input: true)
       end
     end
 
-    def test_init_runtime_when_bundle_not_found_raises_js_runtime_initialization_error
+    def test_native_load_bundle_when_bundle_not_found_raises_js_runtime_initialization_error
       script = <<~RUBY
         $LOAD_PATH.unshift('lib')
         require 'ssr/deno'
         begin
-          SSR::Deno.init_runtime('/nonexistent/entry-server.js')
+          SSR::Deno::Bundle.new('/nonexistent/entry-server.js')
         rescue SSR::Deno::JsRuntimeInitializationError
           exit 0
         end
@@ -35,12 +35,18 @@ module SSR
       assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeInitializationError to be raised'
     end
 
-    def test_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
+    def test_native_render_when_bundle_not_loaded_raises_bundle_not_found_error
+      assert_raises(SSR::Deno::BundleNotFoundError) do
+        SSR::Deno.native_render('nonexistent_bundle_id', '{}')
+      end
+    end
+
+    def test_native_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
       script = <<~RUBY
         $LOAD_PATH.unshift('lib')
         require 'ssr/deno'
         begin
-          SSR::Deno.render({})
+          SSR::Deno.native_render('some_id', '{}')
         rescue SSR::Deno::JsRuntimeNotInitializedError
           exit 0
         end

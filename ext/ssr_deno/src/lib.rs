@@ -29,57 +29,58 @@ fn js_runtime_worker_error(msg: impl Into<String>) -> Error {
     Error::new(deno_exc("JsRuntimeWorkerError"), msg.into())
 }
 
-fn render_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("RenderError"), msg.into())
+fn bundle_not_found_error(msg: impl Into<String>) -> Error {
+    Error::new(deno_exc("BundleNotFoundError"), msg.into())
 }
 
-/// Initializes the Deno runtime by loading and evaluating the Vite SSR bundle.
-///
-/// # Arguments
-///
-/// * `bundle_path` - Path to the self-contained Vite SSR bundle (entry-server.js)
-///
-/// # Returns
-///
-/// `true` on first successful initialization, `nil` on subsequent calls.
-///
-/// # Errors
-///
-/// Returns `SSR::Deno::JsRuntimeInitializationError` if:
-/// - The bundle file cannot be read
-/// - The bundle JavaScript cannot be evaluated
-fn init_runtime(bundle_path: String) -> Result<Option<bool>, Error> {
-    if RUNTIME.get().is_some() {
-        return Ok(None);
-    }
-    let _guard = INIT_LOCK.lock().unwrap();
-    if RUNTIME.get().is_some() {
-        return Ok(None);
-    }
-    let runtime = DenoRuntimeWrapper::new(&bundle_path)
-        .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
-    let _ = RUNTIME.set(runtime);
-    Ok(Some(true))
+fn render_error(msg: impl Into<String>) -> Error {
+    Error::new(deno_exc("RenderError"), msg.into())
 }
 
 fn map_render_error(e: DenoError) -> Error {
     match e {
         DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
+        DenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
         DenoError::Render(msg) => render_error(msg),
         other => js_runtime_worker_error(other.to_string()),
     }
 }
 
+// TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
+fn get_or_init_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
+    if let Some(r) = RUNTIME.get() {
+        return Ok(r);
+    }
+    let _guard = INIT_LOCK.lock().unwrap();
+    if let Some(r) = RUNTIME.get() {
+        return Ok(r);
+    }
+    let rt = DenoRuntimeWrapper::new()
+        .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
+    let _ = RUNTIME.set(rt);
+    Ok(RUNTIME.get().unwrap())
+}
+
 fn get_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
     RUNTIME
         .get()
-        .ok_or_else(|| js_runtime_not_initialized_error("Runtime not initialized. Call `init_runtime` first."))
+        .ok_or_else(|| js_runtime_not_initialized_error("Runtime not initialized. Call `SSR::Deno::Bundle.new` first."))
+}
+
+/// Loads a bundle into the shared Deno worker, registering its render function
+/// under `globalThis.__ssr_bundles[bundle_id]`. Initializes the runtime lazily.
+fn native_load_bundle(bundle_id: String, bundle_path: String) -> Result<(), Error> {
+    get_or_init_runtime()?
+        .load_bundle(&bundle_id, &bundle_path)
+        .map_err(|e| js_runtime_initialization_error(e.to_string()))
 }
 
 /// Returns the render result as a JSON string so any JS type survives the
 /// boundary. Ruby's `JSON.parse` reconstructs the value.
-fn render(args_json: String) -> Result<String, Error> {
-    get_runtime()?.block_on_render(&args_json).map_err(map_render_error)
+fn native_render(bundle_id: String, args_json: String) -> Result<String, Error> {
+    get_runtime()?
+        .block_on_render(&bundle_id, &args_json)
+        .map_err(map_render_error)
 }
 
 /// Returns the version of the ssr_deno native extension.
@@ -91,9 +92,9 @@ fn native_version() -> String {
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
-    // Opt in to Ractor safety. All shared state (RUNTIME, INIT_LOCK) is
-    // Rust-level and protected by OnceLock/Mutex. Renders serialize through
-    // a tokio channel so concurrent Ractors queue and get isolated results.
+    // Opt in to Ractor safety. All shared state (RUNTIME) is Rust-level and
+    // protected by OnceLock. Renders serialize through a tokio channel so
+    // concurrent Ractors queue and get isolated results.
     unsafe {
         extern "C" {
             fn rb_ext_ractor_safe(flag: bool);
@@ -108,10 +109,11 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("JsRuntimeInitializationError", base_error)?;
     deno_module.define_error("JsRuntimeNotInitializedError", base_error)?;
     deno_module.define_error("JsRuntimeWorkerError", base_error)?;
+    deno_module.define_error("BundleNotFoundError", base_error)?;
     deno_module.define_error("RenderError", base_error)?;
 
-    deno_module.define_singleton_method("init_runtime", function!(init_runtime, 1))?;
-    deno_module.define_singleton_method("native_render", function!(render, 1))?;
+    deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
+    deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
     Ok(())
 }
