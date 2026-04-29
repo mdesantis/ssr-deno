@@ -20,14 +20,17 @@ module SSR
 
         config.ssr_deno.bundles.each do |name, path|
           path ||= default_bundle_path(name)
+
           next unless path
 
           unless File.exist?(path)
             Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
             next
           end
+
           bundle = SSR::Deno::Bundle.new(path)
           bundle.auto_reload = true if config.ssr_deno.auto_reload
+
           SSR::Deno::Bundle.registry.register(name, bundle)
         rescue ArgumentError
           Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} already registered. Skipping."

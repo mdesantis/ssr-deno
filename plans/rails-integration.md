@@ -111,9 +111,8 @@ module SSR
         # @raise [ArgumentError] if name already registered
         def register(name, bundle)
           @mutex.synchronize do
-            if @bundles.key?(name)
-              raise ArgumentError, "Bundle #{name.inspect} already registered"
-            end
+            raise ArgumentError, "Bundle #{name.inspect} already registered" if @bundles.key?(name)
+
             @bundles[name] = bundle
           end
         end
@@ -195,6 +194,7 @@ Loaded via the entry point. Responsibilities:
 - Hook into `after_initialize` to init bundles from config
 - Hook into `reload_classes_only_on_change` for dev reload
 - Add view helper
+- Set `auto_reload` on each bundle when `config.ssr_deno.auto_reload` is enabled
 
 ```ruby
 module SSR
@@ -206,13 +206,13 @@ module SSR
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
 
-      initializer 'ssr_deno.setup' do |app|
+      initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
           include SSR::Deno::Helper
         end
       end
 
-      initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |app|
+      initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |_app|
         next unless config.ssr_deno.enabled
 
         config.ssr_deno.bundles.each do |name, path|
@@ -223,7 +223,9 @@ module SSR
             Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
             next
           end
-          SSR::Deno::Bundle.registry.register(name, SSR::Deno::Bundle.new(path))
+          bundle = SSR::Deno::Bundle.new(path)
+          bundle.auto_reload = true if config.ssr_deno.auto_reload
+          SSR::Deno::Bundle.registry.register(name, bundle)
         rescue ArgumentError
           Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} already registered. Skipping."
         end
@@ -262,7 +264,7 @@ Rails.application.config.ssr_deno.bundles = {
 
 ### 4. View Helper — [`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb)
 
-Generic SSR render method. Looks up bundle by name from the registry.
+Generic SSR render method. Looks up bundle by name from the registry. Bundle lookup is extracted into a private `find_bundle!` method to keep `ssr_render` focused on the render-or-fallback logic.
 
 ```ruby
 module SSR
@@ -285,19 +287,26 @@ module SSR
       #   when +raise_on_render_error+ is true.
       def ssr_render(data = nil, **options)
         bundle_name = options.delete(:bundle) || :application
-        bundle = SSR::Deno::Bundle.registry[bundle_name]
-        raise SSR::Deno::BundleNotFoundError,
-          "SSR bundle #{bundle_name.inspect} not registered" unless bundle
-
+        bundle = find_bundle!(bundle_name)
         bundle.render(data, **options).html_safe
-      rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError => e
-        if Rails.application.config.ssr_deno.raise_on_render_error
-          raise
-        else
-          Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \
-                             "falling back to CSR: #{e.message}"
-          ''.html_safe
+      rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError => error
+        raise if Rails.application.config.ssr_deno.raise_on_render_error
+
+        Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \
+                           "falling back to CSR: #{error.message}"
+        ''.html_safe
+      end
+
+      private
+
+      def find_bundle!(bundle_name)
+        bundle = SSR::Deno::Bundle.registry[bundle_name]
+        unless bundle
+          raise SSR::Deno::BundleNotFoundError,
+                "SSR bundle #{bundle_name.inspect} not registered"
         end
+
+        bundle
       end
     end
   end
@@ -357,17 +366,14 @@ Creates:
 
 In development, Vite rebuilds on file changes. The SSR bundle file changes on disk. Strategy:
 
-**File watcher approach** (simplest):
+**Built-in mtime check** (simplest): The `Bundle` class has `auto_reload` attribute and `reload_if_changed` private method baked in. No monkey-patching needed.
+
 ```ruby
-if config.ssr_deno.auto_reload
-  # Check mtime before each render; reload if changed
-  class SSR::Deno::Bundle
-    def render(...)
-      reload_if_changed if @auto_reload
-      super
-    end
-  end
-end
+# In Bundle#render:
+reload_if_changed if @auto_reload
+
+# In Railtie, auto_reload is set on each bundle:
+bundle.auto_reload = true if config.ssr_deno.auto_reload
 ```
 
 **Alternative:** Use Rails `file_system_updater` or `ActiveSupport::FileUpdateChecker`.
@@ -442,13 +448,13 @@ lib/
 ## Implementation Phases
 
 ### Phase 1: Core Rails Integration
-- [ ] Add `railties` as optional dependency in gemspec (`spec.add_dependency 'railties'`)
-- [ ] Create [`lib/ssr/deno/bundle/registry.rb`](lib/ssr/deno/bundle/registry.rb) — `SSR::Deno::Bundle::Registry` class with `register`, `replace`, `remove`, `[]`, `each`, `size`; thread-safe via `Mutex`
-- [ ] Add convenience accessor `SSR::Deno::Bundle.registry` to [`lib/ssr/deno/bundle.rb`](lib/ssr/deno/bundle.rb)
-- [ ] Create entry point [`lib/ssr/deno/rails.rb`](lib/ssr/deno/rails.rb) — requires Railtie, Helper, Generator
-- [ ] Create [`lib/ssr/deno/rails/railtie.rb`](lib/ssr/deno/rails/railtie.rb) — Railtie with config namespace, init bundles via `SSR::Deno::Bundle.registry.register`
-- [ ] Create [`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb) — `ssr_render(data, bundle: :application, **options)` view helper using `SSR::Deno::Bundle.registry[name]`
-- [ ] Add development auto-reload (mtime check)
+- [x] Add `railties` as optional dependency in gemspec (`spec.add_dependency 'railties'`)
+- [x] Create [`lib/ssr/deno/bundle/registry.rb`](lib/ssr/deno/bundle/registry.rb) — `SSR::Deno::Bundle::Registry` class with `register`, `replace`, `remove`, `[]`, `each`, `size`; thread-safe via `Mutex`
+- [x] Add convenience accessor `SSR::Deno::Bundle.registry` to [`lib/ssr/deno/bundle.rb`](lib/ssr/deno/bundle.rb)
+- [x] Create entry point [`lib/ssr/deno/rails.rb`](lib/ssr/deno/rails.rb) — requires Railtie, Helper, Generator
+- [x] Create [`lib/ssr/deno/rails/railtie.rb`](lib/ssr/deno/rails/railtie.rb) — Railtie with config namespace, init bundles via `SSR::Deno::Bundle.registry.register`
+- [x] Create [`lib/ssr/deno/rails/helper.rb`](lib/ssr/deno/rails/helper.rb) — `ssr_render(data, bundle: :application, **options)` view helper using `SSR::Deno::Bundle.registry[name]`
+- [x] Add development auto-reload (mtime check)
 - [ ] Write tests with a Rails dummy app (using `rails app:template` or `combustion` gem)
 
 ### Phase 2: Generator

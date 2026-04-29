@@ -17,6 +17,7 @@ module SSR
         @bundle_id = object_id.to_s
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
+
         load
       end
 
