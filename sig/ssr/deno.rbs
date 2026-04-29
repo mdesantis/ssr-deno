@@ -22,6 +22,10 @@ module SSR
     class RenderError < Error
     end
 
+    module Instrumenter
+      def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
+    end
+
     class Bundle
       @bundle_path: String
       @bundle_id: String

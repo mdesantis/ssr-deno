@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'bundle/registry'
+require_relative 'instrumenter'
 
 module SSR
   module Deno
@@ -60,18 +61,10 @@ module SSR
 
       private
 
-      # Instrument a block with ActiveSupport::Notifications.
-      # No-ops when ActiveSupport::Notifications is not loaded (core gem mode).
-      # The ActiveSupport::Notifications branch is exercised by Rails
-      # integration tests (test/ssr/integration_deno_rails.rb), which are
-      # excluded from SimpleCov because they require a full Rails boot.
-      # :nocov:
-      def instrument(name, payload = {}, &)
-        return yield unless defined?(ActiveSupport::Notifications)
-
-        ActiveSupport::Notifications.instrument(name, payload, &)
+      # Delegate instrumentation to the shared Instrumenter module.
+      def instrument(...)
+        Instrumenter.instrument(...)
       end
-      # :nocov:
 
       # Load (or reload) the bundle into the Deno runtime.
       def load

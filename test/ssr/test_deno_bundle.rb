@@ -94,11 +94,21 @@ module SSR
     end
 
     def test_instrument_noop_when_active_support_notifications_not_loaded
-      # instrument is a private no-op when ActiveSupport::Notifications is
-      # not defined (core gem mode, no Rails). Verify render still works.
-      html = @bundle.render({ data: { name: 'NoInstrument' } })
+      # Temporarily undefine ActiveSupport::Notifications to exercise the
+      # no-op branch of Instrumenter (core gem mode, no Rails).
+      original = ActiveSupport.send(:remove_const, :Notifications)
 
-      assert_includes html, 'NoInstrument'
+      result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }
+
+      assert_equal 'yielded', result
+    ensure
+      ActiveSupport.const_set(:Notifications, original)
+    end
+
+    def test_instrument_with_active_support_notifications
+      result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }
+
+      assert_equal 'yielded', result
     end
   end
 end
