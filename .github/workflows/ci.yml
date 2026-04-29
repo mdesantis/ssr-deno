@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     name: CI - ${{ matrix.ruby }}
     strategy:
+      fail-fast: false
       matrix:
         ruby:
           - '3.3'
@@ -57,6 +58,10 @@ jobs:
           sudo apt-get install -yq --no-install-suggests --no-install-recommends \
             lld-19 clang-19 libclang-19-dev
           echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> $GITHUB_ENV
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       - name: Compile native extension
         run: bundle exec rake compile
       - name: Build Vite SSR sample bundle
