@@ -10,7 +10,6 @@ AllCops:
   Exclude:
     - 'ext/ssr_deno/target/**/*'
     - 'samples/**/*'
-    - 'third_party/**/*'
     - 'tmp/**/*'
     - 'test/dummy/**/*'
     - 'vendor/**/*'
