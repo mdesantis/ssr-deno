@@ -228,7 +228,7 @@ sys_traits = "=0.1.27"
 libc = "0.2"
 
 [patch.crates-io]
-v8 = { path = "../../third_party/rusty_v8" }
+v8 = { path = "../../vendor/rusty_v8" }
 ```
 
 The `transpile` feature enables TypeScript transpilation for `deno_telemetry`
