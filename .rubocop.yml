@@ -13,6 +13,7 @@ AllCops:
     - 'third_party/**/*'
     - 'tmp/**/*'
     - 'test/dummy/**/*'
+    - 'vendor/**/*'
 
 Layout/HeredocIndentation:
   Enabled: false
