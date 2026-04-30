@@ -27,7 +27,7 @@ module SSR
       Warning[:experimental] = false
       ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}') }
       Warning[:experimental] = prev_experimental
-      result = ractor.value
+      result = ractor.respond_to?(:value) ? ractor.value : ractor.take
 
       assert_includes result, 'Ractor'
     end
