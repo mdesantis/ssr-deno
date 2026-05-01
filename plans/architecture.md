@@ -198,7 +198,14 @@ ssr-deno/
 │   └── vite-ssr-app/                # Sample Vite SSR project (deno.json, src/, dist/)
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
+│   ├── ci-speedup.md
+│   ├── memory-performance-analysis.md
 │   ├── rails-integration.md
+│   ├── render-timeout.md
+│   ├── rust-unit-tests.md
+│   ├── ssr-process-pool.md
+│   ├── streaming-ssr.md
+│   ├── v8-heap-metrics.md
 │   └── v8-tls-issue.md
 ├── .github/
 │   └── workflows/
@@ -242,8 +249,8 @@ entry pins `v8` to a local checkout built with the TLS fix from
 - Registers `native_load_bundle(bundle_id, bundle_path)` to evaluate a bundle
 - Registers `native_render(bundle_id, json_string)` to call a bundle's render function
 - Registers `native_version` to return the crate version
-- Uses `POOL: OnceLock<IsolatePool>` for the isolate pool (replaced the single `DenoRuntimeWrapper`)
-- Double-checked locking via `INIT_LOCK: Mutex<()>` prevents TOCTOU races
+- Uses `POOL: OnceLock<IsolatePool>` for the isolate pool
+- Double-checked locking via `POOL_INIT_LOCK: Mutex<()>` prevents TOCTOU races
 - Config stored in `CONFIG: Mutex<Config>` with `INITIALIZED: OnceLock<()>` guard
   (Mutex allows multiple fields to be set independently; the guard prevents mutation after init)
 - Each `IsolateHandle` holds a Tokio runtime + `MainWorker` on its own `deno-worker-{index}` thread
@@ -253,8 +260,10 @@ use magnus::{function, Error, Module, Object, Ruby};
 use std::sync::{Mutex, OnceLock};
 use crate::deno_runtime_wrapper::IsolatePool;
 
-static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
-static INIT_LOCK: Mutex<()> = Mutex::new(());
+static POOL: OnceLock<IsolatePool> = OnceLock::new();
+static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
+static INITIALIZED: OnceLock<()> = OnceLock::new();
+static CONFIG: Mutex<Config> = Mutex::new(Config::default());
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {

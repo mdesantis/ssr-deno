@@ -12,7 +12,7 @@ The SSR pipeline has three layers:
 Ruby (Rails) ──blocking_send──> Rust (tokio channel) ──> Deno Worker Thread (V8 isolate)
 ```
 
-- **One V8 isolate** per Ruby process, initialized lazily on first [`Bundle.new`](../lib/ssr/deno/bundle.rb:16)
+- **Up to N V8 isolates** (default: CPU count, max 8) per Ruby process via `IsolatePool`, initialized lazily on first [`Bundle.new`](../lib/ssr/deno/bundle.rb:16)
 - **One background thread** (`deno-worker`) running a tokio runtime with a `LocalSet`
 - **Multiple bundles** coexist in the same V8 context under `globalThis.__ssr_bundles[bundle_id]`
 - **Serialized communication** via `tokio::sync::mpsc::channel(1)` — buffer depth of 1
