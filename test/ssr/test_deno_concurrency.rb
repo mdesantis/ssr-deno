@@ -5,12 +5,15 @@ require 'test_helper'
 module SSR
   class TestDenoConcurrency < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
-    BUNDLE = SSR::Deno::Bundle.new(BUNDLE_PATH)
+
+    def setup
+      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+    end
 
     def test_render_is_thread_safe
       n = 20
       # rubocop:disable ThreadSafety/NewThread
-      threads = Array.new(n) { |i| Thread.new { BUNDLE.render({ data: { name: "T#{i}" } }) } }
+      threads = Array.new(n) { |i| Thread.new { @bundle.render({ data: { name: "T#{i}" } }) } }
       # rubocop:enable ThreadSafety/NewThread
       results = threads.map(&:value)
 
@@ -19,7 +22,7 @@ module SSR
     end
 
     def test_native_render_from_ractor
-      bundle_id = BUNDLE.instance_variable_get(:@bundle_id)
+      bundle_id = @bundle.instance_variable_get(:@bundle_id)
       prev_experimental = Warning[:experimental]
       Warning[:experimental] = false
       ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}') }
