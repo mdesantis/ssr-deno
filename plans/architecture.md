@@ -199,7 +199,6 @@ ssr-deno/
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
 │   ├── rails-integration.md
-│   ├── security-review.md
 │   └── v8-tls-issue.md
 ├── .github/
 │   └── workflows/

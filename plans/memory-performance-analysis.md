@@ -325,7 +325,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 1. **Add a render timeout** (30s default) — see [`plans/render-timeout.md`](render-timeout.md).
 
-2. **Document the threading model** in README — see [`plans/threading-documentation.md`](threading-documentation.md).
+2. **Document the threading model** in README — see the [Configuration section](../README.md#configuration).
 
 3. **Add V8 heap metrics** to `ActiveSupport::Notifications` — see [`plans/v8-heap-metrics.md`](v8-heap-metrics.md).
 
@@ -339,7 +339,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.3 Long Term
 
-7. ✅ **Multiple V8 isolates** — Implemented. See [`plans/multiple-isolates.md`](multiple-isolates.md). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
+7. ✅ **Multiple V8 isolates** — Implemented. See [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (`IsolatePool`). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
 
 ---
 

@@ -1,7 +1,7 @@
 # V8 Heap Size Limit
 
 > **Source:** Discovered during review of [`memory-performance-analysis.md`](memory-performance-analysis.md) — V8's `CreateParams` exposes heap size constraints that are already wired through `WorkerOptions.create_params` but currently set to `None`.
-> **Cross-refs:** [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (build_worker, line 289), [`v8-heap-metrics.md`](v8-heap-metrics.md) (HeapStatistics reporting), [`multiple-isolates.md`](multiple-isolates.md) (per-isolate memory budget)
+> **Cross-refs:** [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (build_worker), [`v8-heap-metrics.md`](v8-heap-metrics.md) (HeapStatistics reporting), [`IsolatePool`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (per-isolate memory budget)
 
 ---
 
@@ -13,7 +13,7 @@ Without a cap:
 
 1. **A memory-leaking component** can grow the V8 heap unchecked until the OS OOM-kills the Ruby process, taking down the entire Puma worker.
 
-2. **No predictable memory budget** — operators can't say "each Puma worker uses at most X MB for SSR." This makes capacity planning harder, especially with multiple isolates ([`multiple-isolates.md`](multiple-isolates.md)).
+2. **No predictable memory budget** — operators can't say "each Puma worker uses at most X MB for SSR." This makes capacity planning harder, especially with multiple isolates (see `IsolatePool` in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)).
 
 3. **V8 GC pressure increases** with heap size — larger heaps mean longer mark-sweep pauses when GC eventually runs.
 
@@ -352,12 +352,14 @@ bundle exec ruby -e "
 7. ✅ Add Ruby unit tests — **Done**
 8. ✅ Run `bundle exec rake` to verify full pipeline — **Done**
 
----
+## Tracking
+
+- [ ] Periodically check the merge status of [`rusty_v8` PR #1970](https://github.com/denoland/rusty_v8/pull/1970) — once merged, `V8_FROM_SOURCE=true` and the custom `GN_ARGS` will no longer be needed, simplifying the build pipeline. See [`v8-tls-issue.md`](v8-tls-issue.md) for details.
 
 ## Open Questions
 
 1. **Should we also set `max_young_generation_size`?** The young generation default is typically ~2–8 MB and scales with the old generation limit. For SSR workloads (short-lived render objects), a smaller young gen means more frequent but faster Scavenge GC. **Recommendation:** Leave at default for now.
 
-2. **Should the limit be configurable per-isolate (for the multiple-isolates plan)?** Yes — when [`multiple-isolates.md`](multiple-isolates.md) is implemented, each isolate should get `total_limit / num_isolates`. This ensures predictable total memory.
+2. **Should the limit be configurable per-isolate?** Yes — each isolate should get `total_limit / num_isolates`. This ensures predictable total memory.
 
 3. **Should we expose the limit via `HeapStatistics`?** Already done — `heap_size_limit` in [`v8-heap-metrics.md`](v8-heap-metrics.md) reports the configured limit. No extra work needed.
