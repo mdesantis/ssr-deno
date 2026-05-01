@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
@@ -21,6 +22,9 @@ pub use ssr_deno_core::DenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
+/// Maximum time to wait for a render response from the V8 isolate.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(10);
+
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and each Deno worker thread
 // ---------------------------------------------------------------------------
@@ -35,7 +39,7 @@ enum WorkerMsg {
     Render {
         bundle_id: String,
         args_json: String,
-        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
+        reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
     },
 }
 
@@ -81,7 +85,8 @@ impl IsolateHandle {
     /// until the result arrives. Returns the result as a JSON string so any
     /// JS type survives the boundary.
     pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let (reply_tx, reply_rx) =
+            std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
 
         self.tx
             .blocking_send(WorkerMsg::Render {
@@ -91,9 +96,19 @@ impl IsolateHandle {
             })
             .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        reply_rx.blocking_recv().map_err(|_| {
-            DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
-        })?
+        match reply_rx.recv_timeout(RENDER_TIMEOUT) {
+            Ok(result) => result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(DenoError::Render(
+                    format!("Render timed out after {}s", RENDER_TIMEOUT.as_secs()),
+                ))
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(DenoError::WorkerDied(
+                    "Deno worker thread exited before sending a reply".into(),
+                ))
+            }
+        }
     }
 
     /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.

@@ -23,10 +23,10 @@ Change the `WorkerMsg::Render` reply channel from `tokio::sync::oneshot` to `std
 
 ### What happens on timeout
 
-1. Ruby thread calls `block_on_render` → sends `WorkerMsg::Render` → blocks on `reply_rx.recv_timeout(30s)`
+1. Ruby thread calls `block_on_render` → sends `WorkerMsg::Render` → blocks on `reply_rx.recv_timeout(10s)`
 2. Worker thread picks up the render → `call_render` hangs
-3. After 30s, `recv_timeout` returns `Err(RecvTimeoutError::Timeout)`
-4. `block_on_render` returns `Err(DenoError::Render("Render timed out after 30s"))`
+3. After 10s, `recv_timeout` returns `Err(RecvTimeoutError::Timeout)`
+4. `block_on_render` returns `Err(DenoError::Render("Render timed out after 10s"))`
 5. Ruby side raises `SSR::Deno::RenderError`
 6. Worker thread eventually finishes the hung render → tries `reply.send(result)` → channel is closed → send fails silently (error ignored)
 7. Worker thread resumes processing subsequent messages
@@ -78,7 +78,7 @@ Render {
 
 ```rust
 /// Maximum time to wait for a render response from the V8 isolate.
-const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+const RENDER_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
     let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
@@ -94,7 +94,9 @@ pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String
     match reply_rx.recv_timeout(RENDER_TIMEOUT) {
         Ok(result) => result,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err(DenoError::Render("Render timed out after 30s".into()))
+            Err(DenoError::Render(
+                format!("Render timed out after {}s", RENDER_TIMEOUT.as_secs()),
+            ))
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
             Err(DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))
@@ -130,23 +132,28 @@ For this PR, **skip the Rust unit test** and cover timeout behavior through Ruby
 
 ### Ruby integration test — [`test/ssr/test_deno_errors.rb`](../test/ssr/test_deno_errors.rb)
 
-The test creates a temp JS file where `render` is an infinite loop. Bundle load succeeds (top-level eval is just `function` assignment); calling `render` hangs.
+The test creates a temp JS file where `render` spins for 60s (bounded, not infinite). Bundle load succeeds (top-level eval is just `function` assignment); calling `render` triggers the 10s timeout.
+
+> **Why bounded instead of `while(true)`**: if the timeout mechanism is broken, `while(true)` hangs the subprocess indefinitely, making the test runner hang. A >10s spin ensures the Rust timeout wins the race when working, while guaranteeing the subprocess always exits eventually (60s worst case instead of forever). Run as a subprocess via `Open3.capture3` for clean environment isolation.
 
 ```ruby
-def test_render_timeout
-  Dir.mktmpdir do |dir|
-    bundle_path = File.join(dir, 'hang-bundle.js')
-    File.write(bundle_path, <<~JS)
-      globalThis.render = function() {
-        while(true) {} // hangs forever
-      };
-    JS
+HANG_JS = "... Date.now() + 60000 spin ..."
 
+def test_render_timeout
+  script = <<~RUBY
+    require 'tmpdir'
+    ...
+    File.write(bundle_path, #{HANG_JS.inspect})
     bundle = SSR::Deno::Bundle.new(bundle_path)
-    assert_raises(SSR::Deno::RenderError) do
+    begin
       bundle.render({})
+      exit 1
+    rescue SSR::Deno::RenderError
+      exit 0
     end
-  end
+  RUBY
+  _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
+  assert_predicate status.exitstatus, :zero?
 end
 ```
 
@@ -154,33 +161,27 @@ end
 
 After a timeout, the hung isolate is blocked until `call_render` returns (see [post-timeout isolate state](#post-timeout-isolate-state)). A subsequent render must dispatch to a **different isolate** in the pool. This test only passes when `isolate_pool_size >= 2`.
 
-Options:
-1. Configure pool size to 2 in the test setup: `SSR::Deno.native_set_isolate_pool_size(2)`
-2. Run as part of the integration suite where auto-detect yields >1 core
+Uses the same bounded 60s spin JS for the first render (not `while(true)`) to guarantee subprocess termination even if timeout is broken.
 
 ```ruby
 def test_render_works_after_timeout
-  SSR::Deno.native_set_isolate_pool_size(2)
-  Dir.mktmpdir do |dir|
-    bundle_path = File.join(dir, 'hang-bundle.js')
-    File.write(bundle_path, <<~JS)
-      globalThis.render = function() {
-        while(true) {} // hangs forever
-      };
-    JS
-
-    bundle = SSR::Deno::Bundle.new(bundle_path)
-    assert_raises(SSR::Deno::RenderError) { bundle.render({}) }
-
-    # Second render, different bundle (uses next isolate via round-robin)
-    ok_path = File.join(dir, 'ok-bundle.js')
-    File.write(ok_path, <<~JS)
-      globalThis.render = function() { return '<h1>ok</h1>'; };
-    JS
-
-    ok_bundle = SSR::Deno::Bundle.new(ok_path)
-    assert_equal '<h1>ok</h1>', ok_bundle.render({})
-  end
+  script = <<~RUBY
+    ...
+    SSR::Deno.isolate_pool_size = 2
+    Dir.mktmpdir do |dir|
+      File.write(hang_path, #{HANG_JS.inspect})
+      hang_bundle = SSR::Deno::Bundle.new(hang_path)
+      begin
+        hang_bundle.render({})
+      rescue SSR::Deno::RenderError
+        # expected — hung isolate is now blocked
+      end
+      # Second render uses next isolate via round-robin
+      File.write(ok_path, "globalThis.render = function() { return '<h1>ok</h1>'; };")
+      ok_bundle = SSR::Deno::Bundle.new(ok_path)
+      assert_equal '<h1>ok</h1>', ok_bundle.render({})
+    end
+  RUBY
 end
 ```
 
@@ -188,9 +189,9 @@ end
 
 ## Implementation Order
 
-1. Add `const RENDER_TIMEOUT: Duration = Duration::from_secs(30)` at module level in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
-2. Change `WorkerMsg::Render` reply type from `tokio::sync::oneshot::Sender` to `std::sync::mpsc::SyncSender`
-3. Replace `blocking_recv` with `recv_timeout(RENDER_TIMEOUT)` in `block_on_render`
-4. Add Ruby integration test `test_render_timeout` — infinite loop bundle → `RenderError`
-5. Add Ruby recovery test `test_render_works_after_timeout` — requires pool size ≥ 2
-6. Run `bundle exec rake` to verify full pipeline
+1. [x] Add `const RENDER_TIMEOUT: Duration = Duration::from_secs(30)` at module level in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+2. [x] Change `WorkerMsg::Render` reply type from `tokio::sync::oneshot::Sender` to `std::sync::mpsc::SyncSender`
+3. [x] Replace `blocking_recv` with `recv_timeout(RENDER_TIMEOUT)` in `block_on_render`
+4. [x] Add Ruby integration test `test_render_timeout` — infinite loop bundle → `RenderError`
+5. [x] Add Ruby recovery test `test_render_works_after_timeout` — requires pool size ≥ 2
+6. [x] Run `bundle exec rake` to verify full pipeline
