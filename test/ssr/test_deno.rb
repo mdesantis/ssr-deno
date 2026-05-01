@@ -14,8 +14,8 @@ module SSR
 
     def test_set_max_heap_size_mb
       # May raise JsRuntimeInitializationError if another test already
-      # initialized the runtime (OnceLock). We accept either outcome —
-      # the purpose is coverage of the accessor and the native method.
+      # initialized the pool (INITIALIZED OnceLock guard). We accept either
+      # outcome — the purpose is coverage of the accessor and the native method.
       SSR::Deno.max_heap_size_mb = 128
     rescue SSR::Deno::JsRuntimeInitializationError
       # runtime already initialized, that's fine
@@ -23,7 +23,8 @@ module SSR
 
     def test_set_isolate_pool_size
       # May raise JsRuntimeInitializationError if another test already
-      # initialized the runtime (OnceLock). We accept either outcome.
+      # initialized the pool (INITIALIZED OnceLock guard). We accept either
+      # outcome — the purpose is coverage of the accessor and the native method.
       SSR::Deno.isolate_pool_size = 4
     rescue SSR::Deno::JsRuntimeInitializationError
       # runtime already initialized, that's fine

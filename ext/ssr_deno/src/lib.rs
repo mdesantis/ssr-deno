@@ -2,15 +2,12 @@ mod deno_runtime_wrapper;
 mod nop_types;
 mod sys;
 
-use deno_runtime_wrapper::{DenoError, IsolatePool};
+use deno_runtime_wrapper::{DenoError, IsolatePool, MAX_ISOLATES};
 use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
 use std::sync::{Mutex, OnceLock};
 
-// Hard cap: isolates beyond this use diminishing returns and eat memory.
-const MAX_ISOLATES: usize = 8;
-
 static POOL: OnceLock<IsolatePool> = OnceLock::new();
-static INIT_LOCK: Mutex<()> = Mutex::new(());
+static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
 static INITIALIZED: OnceLock<()> = OnceLock::new();
 
 /// Configuration passed from Ruby to Rust before runtime initialization.
@@ -115,7 +112,9 @@ fn native_set_isolate_pool_size(size: usize) -> Result<(), Error> {
 }
 
 // ---------------------------------------------------------------------------
-// Pool initialization (double-checked locking)
+// Pool initialization (OnceLock + init mutex)
+//   OnceLock provides lock-free reads after init.
+//   POOL_INIT_LOCK prevents duplicate pool creation during the init window.
 // ---------------------------------------------------------------------------
 
 /// Resolves the effective pool size from config.
@@ -138,7 +137,7 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     if let Some(p) = POOL.get() {
         return Ok(p);
     }
-    let _guard = INIT_LOCK.lock().unwrap();
+    let _guard = POOL_INIT_LOCK.lock().unwrap();
     if let Some(p) = POOL.get() {
         return Ok(p);
     }
@@ -150,9 +149,9 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     // that workloads calibrated for the single-isolate case don't break when
     // the pool auto-detects more cores. Users with tight memory can reduce
     // the per-isolate limit explicitly.
-    let per_isolate_mb = config.max_heap_size_mb;
+    let max_heap_size_mb = config.max_heap_size_mb;
 
-    let pool = IsolatePool::new(pool_size, per_isolate_mb)
+    let pool = IsolatePool::new(pool_size, max_heap_size_mb)
         .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
     let _ = POOL.set(pool);
     let _ = INITIALIZED.set(());

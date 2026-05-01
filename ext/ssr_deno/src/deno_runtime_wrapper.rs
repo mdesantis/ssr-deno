@@ -67,7 +67,7 @@ enum WorkerMsg {
 // on high-core-count machines.
 // ---------------------------------------------------------------------------
 
-const MAX_ISOLATES: usize = 8;
+pub const MAX_ISOLATES: usize = 8;
 
 // ---------------------------------------------------------------------------
 // IsolateHandle — per-isolate channel sender
@@ -142,10 +142,10 @@ pub struct IsolatePool {
 }
 
 impl IsolatePool {
-    /// Creates a pool of `size` isolates, each with `per_isolate_heap_mb`
+    /// Creates a pool of `size` isolates, each with `max_heap_size_mb`
     /// as its V8 heap limit. Returns an error if `size` is 0 or if any
     /// isolate thread fails to spawn.
-    pub fn new(size: usize, per_isolate_heap_mb: usize) -> Result<Self, DenoError> {
+    pub fn new(size: usize, max_heap_size_mb: usize) -> Result<Self, DenoError> {
         if size == 0 {
             return Err(DenoError::WorkerInit(
                 "Pool size must be at least 1".into(),
@@ -159,7 +159,7 @@ impl IsolatePool {
 
         let mut handles = Vec::with_capacity(size);
         for i in 0..size {
-            let handle = IsolateHandle::spawn(i, per_isolate_heap_mb)?;
+            let handle = IsolateHandle::spawn(i, max_heap_size_mb)?;
             handles.push(handle);
         }
 
@@ -170,6 +170,8 @@ impl IsolatePool {
     }
 
     /// Returns the number of live isolates in the pool.
+    /// Currently unused externally — will be needed by heap_stats_all
+    /// for per-isolate metrics reporting (see v8-heap-metrics.md).
     #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.handles.len()
