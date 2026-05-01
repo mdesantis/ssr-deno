@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -44,7 +45,7 @@ impl std::fmt::Display for DenoError {
 impl std::error::Error for DenoError {}
 
 // ---------------------------------------------------------------------------
-// Wire protocol between the Ruby thread and the Deno worker thread
+// Wire protocol between the Ruby thread and each Deno worker thread
 // ---------------------------------------------------------------------------
 
 enum WorkerMsg {
@@ -62,44 +63,137 @@ enum WorkerMsg {
 }
 
 // ---------------------------------------------------------------------------
-// DenoRuntimeWrapper
+// Hard cap on the number of isolates to prevent accidental over-allocation
+// on high-core-count machines.
 // ---------------------------------------------------------------------------
 
-/// Owns the channel to a dedicated background thread that runs the Deno
-/// `MainWorker` (V8 isolate + Web API extensions).
+const MAX_ISOLATES: usize = 8;
+
+// ---------------------------------------------------------------------------
+// IsolateHandle — per-isolate channel sender
+// ---------------------------------------------------------------------------
+
+/// Owns the channel to a dedicated background thread that runs a single
+/// Deno `MainWorker` (V8 isolate + Web API extensions).
 ///
 /// Because `MainWorker` never leaves its thread, no `unsafe` impl or
 /// `UnsafeCell` is required — `tokio::sync::mpsc::Sender` is `Send + Sync`
 /// on its own.
-pub struct DenoRuntimeWrapper {
+pub struct IsolateHandle {
     tx: tokio::sync::mpsc::Sender<WorkerMsg>,
 }
 
-impl DenoRuntimeWrapper {
-    /// Spawns the Deno worker thread and blocks until it is ready to accept
-    /// bundle-load and render requests. No bundle is evaluated at this stage.
-    ///
-    /// `max_heap_size_mb` — optional V8 heap size limit in MB.
-    /// Pass 0 for unlimited (V8 default).
-    pub fn new(max_heap_size_mb: usize) -> Result<Self, DenoError> {
+impl IsolateHandle {
+    /// Spawns a Deno worker thread with the given index and heap limit.
+    /// Blocks until the worker is ready to accept messages.
+    pub fn spawn(index: usize, max_heap_size_mb: usize) -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         std::thread::Builder::new()
-            .name("deno-worker".into())
+            .name(format!("deno-worker-{index}"))
             .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb))
-            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn worker thread: {e}")))?;
+            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}")))?;
 
         init_rx
             .recv()
-            .map_err(|_| DenoError::WorkerInit("Deno worker thread exited unexpectedly during init".into()))?
+            .map_err(|_| DenoError::WorkerInit("Isolate thread exited unexpectedly during init".into()))?
             .map_err(DenoError::WorkerInit)?;
 
         Ok(Self { tx })
     }
 
-    /// Evaluates a Vite SSR bundle and registers its `render` function under
-    /// `globalThis.__ssr_bundles[bundle_id]`. Safe to call for multiple bundles.
+    /// Sends a render request to this isolate's worker thread and blocks
+    /// until the result arrives. Returns the result as a JSON string so any
+    /// JS type survives the boundary.
+    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+        self.tx
+            .blocking_send(WorkerMsg::Render {
+                bundle_id: bundle_id.to_string(),
+                args_json: args_json.to_string(),
+                reply: reply_tx,
+            })
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
+    }
+
+    /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.
+    fn blocking_send(&self, msg: WorkerMsg) -> Result<(), DenoError> {
+        self.tx
+            .blocking_send(msg)
+            .map_err(|_| DenoError::WorkerDied("Isolate worker has exited".into()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IsolatePool — dispatcher of render requests across N isolates
+// ---------------------------------------------------------------------------
+
+/// A load-balancing dispatcher that owns multiple `IsolateHandle`s and
+/// distributes render requests across them in round-robin fashion.
+pub struct IsolatePool {
+    handles: Vec<IsolateHandle>,
+    counter: AtomicUsize, // Round-robin counter
+}
+
+impl IsolatePool {
+    /// Creates a pool of `size` isolates, each with `per_isolate_heap_mb`
+    /// as its V8 heap limit. Returns an error if `size` is 0 or if any
+    /// isolate thread fails to spawn.
+    pub fn new(size: usize, per_isolate_heap_mb: usize) -> Result<Self, DenoError> {
+        if size == 0 {
+            return Err(DenoError::WorkerInit(
+                "Pool size must be at least 1".into(),
+            ));
+        }
+        if size > MAX_ISOLATES {
+            return Err(DenoError::WorkerInit(format!(
+                "Pool size {size} exceeds maximum {MAX_ISOLATES}"
+            )));
+        }
+
+        let mut handles = Vec::with_capacity(size);
+        for i in 0..size {
+            let handle = IsolateHandle::spawn(i, per_isolate_heap_mb)?;
+            handles.push(handle);
+        }
+
+        Ok(Self {
+            handles,
+            counter: AtomicUsize::new(0),
+        })
+    }
+
+    /// Returns the number of live isolates in the pool.
+    #[allow(dead_code)]
+    pub fn size(&self) -> usize {
+        self.handles.len()
+    }
+
+    /// Picks the next isolate in round-robin order.
+    fn next_handle(&self) -> &IsolateHandle {
+        let idx = self.counter.fetch_add(1, Ordering::Relaxed) % self.handles.len();
+        &self.handles[idx]
+    }
+
+    /// Dispatches a render request to the next available isolate.
+    /// Blocks until the result arrives.
+    pub fn dispatch_render(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<String, DenoError> {
+        self.next_handle().block_on_render(bundle_id, args_json)
+    }
+
+    /// Loads a bundle into **every** isolate by broadcasting the bundle code.
+    /// Path resolution (canonicalize, symlink check) is done once — all
+    /// isolates receive the same code and script name.
     pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), DenoError> {
         let bundle_name = std::path::Path::new(bundle_path)
             .file_name()
@@ -109,8 +203,7 @@ impl DenoRuntimeWrapper {
             .map_err(|e| DenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}")))?;
 
         // Reject symlink escapes: the resolved path must stay within the
-        // directory that was originally specified (e.g. entry.js -> /etc/secret
-        // would escape /app/dist/ and be caught here).
+        // directory that was originally specified.
         let original_parent = std::path::Path::new(bundle_path)
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -127,52 +220,36 @@ impl DenoRuntimeWrapper {
             .map_err(|e| DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}")))?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
-        // name. One bounded leak per bundle load (process-lifetime here).
+        // name. One bounded leak per bundle load (shared by all isolates).
         let script_name: &'static str = canonical
             .file_name()
             .and_then(|s| s.to_str())
             .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
             .unwrap_or("main.js");
 
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        // Broadcast to all isolates (sequential — keeps things simple for v1).
+        for handle in &self.handles {
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
-        self.tx
-            .blocking_send(WorkerMsg::LoadBundle {
+            handle.blocking_send(WorkerMsg::LoadBundle {
                 bundle_id: bundle_id.to_string(),
-                bundle_code,
+                bundle_code: bundle_code.clone(),
                 script_name,
                 reply: reply_tx,
-            })
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+            })?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
-            .map_err(DenoError::BundleLoad)
-    }
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| DenoError::WorkerDied("Isolate worker exited before reply".into()))?
+                .map_err(DenoError::BundleLoad)?;
+        }
 
-    /// Sends a render request to the worker thread and blocks until the result
-    /// arrives. Safe to call from a non-async context (e.g. Ruby's GVL thread).
-    /// Returns the result as a JSON string so any JS type survives the boundary.
-    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
-        self.tx
-            .blocking_send(WorkerMsg::Render {
-                bundle_id: bundle_id.to_string(),
-                args_json: args_json.to_string(),
-                reply: reply_tx,
-            })
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
-
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
+        Ok(())
     }
 }
 
 // ---------------------------------------------------------------------------
-// Worker thread
+// Worker thread (per-isolate)
 // ---------------------------------------------------------------------------
 
 fn worker_thread_main(

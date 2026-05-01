@@ -2,25 +2,43 @@ mod deno_runtime_wrapper;
 mod nop_types;
 mod sys;
 
-use deno_runtime_wrapper::{DenoError, DenoRuntimeWrapper};
+use deno_runtime_wrapper::{DenoError, IsolatePool};
 use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
 use std::sync::{Mutex, OnceLock};
 
-static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
+// Hard cap: isolates beyond this use diminishing returns and eat memory.
+const MAX_ISOLATES: usize = 8;
+
+static POOL: OnceLock<IsolatePool> = OnceLock::new();
 static INIT_LOCK: Mutex<()> = Mutex::new(());
-static CONFIG: OnceLock<Config> = OnceLock::new();
+static INITIALIZED: OnceLock<()> = OnceLock::new();
 
 /// Configuration passed from Ruby to Rust before runtime initialization.
-/// All fields have safe defaults so the runtime can be initialized without
-/// calling any setter.
+/// Stored in a Mutex so multiple setters can update individual fields before
+/// the runtime is initialized.
+/// Defaults are safe for unconfigured usage.
 #[derive(Clone, Copy)]
 struct Config {
     max_heap_size_mb: usize,
+    isolate_pool_size: usize, // 0 = auto-detect from CPU count
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self { max_heap_size_mb: 64 } // 64 MB — sensible for SSR workloads
+// Defaults: 64 MB heap, 0 = auto-detect pool size from CPU count.
+static CONFIG: Mutex<Config> = Mutex::new(Config {
+    max_heap_size_mb: 64,
+    isolate_pool_size: 0,
+});
+
+/// Returns an error if the runtime has already been initialized.
+/// All config setters call this before modifying CONFIG.
+fn check_not_initialized() -> Result<(), Error> {
+    if INITIALIZED.get().is_some() {
+        Err(Error::new(
+            deno_exc("JsRuntimeInitializationError"),
+            "Cannot set config after runtime is already initialized",
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -82,53 +100,91 @@ fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
             )
         })?;
 
-    CONFIG
-        .set(Config {
-            max_heap_size_mb: mb,
-        })
-        .map_err(|_| {
-            Error::new(
-                deno_exc("JsRuntimeInitializationError"),
-                "Cannot set config after runtime is already initialized",
-            )
-        })
+    check_not_initialized()?;
+    CONFIG.lock().unwrap().max_heap_size_mb = mb;
+    Ok(())
+}
+
+/// Called by Ruby before the first Bundle.new to configure the isolate pool size.
+/// A value of 0 means auto-detect from CPU count. Must be called before any
+/// native_load_bundle or native_render call.
+fn native_set_isolate_pool_size(size: usize) -> Result<(), Error> {
+    check_not_initialized()?;
+    CONFIG.lock().unwrap().isolate_pool_size = size;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Pool initialization (double-checked locking)
+// ---------------------------------------------------------------------------
+
+/// Resolves the effective pool size from config.
+/// - 0 (default) → auto-detect from CPU count, capped at MAX_ISOLATES
+/// - > 0         → as-is, capped at MAX_ISOLATES
+fn resolve_pool_size(cfg: Config) -> usize {
+    let raw = if cfg.isolate_pool_size > 0 {
+        cfg.isolate_pool_size
+    } else {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2)
+            .saturating_sub(1) // leave one core for Ruby
+    };
+    std::cmp::max(1, std::cmp::min(raw, MAX_ISOLATES))
 }
 
 // TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
-fn get_or_init_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
-    if let Some(r) = RUNTIME.get() {
-        return Ok(r);
+fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
+    if let Some(p) = POOL.get() {
+        return Ok(p);
     }
     let _guard = INIT_LOCK.lock().unwrap();
-    if let Some(r) = RUNTIME.get() {
-        return Ok(r);
+    if let Some(p) = POOL.get() {
+        return Ok(p);
     }
-    let config = CONFIG.get().copied().unwrap_or_default();
-    let rt = DenoRuntimeWrapper::new(config.max_heap_size_mb)
+
+    let config = *CONFIG.lock().unwrap();
+    let pool_size = resolve_pool_size(config);
+    // max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
+    // total budget. Each isolate independently gets the configured limit so
+    // that workloads calibrated for the single-isolate case don't break when
+    // the pool auto-detects more cores. Users with tight memory can reduce
+    // the per-isolate limit explicitly.
+    let per_isolate_mb = config.max_heap_size_mb;
+
+    let pool = IsolatePool::new(pool_size, per_isolate_mb)
         .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
-    let _ = RUNTIME.set(rt);
-    Ok(RUNTIME.get().unwrap())
+    let _ = POOL.set(pool);
+    let _ = INITIALIZED.set(());
+    Ok(POOL.get().unwrap())
 }
 
-fn get_runtime() -> Result<&'static DenoRuntimeWrapper, Error> {
-    RUNTIME
-        .get()
-        .ok_or_else(|| js_runtime_not_initialized_error("Runtime not initialized. Call `SSR::Deno::Bundle.new` first."))
+fn get_pool() -> Result<&'static IsolatePool, Error> {
+    POOL.get().ok_or_else(|| {
+        js_runtime_not_initialized_error(
+            "Runtime not initialized. Call `SSR::Deno::Bundle.new` first.",
+        )
+    })
 }
 
-/// Loads a bundle into the shared Deno worker, registering its render function
-/// under `globalThis.__ssr_bundles[bundle_id]`. Initializes the runtime lazily.
+// ---------------------------------------------------------------------------
+// Native methods callable from Ruby
+// ---------------------------------------------------------------------------
+
+/// Loads a bundle into every isolate in the pool, registering its render
+/// function under `globalThis.__ssr_bundles[bundle_id]`.
+/// Initializes the pool lazily on first call.
 fn native_load_bundle(bundle_id: String, bundle_path: String) -> Result<(), Error> {
-    get_or_init_runtime()?
+    get_or_init_pool()?
         .load_bundle(&bundle_id, &bundle_path)
         .map_err(|e| js_runtime_initialization_error(e.to_string()))
 }
 
-/// Returns the render result as a JSON string so any JS type survives the
-/// boundary. Ruby's `JSON.parse` reconstructs the value.
+/// Dispatches a render request to the next available isolate.
+/// Returns the result as a JSON string so any JS type survives the boundary.
 fn native_render(bundle_id: String, args_json: String) -> Result<String, Error> {
-    get_runtime()?
-        .block_on_render(&bundle_id, &args_json)
+    get_pool()?
+        .dispatch_render(&bundle_id, &args_json)
         .map_err(map_render_error)
 }
 
@@ -141,9 +197,10 @@ fn native_version() -> String {
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
-    // Opt in to Ractor safety. All shared state (RUNTIME) is Rust-level and
-    // protected by OnceLock. Renders serialize through a tokio channel so
-    // concurrent Ractors queue and get isolated results.
+    // Opt in to Ractor safety. All shared state (POOL) is Rust-level and
+    // protected by OnceLock. Renders dispatch through per-isolate tokio
+    // channels and the round-robin counter uses AtomicUsize, so concurrent
+    // Ractors get isolated results without shared mutable state.
     unsafe {
         extern "C" {
             fn rb_ext_ractor_safe(flag: bool);
@@ -167,6 +224,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_set_max_heap_size_mb",
         function!(native_set_max_heap_size_mb, 1),
+    )?;
+    deno_module.define_singleton_method(
+        "native_set_isolate_pool_size",
+        function!(native_set_isolate_pool_size, 1),
     )?;
     Ok(())
 }
