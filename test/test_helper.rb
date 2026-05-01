@@ -20,6 +20,8 @@ end
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'ssr/deno'
 
+SSR::Deno.isolate_pool_size = 1
+
 require 'minitest'
 Minitest.load :profile
 ARGV << '--profile'
