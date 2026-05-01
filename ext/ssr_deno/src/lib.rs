@@ -31,7 +31,7 @@ static CONFIG: Mutex<Config> = Mutex::new(Config {
 fn check_not_initialized() -> Result<(), Error> {
     if INITIALIZED.get().is_some() {
         Err(Error::new(
-            deno_exc("JsRuntimeInitializationError"),
+            deno_exception_class("JsRuntimeInitializationError"),
             "Cannot set config after runtime is already initialized",
         ))
     } else {
@@ -40,7 +40,7 @@ fn check_not_initialized() -> Result<(), Error> {
 }
 
 // Looks up an exception class by name inside the SSR::Deno Ruby module.
-fn deno_exc(name: &'static str) -> ExceptionClass {
+fn deno_exception_class(name: &'static str) -> ExceptionClass {
     let ruby = Ruby::get().unwrap();
     ruby.define_module("SSR")
         .and_then(|m| m.define_module("Deno"))
@@ -49,23 +49,23 @@ fn deno_exc(name: &'static str) -> ExceptionClass {
 }
 
 fn js_runtime_initialization_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("JsRuntimeInitializationError"), msg.into())
+    Error::new(deno_exception_class("JsRuntimeInitializationError"), msg.into())
 }
 
 fn js_runtime_not_initialized_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("JsRuntimeNotInitializedError"), msg.into())
+    Error::new(deno_exception_class("JsRuntimeNotInitializedError"), msg.into())
 }
 
 fn js_runtime_worker_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("JsRuntimeWorkerError"), msg.into())
+    Error::new(deno_exception_class("JsRuntimeWorkerError"), msg.into())
 }
 
 fn bundle_not_found_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("BundleNotFoundError"), msg.into())
+    Error::new(deno_exception_class("BundleNotFoundError"), msg.into())
 }
 
 fn render_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exc("RenderError"), msg.into())
+    Error::new(deno_exception_class("RenderError"), msg.into())
 }
 
 fn map_render_error(e: DenoError) -> Error {
@@ -73,7 +73,8 @@ fn map_render_error(e: DenoError) -> Error {
         DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
         DenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
         DenoError::Render(msg) => render_error(msg),
-        other => js_runtime_worker_error(other.to_string()),
+        DenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
+        DenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
     }
 }
 
