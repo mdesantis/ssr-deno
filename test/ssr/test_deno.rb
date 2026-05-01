@@ -20,5 +20,13 @@ module SSR
     rescue SSR::Deno::JsRuntimeInitializationError
       # runtime already initialized, that's fine
     end
+
+    def test_set_isolate_pool_size
+      # May raise JsRuntimeInitializationError if another test already
+      # initialized the runtime (OnceLock). We accept either outcome.
+      SSR::Deno.isolate_pool_size = 4
+    rescue SSR::Deno::JsRuntimeInitializationError
+      # runtime already initialized, that's fine
+    end
   end
 end
