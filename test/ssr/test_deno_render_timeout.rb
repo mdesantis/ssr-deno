@@ -32,6 +32,7 @@ module SSR
     def test_render_timeout_raises_render_error
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on hung render')
         SSR::Deno.render_timeout_ms = 200
+        SSR::Deno.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
           File.write(bundle_path, #{HANG_JS.inspect})
@@ -56,6 +57,7 @@ module SSR
       JS
       assert_subprocess(<<~RUBY, 'Expected timeout at ~100ms')
         SSR::Deno.render_timeout_ms = 100
+        SSR::Deno.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
           File.write(bundle_path, #{slow_js.inspect})
