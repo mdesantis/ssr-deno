@@ -1,13 +1,13 @@
 # SSR Process Pool
 
 > **Source:** Recommendation #4 from [`memory-performance-analysis.md`](memory-performance-analysis.md)
-> **Cross-refs:** [`architecture.md`](architecture.md) (single V8 isolate bottleneck), [`threading-documentation.md`](threading-documentation.md) (scaling rules), [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (channel-based serialization)
+> **Cross-refs:** [`architecture.md`](architecture.md) (isolate pool), [`threading-documentation.md`](threading-documentation.md) (scaling rules), [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (channel-based serialization), [`multiple-isolates.md`](multiple-isolates.md) (isolate pool — alternative approach, already implemented)
 
 ---
 
 ## Problem
 
-The single V8 isolate per Puma worker caps SSR throughput at `1 / renderToString_time` — roughly 20–200 req/s per worker regardless of thread count. To scale SSR throughput today, you must scale Puma **workers** (processes), which also scales Rails memory, database connections, and everything else. There is no way to scale SSR independently of the application.
+Without the isolate pool, a single V8 isolate per Puma worker caps SSR throughput at `1 / renderToString_time`. The isolate pool ([`multiple-isolates.md`](multiple-isolates.md)) addresses this within a single process, but a process pool remains relevant for use cases requiring failure isolation, multi-host scaling, or even higher throughput.
 
 Additionally, a runaway SSR render (infinite loop, memory leak) can degrade or crash the entire Puma worker, taking down all request handling — not just SSR.
 

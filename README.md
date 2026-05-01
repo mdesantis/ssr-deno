@@ -51,6 +51,19 @@ application.render({ page: 'home' })
 admin.render({ page: 'dashboard' })
 ```
 
+### Configuration
+
+Configure the V8 heap limit and isolate pool **before** creating any `Bundle` instances:
+
+```ruby
+SSR::Deno.max_heap_size_mb = 128   # Per-isolate heap limit (default: 64 MB)
+SSR::Deno.isolate_pool_size = 4    # Number of V8 isolates (0 = auto-detect)
+```
+
+The isolate pool distributes render requests across multiple V8 isolates in round-robin fashion, enabling parallel SSR within a single Ruby process. Pool size defaults to `CPU_cores - 1` (capped at 8), reserving one core for the Ruby thread.
+
+Each isolate gets its own V8 heap (configured by `max_heap_size_mb`), its own Deno runtime, and its own worker thread. Render requests are dispatched without locks — just atomic counter increment + channel send.
+
 ### Rails integration
 
 Add to your Gemfile:
@@ -69,6 +82,16 @@ Use the `ssr_render` helper in your views:
 
 ```erb
 <%= ssr_render({ page: 'home', user: @user }) %>
+```
+
+Configure via the Rails generator initializer:
+
+```ruby
+# config/initializers/ssr_deno.rb
+SSR::Deno.configure do |config|
+  config.max_heap_size_mb = 128
+  config.isolate_pool_size = 4  # nil = auto-detect (CPU cores - 1, max 8)
+end
 ```
 
 ## Development

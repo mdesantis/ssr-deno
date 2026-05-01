@@ -14,8 +14,10 @@ module SSR
       # Set the maximum V8 heap size in megabytes before initializing the runtime.
       # Must be called before any Bundle.new call (triggers pool init).
       #
-      # When pool_size > 1, the heap budget is divided equally among isolates
-      # (each isolate gets max_heap_size_mb / pool_size).
+      # max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
+      # total process budget. Each isolate independently gets this limit,
+      # regardless of pool size. This ensures workloads calibrated for a
+      # single isolate don't break when the pool auto-detects more cores.
       #
       # Default: 64 MB — sensible for typical SSR workloads (~20 MB baseline +
       # bundle + render peak + headroom). Set to 0 for unlimited (V8 built-in

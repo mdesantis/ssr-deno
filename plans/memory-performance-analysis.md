@@ -339,7 +339,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.3 Long Term
 
-7. **Multiple V8 isolates** — If the single-isolate bottleneck becomes limiting, the architecture could be extended to a pool of isolates. Each render would be dispatched to the next available isolate. This would increase memory linearly but also increase throughput linearly. See [`plans/multiple-isolates.md`](multiple-isolates.md).
+7. ✅ **Multiple V8 isolates** — Implemented. See [`plans/multiple-isolates.md`](multiple-isolates.md). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
 
 ---
 

@@ -243,15 +243,16 @@ entry pins `v8` to a local checkout built with the TLS fix from
 - Registers `native_load_bundle(bundle_id, bundle_path)` to evaluate a bundle
 - Registers `native_render(bundle_id, json_string)` to call a bundle's render function
 - Registers `native_version` to return the crate version
-- Uses `std::sync::OnceLock` for a singleton `DenoRuntimeWrapper`
+- Uses `POOL: OnceLock<IsolatePool>` for the isolate pool (replaced the single `DenoRuntimeWrapper`)
 - Double-checked locking via `INIT_LOCK: Mutex<()>` prevents TOCTOU races
-- The Tokio runtime + `MainWorker` live on a dedicated background thread
-  owned by `DenoRuntimeWrapper`
+- Config stored in `CONFIG: Mutex<Config>` with `INITIALIZED: OnceLock<()>` guard
+  (Mutex allows multiple fields to be set independently; the guard prevents mutation after init)
+- Each `IsolateHandle` holds a Tokio runtime + `MainWorker` on its own `deno-worker-{index}` thread
 
 ```rust
 use magnus::{function, Error, Module, Object, Ruby};
 use std::sync::{Mutex, OnceLock};
-use crate::deno_runtime_wrapper::DenoRuntimeWrapper;
+use crate::deno_runtime_wrapper::IsolatePool;
 
 static RUNTIME: OnceLock<DenoRuntimeWrapper> = OnceLock::new();
 static INIT_LOCK: Mutex<()> = Mutex::new(());
@@ -656,7 +657,7 @@ implemented yet.
 
 3. **Generic type parameters**: `bootstrap_from_options` requires three generic types (`TInNpmPackageChecker`, `TNpmPackageFolderResolver`, `TExtNodeSys`). Even though we don't use npm packages, these types must be provided at compile time. We created NOP implementations that satisfy the trait bounds with minimal behavior.
 
-4. **Singleton Deno Runtime**: A single Deno runtime instance is reused across render calls to avoid cold-start overhead. The Vite SSR bundle is loaded once at initialization.
+4. **Isolate Pool**: An `IsolatePool` of up to 8 `IsolateHandle`s (one per V8 isolate) dispatches render requests round-robin. Each handle has its own Tokio runtime + `MainWorker` on a dedicated `deno-worker-{index}` thread. Bundles are broadcast to all isolates at load time.
 
 5. **Web Worker Target**: Using `ssr.target: "webworker"` in Vite produces a bundle that only uses Web APIs, which Deno supports natively without Node.js compatibility layers.
 
@@ -664,13 +665,13 @@ implemented yet.
 
 7. **JSON Bridge**: Data is serialized to JSON at the Ruby boundary and deserialized in JavaScript. This keeps the interface simple and language-agnostic.
 
-8. **Dedicated worker thread**: `MainWorker` (and its
-   `current_thread` Tokio runtime + `LocalSet`) live on a dedicated
-   `"deno-worker"` OS thread. The Ruby thread only holds an
-   `mpsc::Sender<WorkerMsg>` and uses `oneshot` channels for replies. This
-   removes the need for `unsafe impl Send/Sync` and `UnsafeCell`, and makes
-   the design robust against future Ractor or thread-pool usage from Ruby.
+8. **Dedicated worker threads**: Each `IsolateHandle` runs a `MainWorker`
+   (and its `current_thread` Tokio runtime + `LocalSet`) on a dedicated
+   `"deno-worker-{index}"` OS thread. The Ruby thread only holds
+   an `mpsc::Sender<WorkerMsg>` and uses `oneshot` channels for replies.
+   This removes the need for `unsafe impl Send/Sync` and `UnsafeCell`, and
+   makes the design robust against Ractor usage.
 
-9. **Configuration via Ruby**: All configuration (bundle path, etc.) is done from Ruby side, keeping the Rust extension stateless and simple.
+9. **Configuration via Ruby**: All configuration (heap limit, pool size, bundle path) is done from Ruby side, keeping the Rust extension stateless and simple. The `Mutex<Config>` pattern allows multiple configuration fields to be set independently before initialization.
 
 10. **V8 Scope API**: The `rusty_v8` crate's scope API uses `ScopeStorage<T>` / `PinnedRef<'_, T>` / `ContextScope` pattern. `HandleScope::new(isolate)` returns `ScopeStorage<HandleScope>`, `.init()` returns `PinnedRef<HandleScope>`, and `ContextScope::new(&mut scope, context)` enters the V8 context.
