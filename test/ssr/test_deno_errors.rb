@@ -8,14 +8,11 @@ module SSR
   class TestDenoErrors < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
     GEM_ROOT = File.expand_path('../..', __dir__)
-
-    def setup
-      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
-    end
+    BUNDLE = SSR::Deno::Bundle.new(BUNDLE_PATH)
 
     def test_render_when_js_throws_raises_render_error
       assert_raises(SSR::Deno::RenderError) do
-        @bundle.render('invalid-json', raw_input: true)
+        BUNDLE.render('invalid-json', raw_input: true)
       end
     end
 
