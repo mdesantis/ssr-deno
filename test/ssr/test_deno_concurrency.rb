@@ -4,10 +4,10 @@ require 'test_helper'
 
 module SSR
   class TestDenoConcurrency < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
+    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
 
     def setup
-      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
     end
 
     def test_render_is_thread_safe

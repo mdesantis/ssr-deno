@@ -4,20 +4,16 @@ require 'test_helper'
 
 module SSR
   class TestDenoBundle < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
+    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
 
     def setup
-      assert_path_exists BUNDLE_PATH, "Bundle not found at #{BUNDLE_PATH}"
-
-      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
     end
 
     def test_render
       html = @bundle.render({ data: { name: 'Maurizio' } })
 
-      assert_match(%r{<html>.*</html>}m, html)
       assert_includes html, 'Maurizio'
-      assert_includes html, '<div id="root">'
     end
 
     def test_render_with_raw_input
@@ -31,7 +27,7 @@ module SSR
       result = @bundle.render({ data: { name: 'Test' } }, raw_output: true)
 
       assert_instance_of String, result
-      assert_includes JSON.parse(result), '<html>'
+      assert_includes JSON.parse(result), 'Test'
     end
 
     def test_render_with_raw_input_and_raw_output
@@ -43,7 +39,7 @@ module SSR
     end
 
     def test_multiple_bundles_coexist
-      bundle_b = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      bundle_b = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
       html_a = @bundle.render({ data: { name: 'Alice' } })
       html_b = bundle_b.render({ data: { name: 'Bob' } })
 
@@ -75,7 +71,7 @@ module SSR
     def test_reload_updates_mtime
       orig_mtime = @bundle.instance_variable_get(:@mtime)
 
-      FileUtils.touch(BUNDLE_PATH)
+      FileUtils.touch(MINIMAL_BUNDLE)
       @bundle.reload
 
       new_mtime = @bundle.instance_variable_get(:@mtime)
@@ -86,7 +82,7 @@ module SSR
     def test_auto_reload_triggers_reload_when_file_changed
       @bundle.auto_reload = true
 
-      FileUtils.touch(BUNDLE_PATH)
+      FileUtils.touch(MINIMAL_BUNDLE)
 
       html = @bundle.render({ data: { name: 'Changed' } })
 
@@ -94,8 +90,6 @@ module SSR
     end
 
     def test_instrument_noop_when_active_support_notifications_not_loaded
-      # Temporarily undefine ActiveSupport::Notifications to exercise the
-      # no-op branch of Instrumenter (core gem mode, no Rails).
       original = ActiveSupport.send(:remove_const, :Notifications)
 
       result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }

@@ -6,11 +6,11 @@ require 'rbconfig'
 
 module SSR
   class TestDenoErrors < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
+    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
     GEM_ROOT = File.expand_path('../..', __dir__)
 
     def setup
-      @bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
     end
 
     def test_render_when_js_throws_raises_render_error
