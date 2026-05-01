@@ -38,4 +38,4 @@ require 'minitest'
 Minitest.load :profile
 ARGV << '--profile'
 require 'minitest/autorun'
-require 'minitest/pride' if ENV.key?('MINITEST_PRIDE')
+require 'minitest/pride' if ENV['MINITEST_PRIDE']
