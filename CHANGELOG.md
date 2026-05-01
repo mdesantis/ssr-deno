@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Changed
+- Rails dev/test: `isolate_pool_size` defaults to 1 (was auto-detect). Most SSR in dev/test is single-request and doesn't benefit from concurrent isolates. Set `config.ssr_deno.isolate_pool_size = nil` in your initializer to restore auto-detect.
+
 ### Added
 - V8 heap size limit via `SSR::Deno.max_heap_size_mb=` (default: 64 MB) — caps V8 old-generation memory to prevent runaway growth. Configurable in Rails via `config.ssr_deno.max_heap_size_mb`. See [`plans/v8-heap-limit.md`](plans/v8-heap-limit.md).
 - Render timeout (10s) — hung SSR renders (infinite loops, runaway recursion) now raise `SSR::Deno::RenderError` after 10s instead of blocking the worker thread indefinitely. See [`plans/render-timeout.md`](plans/render-timeout.md).

@@ -8,8 +8,8 @@ module SSR
       config.ssr_deno.enabled = true
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
-      config.ssr_deno.max_heap_size_mb = nil   # nil = 64 MB (default)
-      config.ssr_deno.isolate_pool_size = nil  # nil = auto-detect from CPU count
+      config.ssr_deno.max_heap_size_mb = nil # nil = 64 MB (default)
+      config.ssr_deno.isolate_pool_size = Rails.env.production? ? nil : 1 # nil = auto-detect from CPU count
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
