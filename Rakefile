@@ -17,6 +17,7 @@ end
 
 Minitest::TestTask.create do |t|
   t.test_prelude = 'require "test/test_helper"'
+  t.profile = true
 end
 
 RuboCop::RakeTask.new
