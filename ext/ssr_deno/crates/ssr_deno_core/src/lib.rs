@@ -57,14 +57,17 @@ pub struct Config {
     pub max_heap_size_mb: usize,
     /// 0 = auto-detect from CPU count
     pub isolate_pool_size: usize,
+    pub render_timeout_ms: u64,
 }
 
 impl Config {
-    /// Returns the default configuration: 64 MB heap, auto-detect pool size.
+    /// Returns the default configuration: 64 MB heap, auto-detect pool size,
+    /// 500ms render timeout.
     pub const fn default() -> Self {
         Self {
             max_heap_size_mb: 64,
             isolate_pool_size: 0,
+            render_timeout_ms: 500,
         }
     }
 }
@@ -87,6 +90,21 @@ pub fn validate_pool_size(size: usize) -> Result<(), DenoError> {
         )));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Render timeout validation
+// ---------------------------------------------------------------------------
+
+/// Validates that `ms` is within `[100, 300_000]`.
+pub fn validate_render_timeout_ms(ms: u64) -> Result<(), String> {
+    if ms < 100 {
+        Err("Render timeout must be at least 100ms".into())
+    } else if ms > 300_000 {
+        Err("Render timeout must not exceed 300000ms (5min)".into())
+    } else {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +230,36 @@ mod tests {
         assert_eq!(cfg.isolate_pool_size, 0);
     }
 
+    #[test]
+    fn config_default_render_timeout() {
+        let cfg = Config::default();
+        assert_eq!(cfg.render_timeout_ms, 500);
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_render_timeout_ms
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn validate_render_timeout_accepts_100() {
+        assert!(validate_render_timeout_ms(100).is_ok());
+    }
+
+    #[test]
+    fn validate_render_timeout_rejects_99() {
+        assert!(validate_render_timeout_ms(99).is_err());
+    }
+
+    #[test]
+    fn validate_render_timeout_accepts_300000() {
+        assert!(validate_render_timeout_ms(300_000).is_ok());
+    }
+
+    #[test]
+    fn validate_render_timeout_rejects_300001() {
+        assert!(validate_render_timeout_ms(300_001).is_err());
+    }
+
     // -----------------------------------------------------------------------
     // validate_pool_size
     // -----------------------------------------------------------------------
@@ -249,6 +297,7 @@ mod tests {
         let cfg = Config {
             isolate_pool_size: 4,
             max_heap_size_mb: 64,
+            render_timeout_ms: 500,
         };
         assert_eq!(resolve_pool_size(cfg), 4);
     }
@@ -258,6 +307,7 @@ mod tests {
         let cfg = Config {
             isolate_pool_size: 99,
             max_heap_size_mb: 64,
+            render_timeout_ms: 500,
         };
         assert_eq!(resolve_pool_size(cfg), MAX_ISOLATES);
     }
@@ -267,6 +317,7 @@ mod tests {
         let cfg = Config {
             isolate_pool_size: 0,
             max_heap_size_mb: 64,
+            render_timeout_ms: 500,
         };
         let size = resolve_pool_size(cfg);
         assert!(size >= 1, "pool size {size} should be >= 1");
@@ -278,6 +329,7 @@ mod tests {
         let cfg = Config {
             isolate_pool_size: 0,
             max_heap_size_mb: 64,
+            render_timeout_ms: 500,
         };
         let size = resolve_pool_size(cfg);
         assert!(size >= 1);

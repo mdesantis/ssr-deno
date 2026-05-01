@@ -29,5 +29,11 @@ module SSR
     rescue SSR::Deno::JsRuntimeInitializationError
       # runtime already initialized, that's fine
     end
+
+    def test_set_render_timeout_ms
+      SSR::Deno.render_timeout_ms = 200
+    rescue SSR::Deno::JsRuntimeInitializationError
+      # runtime already initialized, that's fine
+    end
   end
 end

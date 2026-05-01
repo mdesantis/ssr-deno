@@ -22,9 +22,6 @@ pub use ssr_deno_core::DenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
-/// Maximum time to wait for a render response from the V8 isolate.
-const RENDER_TIMEOUT: Duration = Duration::from_secs(10);
-
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and each Deno worker thread
 // ---------------------------------------------------------------------------
@@ -55,12 +52,13 @@ enum WorkerMsg {
 /// on its own.
 pub struct IsolateHandle {
     tx: tokio::sync::mpsc::Sender<WorkerMsg>,
+    render_timeout_ms: u64,
 }
 
 impl IsolateHandle {
     /// Spawns a Deno worker thread with the given index and heap limit.
     /// Blocks until the worker is ready to accept messages.
-    pub fn spawn(index: usize, max_heap_size_mb: usize) -> Result<Self, DenoError> {
+    pub fn spawn(index: usize, max_heap_size_mb: usize, render_timeout_ms: u64) -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
@@ -78,7 +76,7 @@ impl IsolateHandle {
             })?
             .map_err(DenoError::WorkerInit)?;
 
-        Ok(Self { tx })
+        Ok(Self { tx, render_timeout_ms })
     }
 
     /// Sends a render request to this isolate's worker thread and blocks
@@ -87,6 +85,7 @@ impl IsolateHandle {
     pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) =
             std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
+        let timeout = Duration::from_millis(self.render_timeout_ms);
 
         self.tx
             .blocking_send(WorkerMsg::Render {
@@ -96,11 +95,11 @@ impl IsolateHandle {
             })
             .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        match reply_rx.recv_timeout(RENDER_TIMEOUT) {
+        match reply_rx.recv_timeout(timeout) {
             Ok(result) => result,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                 Err(DenoError::Render(
-                    format!("Render timed out after {}s", RENDER_TIMEOUT.as_secs()),
+                    format!("Render timed out after {}ms", timeout.as_millis()),
                 ))
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
@@ -132,14 +131,15 @@ pub struct IsolatePool {
 
 impl IsolatePool {
     /// Creates a pool of `size` isolates, each with `max_heap_size_mb`
-    /// as its V8 heap limit. Returns an error if `size` is 0 or if any
+    /// as its V8 heap limit and `render_timeout_ms` as the render timeout.
+    /// Returns an error if `size` is 0 or if any
     /// isolate thread fails to spawn.
-    pub fn new(size: usize, max_heap_size_mb: usize) -> Result<Self, DenoError> {
+    pub fn new(size: usize, max_heap_size_mb: usize, render_timeout_ms: u64) -> Result<Self, DenoError> {
         validate_pool_size(size)?;
 
         let mut handles = Vec::with_capacity(size);
         for i in 0..size {
-            let handle = IsolateHandle::spawn(i, max_heap_size_mb)?;
+            let handle = IsolateHandle::spawn(i, max_heap_size_mb, render_timeout_ms)?;
             handles.push(handle);
         }
 

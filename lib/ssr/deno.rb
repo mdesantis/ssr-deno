@@ -38,6 +38,20 @@ module SSR
       def isolate_pool_size=(size)
         native_set_isolate_pool_size(size.to_i)
       end
+
+      # Set the render timeout in milliseconds before initializing the runtime.
+      # Must be called before any Bundle.new call (triggers pool init).
+      #
+      # Default: 500ms — sensible for SSR where CSR fallback is the alternative.
+      # Use shorter values (100ms+) for test environments; longer values
+      # (up to 5min) for complex production pages.
+      #
+      # @param milliseconds [Integer] render timeout in ms (min 100, max 300000)
+      # @raise [ArgumentError] if ms is out of valid range
+      # @raise [JsRuntimeInitializationError] if pool already initialized
+      def render_timeout_ms=(milliseconds)
+        native_set_render_timeout_ms(milliseconds.to_i)
+      end
     end
   end
 end

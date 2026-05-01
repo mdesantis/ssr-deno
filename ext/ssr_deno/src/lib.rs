@@ -4,7 +4,7 @@ mod sys;
 
 use deno_runtime_wrapper::{DenoError, IsolatePool};
 use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
-use ssr_deno_core::{max_heap_size_mb_checked, Config};
+use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 use std::sync::{Mutex, OnceLock};
 
 static POOL: OnceLock<IsolatePool> = OnceLock::new();
@@ -101,6 +101,22 @@ fn native_set_isolate_pool_size(size: usize) -> Result<(), Error> {
     Ok(())
 }
 
+/// Called by Ruby before the first Bundle.new to configure the render timeout.
+/// Must be called before any native_load_bundle or native_render call.
+///
+/// Validates that `ms` is within [100, 300000].
+fn native_set_render_timeout_ms(ms: u64) -> Result<(), Error> {
+    if let Err(msg) = validate_render_timeout_ms(ms) {
+        return Err(Error::new(
+            Ruby::get().unwrap().exception_arg_error(),
+            msg,
+        ));
+    }
+    check_not_initialized()?;
+    CONFIG.lock().unwrap().render_timeout_ms = ms;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Pool initialization (OnceLock + init mutex)
 //   OnceLock provides lock-free reads after init.
@@ -125,8 +141,9 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     // the pool auto-detects more cores. Users with tight memory can reduce
     // the per-isolate limit explicitly.
     let max_heap_size_mb = config.max_heap_size_mb;
+    let render_timeout_ms = config.render_timeout_ms;
 
-    let pool = IsolatePool::new(pool_size, max_heap_size_mb)
+    let pool = IsolatePool::new(pool_size, max_heap_size_mb, render_timeout_ms)
         .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
     let _ = POOL.set(pool);
     let _ = INITIALIZED.set(());
@@ -202,6 +219,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_set_isolate_pool_size",
         function!(native_set_isolate_pool_size, 1),
+    )?;
+    deno_module.define_singleton_method(
+        "native_set_render_timeout_ms",
+        function!(native_set_render_timeout_ms, 1),
     )?;
     Ok(())
 }
