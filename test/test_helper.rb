@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# ---------------------------------------------------------------------------
+# Code coverage (must be first — hooks into Kernel#require)
+# ---------------------------------------------------------------------------
+
 require 'simplecov'
 
 SimpleCov.start do
@@ -17,10 +21,18 @@ SimpleCov.start do
   )
 end
 
+# ---------------------------------------------------------------------------
+# Library under test
+# ---------------------------------------------------------------------------
+
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'ssr/deno'
 
 SSR::Deno.isolate_pool_size = 1
+
+# ---------------------------------------------------------------------------
+# Test framework
+# ---------------------------------------------------------------------------
 
 require 'minitest'
 Minitest.load :profile
