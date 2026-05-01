@@ -4,6 +4,7 @@
 
 - **`SSR` Ruby constant is always uppercased.** `SSR` is the acronym of "Server-Side Rendering". Never use `Ssr`.
 - **Diagrams must be ASCII art, not Mermaid or other diagram tools.** All diagrams in plans, docs, and comments must use hand-crafted ASCII art with Unicode box-drawing characters (┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼ ▶ ▲ ▼). Never use ```mermaid or other diagram DSLs. If you encounter diagrams written in another format, recreate them from scratch by hand — do not attempt to convert them with automated tools or converters.
+- **Every change must be accompanied by a documentation audit.** Before writing any code, first identify which docs, comments, README sections, RBS signatures, or plan files could become stale as a result of the change. Update them in lockstep with the code — not after. This applies to: setting accessor comments, public API docs, source-level inline comments, README usage sections, RBS type signatures, and plan files that reference the modified area. Do not leave documentation drift for a later cleanup pass.
 
 ## Workflow
 
