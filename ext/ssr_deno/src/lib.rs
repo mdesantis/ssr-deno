@@ -231,3 +231,55 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_pool_size_uses_explicit_value() {
+        let cfg = Config {
+            isolate_pool_size: 4,
+            max_heap_size_mb: 64,
+        };
+        assert_eq!(resolve_pool_size(cfg), 4);
+    }
+
+    #[test]
+    fn resolve_pool_size_clamps_to_max() {
+        let cfg = Config {
+            isolate_pool_size: 99,
+            max_heap_size_mb: 64,
+        };
+        assert_eq!(resolve_pool_size(cfg), MAX_ISOLATES);
+    }
+
+    #[test]
+    fn resolve_pool_size_minimum_is_one() {
+        let cfg = Config {
+            isolate_pool_size: 0,
+            max_heap_size_mb: 64,
+        };
+        let size = resolve_pool_size(cfg);
+        assert!(size >= 1, "pool size {size} should be >= 1");
+        assert!(size <= MAX_ISOLATES, "pool size {size} should be <= {MAX_ISOLATES}");
+    }
+
+    #[test]
+    fn resolve_pool_size_auto_detect_is_sensible() {
+        // With isolate_pool_size=0, auto-detect runs.
+        // We can't predict the machine's CPU count, but we can verify
+        // the result is within [1, MAX_ISOLATES].
+        let cfg = Config {
+            isolate_pool_size: 0,
+            max_heap_size_mb: 64,
+        };
+        let size = resolve_pool_size(cfg);
+        assert!(size >= 1);
+        assert!(size <= MAX_ISOLATES);
+    }
+}
