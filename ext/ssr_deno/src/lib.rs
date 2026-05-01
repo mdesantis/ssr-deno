@@ -2,29 +2,17 @@ mod deno_runtime_wrapper;
 mod nop_types;
 mod sys;
 
-use deno_runtime_wrapper::{DenoError, IsolatePool, MAX_ISOLATES};
+use deno_runtime_wrapper::{DenoError, IsolatePool};
 use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
+use ssr_deno_core::{max_heap_size_mb_checked, Config};
 use std::sync::{Mutex, OnceLock};
 
 static POOL: OnceLock<IsolatePool> = OnceLock::new();
 static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
 static INITIALIZED: OnceLock<()> = OnceLock::new();
 
-/// Configuration passed from Ruby to Rust before runtime initialization.
-/// Stored in a Mutex so multiple setters can update individual fields before
-/// the runtime is initialized.
-/// Defaults are safe for unconfigured usage.
-#[derive(Clone, Copy)]
-struct Config {
-    max_heap_size_mb: usize,
-    isolate_pool_size: usize, // 0 = auto-detect from CPU count
-}
-
 // Defaults: 64 MB heap, 0 = auto-detect pool size from CPU count.
-static CONFIG: Mutex<Config> = Mutex::new(Config {
-    max_heap_size_mb: 64,
-    isolate_pool_size: 0,
-});
+static CONFIG: Mutex<Config> = Mutex::new(Config::default());
 
 /// Returns an error if the runtime has already been initialized.
 /// All config setters call this before modifying CONFIG.
@@ -49,11 +37,17 @@ fn deno_exception_class(name: &'static str) -> ExceptionClass {
 }
 
 fn js_runtime_initialization_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exception_class("JsRuntimeInitializationError"), msg.into())
+    Error::new(
+        deno_exception_class("JsRuntimeInitializationError"),
+        msg.into(),
+    )
 }
 
 fn js_runtime_not_initialized_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exception_class("JsRuntimeNotInitializedError"), msg.into())
+    Error::new(
+        deno_exception_class("JsRuntimeNotInitializedError"),
+        msg.into(),
+    )
 }
 
 fn js_runtime_worker_error(msg: impl Into<String>) -> Error {
@@ -85,18 +79,13 @@ fn map_render_error(e: DenoError) -> Error {
 /// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
 /// which is far beyond any practical V8 heap limit.
 fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
-    // Check that mb * 1024 * 1024 doesn't overflow usize.
-    // On 64-bit: max ≈ 16,384,000 MB (16 TB). On 32-bit: max ≈ 4,096 MB.
-    mb.checked_mul(1024 * 1024)
-        .ok_or_else(|| {
-            Error::new(
-                Ruby::get().unwrap().exception_arg_error(),
-                format!(
-                    "max_heap_size_mb={mb} overflows when converted to bytes (max: {})",
-                    usize::MAX / 1024 / 1024
-                ),
-            )
-        })?;
+    // Validate overflow before touching any state.
+    if let Err(msg) = max_heap_size_mb_checked(mb) {
+        return Err(Error::new(
+            Ruby::get().unwrap().exception_arg_error(),
+            format!("{msg} (max: {})", usize::MAX / 1024 / 1024),
+        ));
+    }
 
     check_not_initialized()?;
     CONFIG.lock().unwrap().max_heap_size_mb = mb;
@@ -118,21 +107,6 @@ fn native_set_isolate_pool_size(size: usize) -> Result<(), Error> {
 //   POOL_INIT_LOCK prevents duplicate pool creation during the init window.
 // ---------------------------------------------------------------------------
 
-/// Resolves the effective pool size from config.
-/// - 0 (default) → auto-detect from CPU count, capped at MAX_ISOLATES
-/// - > 0         → as-is, capped at MAX_ISOLATES
-fn resolve_pool_size(cfg: Config) -> usize {
-    let raw = if cfg.isolate_pool_size > 0 {
-        cfg.isolate_pool_size
-    } else {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(2)
-            .saturating_sub(1) // leave one core for Ruby
-    };
-    std::cmp::max(1, std::cmp::min(raw, MAX_ISOLATES))
-}
-
 // TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
 fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     if let Some(p) = POOL.get() {
@@ -144,7 +118,7 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     }
 
     let config = *CONFIG.lock().unwrap();
-    let pool_size = resolve_pool_size(config);
+    let pool_size = ssr_deno_core::resolve_pool_size(config);
     // max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
     // total budget. Each isolate independently gets the configured limit so
     // that workloads calibrated for the single-isolate case don't break when
@@ -230,56 +204,4 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         function!(native_set_isolate_pool_size, 1),
     )?;
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolve_pool_size_uses_explicit_value() {
-        let cfg = Config {
-            isolate_pool_size: 4,
-            max_heap_size_mb: 64,
-        };
-        assert_eq!(resolve_pool_size(cfg), 4);
-    }
-
-    #[test]
-    fn resolve_pool_size_clamps_to_max() {
-        let cfg = Config {
-            isolate_pool_size: 99,
-            max_heap_size_mb: 64,
-        };
-        assert_eq!(resolve_pool_size(cfg), MAX_ISOLATES);
-    }
-
-    #[test]
-    fn resolve_pool_size_minimum_is_one() {
-        let cfg = Config {
-            isolate_pool_size: 0,
-            max_heap_size_mb: 64,
-        };
-        let size = resolve_pool_size(cfg);
-        assert!(size >= 1, "pool size {size} should be >= 1");
-        assert!(size <= MAX_ISOLATES, "pool size {size} should be <= {MAX_ISOLATES}");
-    }
-
-    #[test]
-    fn resolve_pool_size_auto_detect_is_sensible() {
-        // With isolate_pool_size=0, auto-detect runs.
-        // We can't predict the machine's CPU count, but we can verify
-        // the result is within [1, MAX_ISOLATES].
-        let cfg = Config {
-            isolate_pool_size: 0,
-            max_heap_size_mb: 64,
-        };
-        let size = resolve_pool_size(cfg);
-        assert!(size >= 1);
-        assert!(size <= MAX_ISOLATES);
-    }
 }

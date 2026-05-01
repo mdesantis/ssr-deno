@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -12,37 +12,14 @@ use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 
-use crate::nop_types::NopPermissionDescriptorParser;
 use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
+use crate::nop_types::NopPermissionDescriptorParser;
 use crate::sys::Sys;
 
-// ---------------------------------------------------------------------------
-// Typed error enum
-// ---------------------------------------------------------------------------
-
-#[derive(Debug)]
-pub enum DenoError {
-    BundleLoad(String),
-    WorkerInit(String),
-    WorkerDied(String),
-    BundleNotFound(String),
-    Render(String),
-}
-
-impl std::fmt::Display for DenoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::BundleLoad(msg)
-            | Self::WorkerInit(msg)
-            | Self::WorkerDied(msg)
-            | Self::BundleNotFound(msg)
-            | Self::Render(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-impl std::error::Error for DenoError {}
+pub use ssr_deno_core::DenoError;
+pub use ssr_deno_core::{next_index, validate_pool_size};
+// MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and each Deno worker thread
@@ -61,13 +38,6 @@ enum WorkerMsg {
         reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Hard cap on the number of isolates to prevent accidental over-allocation
-// on high-core-count machines.
-// ---------------------------------------------------------------------------
-
-pub const MAX_ISOLATES: usize = 8;
 
 // ---------------------------------------------------------------------------
 // IsolateHandle — per-isolate channel sender
@@ -93,11 +63,15 @@ impl IsolateHandle {
         std::thread::Builder::new()
             .name(format!("deno-worker-{index}"))
             .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb))
-            .map_err(|e| DenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}")))?;
+            .map_err(|e| {
+                DenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}"))
+            })?;
 
         init_rx
             .recv()
-            .map_err(|_| DenoError::WorkerInit("Isolate thread exited unexpectedly during init".into()))?
+            .map_err(|_| {
+                DenoError::WorkerInit("Isolate thread exited unexpectedly during init".into())
+            })?
             .map_err(DenoError::WorkerInit)?;
 
         Ok(Self { tx })
@@ -117,9 +91,9 @@ impl IsolateHandle {
             })
             .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before sending a reply".into()))?
+        reply_rx.blocking_recv().map_err(|_| {
+            DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
+        })?
     }
 
     /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.
@@ -146,16 +120,7 @@ impl IsolatePool {
     /// as its V8 heap limit. Returns an error if `size` is 0 or if any
     /// isolate thread fails to spawn.
     pub fn new(size: usize, max_heap_size_mb: usize) -> Result<Self, DenoError> {
-        if size == 0 {
-            return Err(DenoError::WorkerInit(
-                "Pool size must be at least 1".into(),
-            ));
-        }
-        if size > MAX_ISOLATES {
-            return Err(DenoError::WorkerInit(format!(
-                "Pool size {size} exceeds maximum {MAX_ISOLATES}"
-            )));
-        }
+        validate_pool_size(size)?;
 
         let mut handles = Vec::with_capacity(size);
         for i in 0..size {
@@ -179,17 +144,13 @@ impl IsolatePool {
 
     /// Picks the next isolate in round-robin order.
     fn next_handle(&self) -> &IsolateHandle {
-        let idx = self.counter.fetch_add(1, Ordering::Relaxed) % self.handles.len();
+        let idx = next_index(&self.counter, self.handles.len());
         &self.handles[idx]
     }
 
     /// Dispatches a render request to the next available isolate.
     /// Blocks until the result arrives.
-    pub fn dispatch_render(
-        &self,
-        bundle_id: &str,
-        args_json: &str,
-    ) -> Result<String, DenoError> {
+    pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         self.next_handle().block_on_render(bundle_id, args_json)
     }
 
@@ -201,8 +162,9 @@ impl IsolatePool {
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("(unknown)");
-        let canonical = std::fs::canonicalize(bundle_path)
-            .map_err(|e| DenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}")))?;
+        let canonical = std::fs::canonicalize(bundle_path).map_err(|e| {
+            DenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}"))
+        })?;
 
         // Reject symlink escapes: the resolved path must stay within the
         // directory that was originally specified.
@@ -218,8 +180,9 @@ impl IsolatePool {
             )));
         }
 
-        let bundle_code = std::fs::read_to_string(bundle_path)
-            .map_err(|e| DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}")))?;
+        let bundle_code = std::fs::read_to_string(bundle_path).map_err(|e| {
+            DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}"))
+        })?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
         // name. One bounded leak per bundle load (shared by all isolates).
@@ -295,11 +258,21 @@ fn worker_thread_main(
 
         while let Some(msg) = rx.recv().await {
             match msg {
-                WorkerMsg::LoadBundle { bundle_id, bundle_code, script_name, reply } => {
-                    let result = load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
+                WorkerMsg::LoadBundle {
+                    bundle_id,
+                    bundle_code,
+                    script_name,
+                    reply,
+                } => {
+                    let result =
+                        load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
                     let _ = reply.send(result);
                 }
-                WorkerMsg::Render { bundle_id, args_json, reply } => {
+                WorkerMsg::Render {
+                    bundle_id,
+                    args_json,
+                    reply,
+                } => {
                     let result = call_render(&mut worker, &bundle_id, &args_json);
                     let _ = reply.send(result);
                 }
@@ -408,7 +381,11 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
 // V8 render call
 // ---------------------------------------------------------------------------
 
-fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
+fn call_render(
+    worker: &mut MainWorker,
+    bundle_id: &str,
+    args_json: &str,
+) -> Result<String, DenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
@@ -427,9 +404,9 @@ fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Res
         .filter(|v| !v.is_undefined() && !v.is_null())
         .ok_or_else(|| DenoError::BundleNotFound(format!("No bundles loaded (id: {bundle_id})")))?;
 
-    let bundles_obj: v8::Local<v8::Object> = bundles_val
-        .try_into()
-        .map_err(|_| DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})")))?;
+    let bundles_obj: v8::Local<v8::Object> = bundles_val.try_into().map_err(|_| {
+        DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
+    })?;
 
     // globalThis.__ssr_bundles[bundle_id]
     let id_key = v8::String::new(&mut context_scope, bundle_id).unwrap();
@@ -438,20 +415,22 @@ fn call_render(worker: &mut MainWorker, bundle_id: &str, args_json: &str) -> Res
         .filter(|v| !v.is_undefined() && !v.is_null())
         .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' not found")))?;
 
-    let entry_obj: v8::Local<v8::Object> = entry_val
-        .try_into()
-        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object")))?;
+    let entry_obj: v8::Local<v8::Object> = entry_val.try_into().map_err(|_| {
+        DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
+    })?;
 
     // globalThis.__ssr_bundles[bundle_id].render
     let render_key = v8::String::new(&mut context_scope, "render").unwrap();
     let render_val = entry_obj
         .get(&mut context_scope, render_key.into())
         .filter(|v| !v.is_undefined() && !v.is_null())
-        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function")))?;
+        .ok_or_else(|| {
+            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function"))
+        })?;
 
-    let render_fn: v8::Local<v8::Function> = render_val
-        .try_into()
-        .map_err(|_| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function")))?;
+    let render_fn: v8::Local<v8::Function> = render_val.try_into().map_err(|_| {
+        DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
+    })?;
 
     let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
     let undefined = v8::undefined(&mut context_scope);

@@ -6919,9 +6919,14 @@ dependencies = [
  "node_resolver",
  "serde",
  "serde_json",
+ "ssr_deno_core",
  "sys_traits",
  "tokio",
 ]
+
+[[package]]
+name = "ssr_deno_core"
+version = "0.1.0-alpha.1"
 
 [[package]]
 name = "stable_deref_trait"
