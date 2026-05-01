@@ -23,6 +23,8 @@
   - Sample files — comments referencing old crate names or APIs
   Do not consider the changeset complete until this audit passes.
 
+- **When implementing a plan step, mark it completed in the plan file immediately.** After each implementation step passes verification (`bundle exec rake` succeeds, tests pass, coverage meets threshold), update the plan's implementation checklist — change `[ ]` to `[x]` for that step. The plan file is the authoritative source of progress. Do not leave unmarked steps behind.
+
 ## Code style
 
 - **Separate assignment lines from non-assignment lines with blank lines.** An "assignment line" is any line that assigns a value (`=`, `||=`, `+=`, etc.). Consecutive assignment lines are grouped together without blank lines between them.
