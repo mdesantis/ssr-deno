@@ -273,13 +273,13 @@ Same bottleneck. Ractors don't help SSR throughput unless we have multiple V8 is
 ### 5.1 Single V8 Isolate (Primary Bottleneck)
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Puma Thread 1 │────▶              │     │              │
-├─────────────┤     │  tokio::mpsc  │────▶│  V8 Isolate  │
-│ Puma Thread 2 │────▶  channel(1)  │     │  (single)    │
-├─────────────┤     │              │     │              │
-│ Puma Thread 3 │────▶              │     └──────────────┘
-└─────────────┘     └──────────────┘
+┌────────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Puma Thread 1  │────▶              │     │              │
+├────────────────┤     │  tokio::mpsc  │────▶│  V8 Isolate  │
+│ Puma Thread 2  │────▶  channel(1)  │     │  (single)    │
+├────────────────┤     │              │     │              │
+│ Puma Thread 3  │────▶              │     └──────────────┘
+└────────────────┘     └──────────────┘
 ```
 
 **Impact:** SSR throughput is capped at `1 / renderToString_time` per Puma worker. For a 25 ms render, max ~40 req/s per worker regardless of thread count.
