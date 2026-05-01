@@ -16,11 +16,21 @@ module SSR
       };
     JS
 
+    BOOTSTRAP = <<~RUBY
+      require 'tmpdir'
+      $LOAD_PATH.unshift('lib')
+      require 'ssr/deno'
+    RUBY
+
+    def assert_subprocess(body, msg)
+      script = "#{BOOTSTRAP}#{body}"
+      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
+
+      assert_predicate status.exitstatus, :zero?, msg
+    end
+
     def test_render_timeout_raises_render_error
-      script = <<~RUBY
-        require 'tmpdir'
-        $LOAD_PATH.unshift('lib')
-        require 'ssr/deno'
+      assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on hung render')
         SSR::Deno.render_timeout_ms = 200
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
@@ -34,10 +44,6 @@ module SSR
           end
         end
       RUBY
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?,
-                       'Expected SSR::Deno::RenderError on hung render'
     end
 
     def test_render_timeout_respects_configured_value
@@ -48,10 +54,7 @@ module SSR
           return 'timeout did not fire';
         };
       JS
-      script = <<~RUBY
-        require 'tmpdir'
-        $LOAD_PATH.unshift('lib')
-        require 'ssr/deno'
+      assert_subprocess(<<~RUBY, 'Expected timeout at ~100ms')
         SSR::Deno.render_timeout_ms = 100
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
@@ -71,17 +74,10 @@ module SSR
           end
         end
       RUBY
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?,
-                       "Expected timeout at ~100ms, got exit #{status.exitstatus}"
     end
 
     def test_render_works_after_timeout
-      script = <<~RUBY
-        require 'tmpdir'
-        $LOAD_PATH.unshift('lib')
-        require 'ssr/deno'
+      assert_subprocess(<<~RUBY, 'Expected recovery render to succeed after timeout on another isolate')
         SSR::Deno.render_timeout_ms = 200
         SSR::Deno.isolate_pool_size = 2
         Dir.mktmpdir do |dir|
@@ -91,7 +87,6 @@ module SSR
           begin
             hang_bundle.render({})
           rescue SSR::Deno::RenderError
-            # expected — hung isolate is now blocked
           end
           ok_path = File.join(dir, 'ok-bundle.js')
           File.write(ok_path, "globalThis.render = function() { return '<h1>ok</h1>'; };")
@@ -104,10 +99,6 @@ module SSR
           end
         end
       RUBY
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?,
-                       'Expected recovery render to succeed after timeout on another isolate'
     end
   end
 end
