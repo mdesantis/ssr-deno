@@ -293,7 +293,7 @@ Same bottleneck. Ractors don't help SSR throughput unless we have multiple V8 is
 
 If a `renderToString` hangs (e.g., infinite loop in component), the V8 isolate is blocked indefinitely. All subsequent SSR requests queue up and eventually time out at the Rack/HTTP layer.
 
-**Mitigation:** Add a timeout on the reply channel receiver side in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:154) using `std::sync::mpsc::Receiver::recv_timeout`. See [`plans/render-timeout.md`](render-timeout.md).
+**Mitigation:** Added configurable timeout on the reply channel receiver side in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:154) using `std::sync::mpsc::Receiver::recv_timeout`. Configured via `SSR::Deno.render_timeout_ms=` (default 500ms).
 
 ### 5.3 V8 GC Pause
 
@@ -323,7 +323,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.1 Immediate (Low Effort)
 
-1. **Add a render timeout** (30s default) — see [`plans/render-timeout.md`](render-timeout.md).
+1. **Add a render timeout** (default 500ms, configurable) — implemented via `SSR::Deno.render_timeout_ms=`.
 
 2. **Document the threading model** in README — see the [Configuration section](../README.md#configuration).
 

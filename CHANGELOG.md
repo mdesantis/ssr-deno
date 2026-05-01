@@ -5,8 +5,8 @@
 
 ### Added
 - V8 heap size limit via `SSR::Deno.max_heap_size_mb=` (default: 64 MB) — caps V8 old-generation memory to prevent runaway growth. Configurable in Rails via `config.ssr_deno.max_heap_size_mb`. See [`plans/v8-heap-limit.md`](plans/v8-heap-limit.md).
-- Render timeout (10s) — hung SSR renders (infinite loops, runaway recursion) now raise `SSR::Deno::RenderError` after 10s instead of blocking the worker thread indefinitely. See [`plans/render-timeout.md`](plans/render-timeout.md).
-- Configurable render timeout via `SSR::Deno.render_timeout_ms=` (default 500ms, range 100–300000ms) — set before pool init. See [`plans/configurable-render-timeout.md`](plans/configurable-render-timeout.md).
+- Render timeout — hung SSR renders (infinite loops, runaway recursion) now raise `SSR::Deno::RenderError` after a configurable duration.
+- Configurable render timeout via `SSR::Deno.render_timeout_ms=` (default 500ms, range 100–300000ms) — set before pool init.
 
 ## [0.1.0-alpha.2] - 2026-04-29
 

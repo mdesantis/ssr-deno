@@ -201,7 +201,6 @@ ssr-deno/
 │   ├── ci-speedup.md
 │   ├── memory-performance-analysis.md
 │   ├── rails-integration.md
-│   ├── render-timeout.md
 │   ├── rust-unit-tests.md
 │   ├── ssr-process-pool.md
 │   ├── streaming-ssr.md
