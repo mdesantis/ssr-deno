@@ -21,6 +21,13 @@ end
 
 RuboCop::RakeTask.new
 
+namespace :cargo do
+  desc 'Run Rust unit tests for the ssr_deno_core crate (no V8 build required)'
+  task :test do
+    sh 'cargo', 'test', '-p', 'ssr_deno_core', chdir: 'ext/ssr_deno'
+  end
+end
+
 namespace :samples do
   desc 'Build the vite-ssr-app SSR bundle'
   task :build do
@@ -28,4 +35,4 @@ namespace :samples do
   end
 end
 
-task default: %i[compile samples:build test rubocop rbs]
+task default: %i[compile cargo:test samples:build test rubocop rbs]
