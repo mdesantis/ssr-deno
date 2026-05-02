@@ -2,6 +2,7 @@
 
 ### Added
 - V8 heap metrics via `SSR::Deno.heap_stats` — returns `total_heap_size`, `used_heap_size`, `heap_size_limit`, and 10 other V8 memory counters as a Hash. Rails subscriber emits `heap_stats.ssr_deno` every N renders (configurable via `config.ssr_deno.heap_stats_sample_rate`, default 100).
+- Async SSR render support — `call_render` detects `v8::Promise` return and polls V8 microtask queue until settlement. Enables Vue 3 SSR and other async render frameworks.
 
 ## [0.1.0-alpha.2] - 2026-05-02
 

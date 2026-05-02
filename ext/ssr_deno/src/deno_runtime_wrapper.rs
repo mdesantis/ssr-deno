@@ -61,7 +61,11 @@ pub struct IsolateHandle {
 impl IsolateHandle {
     /// Spawns a Deno worker thread with the given index and heap limit.
     /// Blocks until the worker is ready to accept messages.
-    pub fn spawn(index: usize, max_heap_size_mb: usize, render_timeout_ms: u64) -> Result<Self, DenoError> {
+    pub fn spawn(
+        index: usize,
+        max_heap_size_mb: usize,
+        render_timeout_ms: u64,
+    ) -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
@@ -79,15 +83,17 @@ impl IsolateHandle {
             })?
             .map_err(DenoError::WorkerInit)?;
 
-        Ok(Self { tx, render_timeout_ms })
+        Ok(Self {
+            tx,
+            render_timeout_ms,
+        })
     }
 
     /// Sends a render request to this isolate's worker thread and blocks
     /// until the result arrives. Returns the result as a JSON string so any
     /// JS type survives the boundary.
     pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
-        let (reply_tx, reply_rx) =
-            std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
+        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
         let timeout = Duration::from_millis(self.render_timeout_ms);
 
         self.tx
@@ -100,16 +106,13 @@ impl IsolateHandle {
 
         match reply_rx.recv_timeout(timeout) {
             Ok(result) => result,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                Err(DenoError::Render(
-                    format!("Render timed out after {}ms", timeout.as_millis()),
-                ))
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                Err(DenoError::WorkerDied(
-                    "Deno worker thread exited before sending a reply".into(),
-                ))
-            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(DenoError::Render(format!(
+                "Render timed out after {}ms",
+                timeout.as_millis()
+            ))),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(
+                "Deno worker thread exited before sending a reply".into(),
+            )),
         }
     }
 
@@ -121,11 +124,9 @@ impl IsolateHandle {
             .blocking_send(WorkerMsg::HeapStats { reply: reply_tx })
             .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| {
-                DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
-            })?
+        reply_rx.blocking_recv().map_err(|_| {
+            DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
+        })?
     }
 
     /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.
@@ -152,7 +153,11 @@ impl IsolatePool {
     /// as its V8 heap limit and `render_timeout_ms` as the render timeout.
     /// Returns an error if `size` is 0 or if any
     /// isolate thread fails to spawn.
-    pub fn new(size: usize, max_heap_size_mb: usize, render_timeout_ms: u64) -> Result<Self, DenoError> {
+    pub fn new(
+        size: usize,
+        max_heap_size_mb: usize,
+        render_timeout_ms: u64,
+    ) -> Result<Self, DenoError> {
         validate_pool_size(size)?;
 
         let mut handles = Vec::with_capacity(size);
@@ -420,8 +425,14 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
 }
 
 // ---------------------------------------------------------------------------
-// V8 render call
+// V8 render call (sync + async)
 // ---------------------------------------------------------------------------
+
+// ── Phase 1 (scope chain) / Phase 2 (isolate-only) bridge ─────────────────
+struct AsyncHandle {
+    global_promise: v8::Global<v8::Promise>,
+    was_pending: bool,
+}
 
 fn call_render(
     worker: &mut MainWorker,
@@ -432,75 +443,181 @@ fn call_render(
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
 
-    let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
-    let mut scope = scope_storage.init();
-    let context_local = v8::Local::new(&mut scope, context);
-    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+    // ── Raw Isolate pointer for Global::new ──────────────────────────────
+    // `v8::Global::new` needs `&Isolate`. Inside Phase 1's scope chain,
+    // TryCatch holds `&mut context_scope` so we cannot borrow `&Isolate`
+    // from the scope chain.  We store a raw pointer here (before any mutable
+    // borrow of `isolate`), reborrow it inside Phase 1 when needed.
+    // SAFETY: `isolate` (`&mut OwnedIsolate`) lives for the entire function,
+    // so the raw pointer remains valid for all accesses within `call_render`.
+    let isolate_raw: *const v8::Isolate = &**isolate as *const v8::Isolate;
 
-    let global = context_local.global(&mut context_scope);
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase 1 — scope chain is alive
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // The scope chain *must* live inside a block so its mutable borrow on
+    // `isolate` is released when the block ends.  Outside the block `isolate`
+    // is available for direct calls (perform_microtask_checkpoint, etc.).
+    let async_handle: Option<AsyncHandle> = {
+        let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+        let mut scope = scope_storage.as_mut().init();
+        let context_local = v8::Local::new(&mut scope, &context);
+        let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
 
-    // globalThis.__ssr_bundles
-    let bundles_key = v8::String::new(&mut context_scope, "__ssr_bundles").unwrap();
-    let bundles_val = global
-        .get(&mut context_scope, bundles_key.into())
-        .filter(|v| !v.is_undefined() && !v.is_null())
-        .ok_or_else(|| DenoError::BundleNotFound(format!("No bundles loaded (id: {bundle_id})")))?;
+        let global = context_local.global(&mut context_scope);
 
-    let bundles_obj: v8::Local<v8::Object> = bundles_val.try_into().map_err(|_| {
-        DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
-    })?;
+        // globalThis.__ssr_bundles
+        let bundles_key = v8::String::new(&mut context_scope, "__ssr_bundles").unwrap();
+        let bundles_val = global
+            .get(&mut context_scope, bundles_key.into())
+            .filter(|v| !v.is_undefined() && !v.is_null())
+            .ok_or_else(|| {
+                DenoError::BundleNotFound(format!("No bundles loaded (id: {bundle_id})"))
+            })?;
 
-    // globalThis.__ssr_bundles[bundle_id]
-    let id_key = v8::String::new(&mut context_scope, bundle_id).unwrap();
-    let entry_val = bundles_obj
-        .get(&mut context_scope, id_key.into())
-        .filter(|v| !v.is_undefined() && !v.is_null())
-        .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' not found")))?;
-
-    let entry_obj: v8::Local<v8::Object> = entry_val.try_into().map_err(|_| {
-        DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
-    })?;
-
-    // globalThis.__ssr_bundles[bundle_id].render
-    let render_key = v8::String::new(&mut context_scope, "render").unwrap();
-    let render_val = entry_obj
-        .get(&mut context_scope, render_key.into())
-        .filter(|v| !v.is_undefined() && !v.is_null())
-        .ok_or_else(|| {
-            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function"))
+        let bundles_obj: v8::Local<v8::Object> = bundles_val.try_into().map_err(|_| {
+            DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
         })?;
 
-    let render_fn: v8::Local<v8::Function> = render_val.try_into().map_err(|_| {
-        DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
-    })?;
+        // globalThis.__ssr_bundles[bundle_id]
+        let id_key = v8::String::new(&mut context_scope, bundle_id).unwrap();
+        let entry_val = bundles_obj
+            .get(&mut context_scope, id_key.into())
+            .filter(|v| !v.is_undefined() && !v.is_null())
+            .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' not found")))?;
 
-    let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
-    let undefined = v8::undefined(&mut context_scope);
+        let entry_obj: v8::Local<v8::Object> = entry_val.try_into().map_err(|_| {
+            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
+        })?;
 
-    // TryCatch prevents V8 from marking the exception as unhandled, which would
-    // cause Deno's event loop to print "Uncaught ..." to stderr on the next tick.
-    let tc = std::pin::pin!(v8::TryCatch::new(&mut context_scope));
-    let try_catch = tc.init();
+        // globalThis.__ssr_bundles[bundle_id].render
+        let render_key = v8::String::new(&mut context_scope, "render").unwrap();
+        let render_val = entry_obj
+            .get(&mut context_scope, render_key.into())
+            .filter(|v| !v.is_undefined() && !v.is_null())
+            .ok_or_else(|| {
+                DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function"))
+            })?;
 
-    let call_result = render_fn.call(&try_catch, undefined.into(), &[args_v8.into()]);
+        let render_fn: v8::Local<v8::Function> = render_val.try_into().map_err(|_| {
+            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
+        })?;
 
-    let result = match call_result {
-        Some(v) => v,
-        None => {
-            let msg = try_catch
-                .message()
-                .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
-                .unwrap_or_else(|| "`render` function threw an exception".to_string());
-            return Err(DenoError::Render(msg));
+        let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
+        let undefined = v8::undefined(&mut context_scope);
+
+        // TryCatch prevents V8 from marking the exception as unhandled.
+        let mut tc = std::pin::pin!(v8::TryCatch::new(&mut context_scope));
+        let try_catch = tc.as_mut().init();
+
+        let call_result = render_fn.call(&try_catch, undefined.into(), &[args_v8.into()]);
+
+        let result = match call_result {
+            Some(v) => v,
+            None => {
+                let msg = try_catch
+                    .message()
+                    .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
+                    .unwrap_or_else(|| "`render` function threw an exception".to_string());
+                return Err(DenoError::Render(msg));
+            }
+        };
+
+        // ── Async detection ──────────────────────────────────────────────
+        if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
+            let was_pending = promise.state() == v8::PromiseState::Pending;
+            // SAFETY: isolate_raw is valid (isolate lives for entire fn).
+            let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
+            Some(AsyncHandle {
+                global_promise,
+                was_pending,
+            })
+        } else {
+            // Synchronous (non-Promise) result — handle immediately.
+            let json_str = v8::json::stringify(&try_catch, result).ok_or_else(|| {
+                DenoError::Render("Cannot serialize render result to JSON".to_string())
+            })?;
+            return Ok(json_str.to_rust_string_lossy(&try_catch));
+        }
+    }; // ── scope chain dropped here → isolate borrow released ──────────────
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase 2 — isolate is free (scope chain dead)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    let AsyncHandle {
+        global_promise,
+        was_pending,
+    } = async_handle.expect("async_handle is Some when we reach Phase 2");
+
+    const MAX_POLLS: u32 = 10_000;
+
+    if was_pending {
+        for poll in 0..MAX_POLLS {
+            isolate.perform_microtask_checkpoint();
+
+            let promise_ref = global_promise.open(isolate);
+
+            match promise_ref.state() {
+                v8::PromiseState::Pending => {
+                    if poll >= MAX_POLLS - 1 {
+                        return Err(DenoError::Render(
+                            "Async render promise did not settle within \
+                             the maximum number of event-loop polls"
+                                .to_string(),
+                        ));
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
+    // ── Re-create scope chain to read the settled result ────────────────
+    //
+    // global_promise.open() needs &mut Isolate.  We obtain it through the
+    // newly-created scope chain via AsMut<Isolate> to avoid a second
+    // mutable borrow of `isolate` (HandleScope already holds the first).
+    let result = {
+        let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+        let mut scope = scope_storage.as_mut().init();
+        let context_local = v8::Local::new(&mut scope, &context);
+        let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+
+        // Get &mut Isolate from the scope chain itself.
+        let promise_ref = global_promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
+
+        match promise_ref.state() {
+            v8::PromiseState::Fulfilled => {
+                let resolved = promise_ref.result(&context_scope);
+                let json_str =
+                    v8::json::stringify(&mut context_scope, resolved).ok_or_else(|| {
+                        DenoError::Render("Cannot serialize render result to JSON".to_string())
+                    })?;
+                Ok(json_str.to_rust_string_lossy(&mut context_scope))
+            }
+            v8::PromiseState::Rejected => {
+                let rejection = promise_ref.result(&context_scope);
+                let msg = if rejection.is_string() {
+                    rejection.to_rust_string_lossy(&mut context_scope)
+                } else if rejection.is_object() {
+                    v8::json::stringify(&mut context_scope, rejection)
+                        .map(|s| s.to_rust_string_lossy(&mut context_scope))
+                        .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
+                } else {
+                    "Promise rejected".to_string()
+                };
+                Err(DenoError::Render(msg))
+            }
+            v8::PromiseState::Pending => Err(DenoError::Render(
+                "Async render promise did not settle within \
+                 the maximum number of event-loop polls"
+                    .to_string(),
+            )),
         }
     };
-
-    // JSON-serialize so any JS type (string, object, array, …) survives the
-    // V8→Rust→Ruby boundary. Ruby's JSON.parse reconstructs the value.
-    let json_str = v8::json::stringify(&try_catch, result)
-        .ok_or_else(|| DenoError::Render("Cannot serialize render result to JSON".to_string()))?;
-
-    Ok(json_str.to_rust_string_lossy(&try_catch))
+    result
 }
 
 // ---------------------------------------------------------------------------
