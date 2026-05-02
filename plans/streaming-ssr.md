@@ -9,8 +9,12 @@
 
 The current SSR pipeline buffers the entire HTML output in memory before returning it to Rails:
 
-```
-Ruby ──JSON──> V8 ──renderToString──> full HTML string ──> Ruby ──> HTTP response
+```mermaid
+flowchart LR
+    Ruby -->|JSON| V8
+    V8 -->|renderToString| HTML["full HTML string"]
+    HTML --> Ruby
+    Ruby --> HTTP["HTTP response"]
 ```
 
 This has three drawbacks:
@@ -27,8 +31,12 @@ Replace the synchronous `renderToString` call with React 19's streaming API (`re
 
 ### Architecture
 
-```
-Ruby ──JSON──> V8 ──renderToPipeableStream──> chunked HTML ──stream──> Ruby ──stream──> HTTP client
+```mermaid
+flowchart LR
+    Ruby -->|JSON| V8
+    V8 -->|renderToPipeableStream| Chunked["chunked HTML"]
+    Chunked -->|stream| Ruby
+    Ruby -->|stream| Client["HTTP client"]
 ```
 
 The key insight is that the V8 isolate produces HTML in chunks via React's streaming scheduler. Each chunk is sent back to Ruby as it becomes available, and Ruby forwards it immediately to the HTTP response via `ActionController::Live`.
@@ -71,12 +79,15 @@ The stream emits:
 
 Instead of a single `oneshot` reply, the render message uses a **multi-message channel** where the worker sends multiple chunks followed by a completion signal:
 
-```
-Ruby ──> WorkerMsg::StreamRender { bundle_id, args_json, chunk_tx }
-Worker ──> Chunk::Html { data } ──> Ruby
-Worker ──> Chunk::Html { data } ──> Ruby
-Worker ──> Chunk::Html { data } ──> Ruby
-Worker ──> Chunk::Done ──> Ruby
+```mermaid
+sequenceDiagram
+    participant Ruby
+    participant Worker as V8 Worker
+    Ruby->>Worker: WorkerMsg::StreamRender
+    Worker-->>Ruby: Chunk::Html { data }
+    Worker-->>Ruby: Chunk::Html { data }
+    Worker-->>Ruby: Chunk::Html { data }
+    Worker-->>Ruby: Chunk::Done
 ```
 
 In Rust, we add a new `WorkerMsg` variant:

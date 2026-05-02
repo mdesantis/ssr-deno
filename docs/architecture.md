@@ -6,162 +6,73 @@ A Ruby gem that embeds the [`deno_runtime`](https://docs.rs/deno_runtime/latest/
 
 ## Architecture
 
-```
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                         Ruby Process                                │
-  │                                                                     │
-  │   ┌──────────┐     ┌─────────────────────┐     ┌────────────────┐   │
-  │   │          │     │                     │     │                │   │
-  │   │ Ruby App │────>│ SSR::Deno.render    │────>│ Ruby Native    │   │
-  │   │          │     │ data                │     │ Extension      │   │
-  │   │          │<────│                     │<────│                │   │
-  │   └──────────┘     └─────────────────────┘     └───────┬────────┘   │
-  │                                                        │            │
-  │                                                   JSON │            │
-  │                                                        │            │
-  │                                              ┌─────────▼────────┐   │
-  │                                              │                  │   │
-  │                                              │ deno_runtime::   │   │
-  │                                              │ MainWorker       │   │
-  │                                              │                  │   │
-  │                                              └──┬────┬────┬─────┘   │
-  │                                                 │    │    │         │
-  │                    ┌────────────────────────────┘    │    └──────┐  │
-  │                    │                                 │           │  │
-  │           ┌────────▼────────┐              ┌────────▼────────┐   │  │
-  │           │                 │              │                 │   │  │
-  │           │ deno_web        │              │ Self-Contained  │   │  │
-  │           │ extension       │              │ Vite SSR Bundle │   │  │
-  │           │                 │              │                 │   │  │
-  │           └────────┬────────┘              └────────▲────────┘   │  │
-  │                    │                                │            │  │
-  │           ┌────────▼────────────────────────┐   HTML│            │  │
-  │           │                                 │ string│            │  │
-  │           │ MessageChannel, setTimeout,     │───────┘            │  │
-  │           │ performance, console            │                    │  │
-  │           │                                 │                    │  │
-  │           └─────────────────────────────────┘                    │  │
-  │                                                                  │  │
-  │  ┌────────────────────────────────────────────────────────────┐  │  │
-  │  │                      Build Time                            │  │  │
-  │  │                                                            │  │  │
-  │  │   ┌──────────────────────┐     ┌────────────────────────┐  │  │  │
-  │  │   │                      │     │                        │  │  │  │
-  │  │   │ Vite + React/Vue/    │────>│ dist/server/entry-     │──┼──┘  │
-  │  │   │ Svelte               │     │ server.js              │  │     │
-  │  │   │                      │     │                        │  │     │
-  │  │   └──────────────────────┘     └────────────────────────┘  │     │
-  │  │                                                            │     │
-  │  └────────────────────────────────────────────────────────────┘     │
-  └─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph RubyProcess["Ruby Process"]
+        RubyApp["Ruby App"] --> BundleRender["Bundle.new(path).render(data)"]
+        BundleRender --> NativeExt["Ruby Native Extension"]
+        NativeExt -->|JSON| MainWorker["deno_runtime::MainWorker"]
+        MainWorker --> NativeExt
+        NativeExt --> BundleRender
+        DenoWeb["deno_web extension<br/>MessageChannel, setTimeout,<br/>performance, console"]
+        MainWorker --> DenoWeb
+        MainWorker --> Bundle["Self-Contained<br/>Vite SSR Bundle"]
+        Bundle -->|HTML string| MainWorker
+    end
+    subgraph BuildTime["Build Time"]
+        Vite["Vite + React/Vue/Svelte"] --> Dist["dist/server/entry-server.js"]
+    end
+    Dist -.-> Bundle
 ```
 
 ## Data Flow
 
-```
-  ┌──────┐         ┌──────────┐         ┌──────────────┐         ┌──────────────────┐
-  │ Ruby │         │  magnus  │         │ deno_runtime │         │  Vite SSR Bundle │
-  │ App  │         │Extension │         │              │         │                  │
-  └──┬───┘         └───┬──────┘         └──────┬───────┘         └────────┬─────────┘
-     │                 │                       │                          │
-     │ SSR::Deno.render│                       │                          │
-     │ ({component_data│                       │                          │
-     │  , props})      │                       │                          │
-     │────────────────>│                       │                          │
-     │                 │                       │                          │
-     │                 │ Serialize args to JSON│                          │
-     │                 │──┐                    │                          │
-     │                 │  │                    │                          │
-     │                 │<─┘                    │                          │
-     │                 │                       │                          │
-     │                 │ Execute JS entry      │                          │
-     │                 │ with JSON             │                          │
-     │                 │──────────────────────>│                          │
-     │                 │                       │                          │
-     │                 │                       │ Call render(JSON.parse(  │
-     │                 │                       │ args))                   │
-     │                 │                       │─────────────────────────>│
-     │                 │                       │                          │
-     │                 │                       │    Render component      │
-     │                 │                       │    to HTML string        │
-     │                 │                       │──┐                       │
-     │                 │                       │  │                       │
-     │                 │                       │<─┘                       │
-     │                 │                       │                          │
-     │                 │                       │ Return HTML string       │
-     │                 │                       │<─────────────────────────│
-     │                 │                       │                          │
-     │                 │ Return HTML as        │                          │
-     │                 │ Rust String           │                          │
-     │                 │<──────────────────────│                          │
-     │                 │                       │                          │
-     │ Return HTML as  │                       │                          │
-     │ Ruby String     │                       │                          │
-     │<────────────────│                       │                          │
-  ┌──┴───┐         ┌───┴──────┐         ┌──────┴───────┐         ┌────────┴─────────┐
-  │ Ruby │         │  magnus  │         │ deno_runtime │         │  Vite SSR Bundle │
-  │ App  │         │Extension │         │              │         │                  │
-  └──────┘         └──────────┘         └──────────────┘         └──────────────────┘
+```mermaid
+sequenceDiagram
+    participant RubyApp as Ruby App
+    participant Magnus as magnus Extension
+    participant DenoR as deno_runtime
+    participant Bundle as Vite SSR Bundle
+
+    RubyApp->>Magnus: Bundle.new(path).render(data)
+    Magnus->>Magnus: Serialize args to JSON
+    Magnus->>DenoR: Execute JS entry with JSON
+    DenoR->>Bundle: Call render(JSON.parse(args))
+    Bundle->>Bundle: Render component to HTML string
+    Bundle-->>DenoR: Return HTML string
+    DenoR-->>Magnus: Return HTML as Rust String
+    Magnus-->>RubyApp: Return HTML as Ruby String
 ```
 
 ## Component Architecture
 
-```
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │                              Ruby Layer                                     │
-  │                                                                             │
-  │   ┌──────────────────────┐     ┌──────────────┐     ┌──────────────────┐    │
-  │   │ SSR::Deno.render     │────>│ JSON.generate│────>│ native_render    │    │
-  │   │ Hash                 │     │              │     │                  │    │
-  │   └──────────┬───────────┘     └──────────────┘     └──────────────────┘    │
-  │              │                                                              │
-  └──────────────┼──────────────────────────────────────────────────────────────┘
-                 │ magnus bindings
-  ┌──────────────┼──────────────────────────────────────────────────────────────┐
-  │              ▼              Rust Native Extension (ext/ssr_deno/)           │
-  │   ┌──────────────────────┐                                                  │
-  │   │ lib.rs               │────┐                                             │
-  │   │ (magnus entrypoint)  │    │                                             │
-  │   └──────────────────────┘    │                                             │
-  │                               ▼                                             │
-  │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │     deno_runtime_wrapper/  (mod.rs + call_render.rs)                  │  │
-  │   └──┬───────────────────────────────┬───────────────────────────────────┘  │
-  │      │                               │                                      │
-  │      ▼                               ▼                                      │
-  │   ┌──────────────────────┐   ┌──────────────────────┐                       │
-  │   │ sys.rs               │   │ nop_types.rs         │                       │
-  │   │ (Sys type for        │   │ (NOP types for       │                       │
-  │   │  sys_traits)         │   │  generics)           │                       │
-  │   └──────────────────────┘   └──────────────────────┘                       │
-  └──────────────┬──────────────────────────────────────────────────────────────┘
-                 │
-  ┌──────────────┼──────────────────────────────────────────────────────────────┐
-  │              ▼                    deno_runtime Crate                        │
-  │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │              MainWorker (via bootstrap_from_options)                 │  │
-  │   └──┬───────────────────────────────┬───────────────────────────────────┘  │
-  │      │                               │                                      │
-  │      ▼                               ▼                                      │
-  │   ┌──────────────────────┐   ┌──────────────────────┐                       │
-  │   │ deno_web extension   │   │ V8 Engine            │                       │
-  │   └──────────┬───────────┘   └──────────────────────┘                       │
-  │              ▼                                                              │
-  │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │ MessageChannel, setTimeout, performance, console                     │  │
-  │   └──────────────────────────────────────────────────────────────────────┘  │
-  └──────────────┬──────────────────────────────────────────────────────────────┘
-                 │
-  ┌──────────────┼──────────────────────────────────────────────────────────────┐
-  │              ▼                         JS Layer                             │
-  │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │              Vite SSR Bundle (entry-server.js)                       │  │
-  │   └──────────────────────────┬───────────────────────────────────────────┘  │
-  │                              ▼                                              │
-  │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │                    globalThis.render function                        │  │
-  │   └──────────────────────────────────────────────────────────────────────┘  │
-  └─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph RubyLayer["Ruby Layer"]
+        BR["Bundle.new(path).render(data)"] --> JG["JSON.generate"]
+        JG --> NR["native_render"]
+    end
+    RubyLayer -->|magnus bindings| RustLayer
+
+    subgraph RustLayer["Rust Native Extension (ext/ssr_deno/)"]
+        LibRS["lib.rs (magnus entrypoint)"] --> DRW["deno_runtime_wrapper (mod.rs + call_render.rs)"]
+        DRW --> SysRS["sys.rs (Sys type for sys_traits)"]
+        DRW --> NopRS["nop_types.rs (NOP types for generics)"]
+    end
+
+    RustLayer --> DenoLayer
+
+    subgraph DenoLayer["deno_runtime Crate"]
+        MW["MainWorker (via bootstrap_from_options)"] --> DenoWeb["deno_web extension"]
+        MW --> V8Eng["V8 Engine"]
+        DenoWeb --> WebAPIs["MessageChannel, setTimeout,<br/>performance, console"]
+    end
+
+    DenoLayer --> JSLayer
+
+    subgraph JSLayer["JS Layer"]
+        Bundle_["Vite SSR Bundle (entry-server.js)"] --> RenderFn["globalThis.render function"]
+    end
 ```
 
 ## Directory Structure
