@@ -9,6 +9,7 @@
 - New sample: `samples/react-ssr-app` — React 19 SSR (renamed from `vite-ssr-app`, all samples use Vite).
 - README: add SSR bundle creation guide (bundle contract, vanilla/Vue/Svelte/React patterns).
 - Consistent serve ports across samples (vanilla=3100, react=3101, vue=3102, svelte=3103).
+- Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.
 
 ## [0.1.0-alpha.2] - 2026-05-02
 

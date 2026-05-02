@@ -199,6 +199,11 @@ export default defineConfig({
 | Svelte 5 | `@sveltejs/vite-plugin-svelte` |
 | React 19 | `@vitejs/plugin-react` |
 
+All samples also add `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']`
+to prevent bundler from resolving packages (like `@emotion/cache`) to their browser-specific builds
+when `ssr.target: 'webworker'` is set. See
+[`plans/edge-light-resolution.md`](plans/edge-light-resolution.md) for details.
+
 ### Building and running
 
 Each sample defines `deno task build` and `deno task serve` in its `deno.json`:

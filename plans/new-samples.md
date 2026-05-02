@@ -177,12 +177,16 @@ function render(argsJson: string): string {
 globalThis.render = render
 ```
 
+**Notes:** All samples use `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']`
+in their Vite config to prevent packages like `@emotion/cache` from resolving to their browser build
+under `ssr.target: 'webworker'`. See [`plans/edge-light-resolution.md`](edge-light-resolution.md).
+
 **Files to create:**
 
 | File | Content |
 |------|---------|
 | [`samples/react-mui-ssr-app/deno.json`](../samples/react-mui-ssr-app/deno.json) | react, react-dom, @mui, @emotion, vite imports |
-| [`samples/react-mui-ssr-app/vite.config.ts`](../samples/react-mui-ssr-app/vite.config.ts) | plugin: react() |
+| [`samples/react-mui-ssr-app/vite.config.ts`](../samples/react-mui-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
 | [`samples/react-mui-ssr-app/tsconfig.json`](../samples/react-mui-ssr-app/tsconfig.json) | same |
 | [`samples/react-mui-ssr-app/serve.deno.ts`](../samples/react-mui-ssr-app/serve.deno.ts) | standard test server |
 | [`samples/react-mui-ssr-app/src/entry-server.ts`](../samples/react-mui-ssr-app/src/entry-server.ts) | CacheProvider + renderToString |
@@ -201,7 +205,7 @@ globalThis.render = render
 | File | Content |
 |------|---------|
 | [`samples/react-mui-emotion-ssr-app/deno.json`](../samples/react-mui-emotion-ssr-app/deno.json) | same + @emotion/cache |
-| [`samples/react-mui-emotion-ssr-app/vite.config.ts`](../samples/react-mui-emotion-ssr-app/vite.config.ts) | plugin: react() |
+| [`samples/react-mui-emotion-ssr-app/vite.config.ts`](../samples/react-mui-emotion-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
 | [`samples/react-mui-emotion-ssr-app/tsconfig.json`](../samples/react-mui-emotion-ssr-app/tsconfig.json) | same |
 | [`samples/react-mui-emotion-ssr-app/serve.deno.ts`](../samples/react-mui-emotion-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
 | [`samples/react-mui-emotion-ssr-app/src/entry-server.ts`](../samples/react-mui-emotion-ssr-app/src/entry-server.ts) | emotion cache + CSS extraction |
@@ -235,7 +239,7 @@ globalThis.render = render
 | [`samples/react-emotion-mui-dashboard-ssr-app/serve.deno.ts`](../samples/react-emotion-mui-dashboard-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
 | [`samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts`](../samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts) | emotion cache + renderToString + CSS extract |
 | [`samples/react-emotion-mui-dashboard-ssr-app/src/App.tsx`](../samples/react-emotion-mui-dashboard-ssr-app/src/App.tsx) | dashboard layout |
-| [`samples/react-emotion-mui-dashboard-ssr-app/src/createEmotionCache.ts`](../samples/react-emotion-mui-dashboard-ssr-app/src/createEmotionCache.ts) | emotion cache factory |
+| [`samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts`](../samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts) | emotion cache + renderToString + CSS extract |
 | [`samples/react-emotion-mui-dashboard-ssr-app/src/components/`](../samples/react-emotion-mui-dashboard-ssr-app/src/components/) | Dashboard, Sidebar, DataTable, StatCard |
 
 ---
