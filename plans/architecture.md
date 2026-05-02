@@ -197,7 +197,7 @@ ssr-deno/
 ├── sig/                             # RBS type signatures
 ├── test/                            # Minitest suite
 ├── samples/
-│   └── vite-ssr-app/                # Sample Vite SSR project (deno.json, src/, dist/)
+│   └── react-ssr-app/                # Sample React SSR project (deno.json, src/, dist/)
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
 │   ├── ci-speedup.md
@@ -617,7 +617,7 @@ implemented yet.
    - Added `features = ["hmr"]` to `deno_runtime` — makes `op_snapshot_options` use `try_take` + `unwrap_or_default` instead of panicking
 
 8. ✅ **Vite SSR sample renders successfully**
-   - `bundle exec ruby -e "require 'ssr/deno'; bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js'); puts bundle.render({data: {message: 'Hello World!'}})"`
+   - `bundle exec ruby -e "require 'ssr/deno'; bundle = SSR::Deno::Bundle.new('samples/react-ssr-app/dist/server/entry-server.js'); puts bundle.render({data: {message: 'Hello World!'}})"`
    - Returns full HTML with React SSR output
 
 9. ✅ **Added integration test**

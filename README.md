@@ -169,7 +169,7 @@ globalThis.render = render
 
 React's `renderToString` is synchronous.
 
-Full sample: [`samples/vite-ssr-app/`](samples/vite-ssr-app/)
+Full sample: [`samples/react-ssr-app/`](samples/react-ssr-app/)
 
 ### Vite configuration
 

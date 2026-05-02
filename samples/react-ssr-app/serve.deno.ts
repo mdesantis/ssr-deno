@@ -81,5 +81,5 @@ Deno.serve({ port: PORT }, (req: Request) => {
   }
 });
 
-console.log(`SSR test server running at http://localhost:${PORT}`);
+console.log(`React SSR test server running at http://localhost:${PORT}`);
 console.log(`Try: http://localhost:${PORT}?name=Maurizio`);

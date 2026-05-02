@@ -1,6 +1,6 @@
 # New Sample Apps — Plan
 
-Add 5 new SSR sample apps under `samples/` following [`samples/vite-ssr-app/`](../samples/vite-ssr-app/) pattern.
+Add 5 new SSR sample apps under `samples/` following [`samples/react-ssr-app/`](../samples/react-ssr-app/) pattern.
 
 ---
 
@@ -8,7 +8,7 @@ Add 5 new SSR sample apps under `samples/` following [`samples/vite-ssr-app/`](.
 
 1. `deno task build` → `dist/server/entry-server.js` (self-contained, `noExternal: true`)
 2. `globalThis.render(argsJson: string): string` — Ruby calls this via V8
-3. `deno task serve` — manual test server (same [`serve.deno.ts`](../samples/vite-ssr-app/serve.deno.ts) pattern)
+3. `deno task serve` — manual test server (same [`serve.deno.ts`](../samples/react-ssr-app/serve.deno.ts) pattern)
 4. Works with `SSR::Deno::Bundle.new(path)` + `bundle.render(data)`
 
 **Pattern:**
@@ -16,7 +16,7 @@ Add 5 new SSR sample apps under `samples/` following [`samples/vite-ssr-app/`](.
 ```
 samples/{name}/
 ├── deno.json          # tasks: build, serve; npm imports
-├── serve.deno.ts      # Deno HTTP server (copy from vite-ssr-app)
+├── serve.deno.ts      # Deno HTTP server (copy from react-ssr-app)
 ├── tsconfig.json      # TypeScript config
 ├── vite.config.ts     # Vite SSR config
 └── src/
@@ -239,7 +239,7 @@ Update [`Rakefile`](../Rakefile) `namespace :samples` to build all samples:
 
 ```ruby
 SAMPLES = %w[
-  vite-ssr-app
+  react-ssr-app
   vanilla-ssr-app
   vue-ssr-app
   svelte-ssr-app

@@ -3,8 +3,8 @@
 require 'test_helper'
 
 module SSR
-  class TestIntegrationViteSsr < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
+  class TestIntegrationReactSsr < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Vite SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)

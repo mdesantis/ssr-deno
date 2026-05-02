@@ -29,7 +29,7 @@ namespace :cargo do
 end
 
 SAMPLES = %w[
-  vite-ssr-app
+  react-ssr-app
   vanilla-ssr-app
   vue-ssr-app
   svelte-ssr-app
