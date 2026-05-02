@@ -88,8 +88,15 @@ module SSR
       #   used_global_handles_size    – live persistent handles (bytes)
       #
       # @return [Hash<String, Integer>]
-      def heap_stats
+      # @raise [JsRuntimeNotInitializedError] if pool not initialized
+      # @raise [JsRuntimeWorkerError] if worker thread has exited
+      def heap_stats!
         JSON.parse(native_heap_stats)
+      end
+
+      # @return [Hash<String, Integer>]
+      def heap_stats
+        heap_stats!
       rescue JsRuntimeNotInitializedError, JsRuntimeWorkerError => error
         warn "[ssr-deno] #{error.message}"
         {}

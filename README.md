@@ -60,7 +60,9 @@ SSR::Deno.heap_stats
 # => { "total_heap_size" => 20971520, "used_heap_size" => 8388608, ... }
 ```
 
-Returns 13 V8 memory counters from the isolate pool.
+Returns 13 V8 memory counters from the isolate pool. Returns an empty Hash
+with a warning if the runtime is not yet initialized. Use `heap_stats!` to
+raise on error instead.
 
 ## Bundle contract
 

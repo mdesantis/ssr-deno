@@ -31,7 +31,7 @@ flowchart TB
 
 | File | Purpose |
 |------|---------|
-| `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters (`max_heap_size_mb=`, `isolate_pool_size=`, `render_timeout_ms=`, `node_builtins_enabled=`) and `heap_stats` |
+| `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters (`max_heap_size_mb=`, `isolate_pool_size=`, `render_timeout_ms=`, `node_builtins_enabled=`) and `heap_stats` / `heap_stats!` |
 | `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result |
 | `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |

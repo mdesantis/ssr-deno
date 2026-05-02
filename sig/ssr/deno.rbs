@@ -107,6 +107,7 @@ module SSR
     def self.native_set_node_builtins_enabled: (bool enabled) -> nil
     def self.native_heap_stats: () -> String
 
+    def self.heap_stats!: () -> Hash[String, Integer]
     def self.heap_stats: () -> Hash[String, Integer]
 
     def self.max_heap_size_mb=: (Integer mb) -> void
