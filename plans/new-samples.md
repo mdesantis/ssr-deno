@@ -313,4 +313,4 @@ end
 1. **Vue async:** Confirmed Vue `renderToString` returns Promise → Step 1 required. Alternative: use synchronous wrapper (not possible with Vue 3 API).
 2. **Svelte version:** Svelte 5's `svelte/server` render is sync. Confirm Svelte 5 is available via npm (yes).
 3. **MUI X DataGrid:** May need licensing. Can use basic MUI Core Table instead if DataGrid license issue.
-4. **serve.deno.ts for MUI samples:** Since MUI samples return `{html, css}` JSON, the test server needs to parse and construct full HTML. Update the server template.
+4. **serve.deno.ts for MUI samples:** Since MUI samples return `{html, css}` JSON, the test server needs to parse and construct full HTML. ✅ Done — both MUI samples have working `serve.deno.ts` (plain for `react-mui-ssr-app`, JSON-parsing for `react-mui-emotion-ssr-app`).

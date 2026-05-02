@@ -11,6 +11,11 @@
 - Consistent serve ports across samples (vanilla=3100, react=3101, vue=3102, svelte=3103).
 - Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.
 - `SSR::Deno.node_builtins_enabled=` config option (default: `false`) — enables Node.js built-in module support for bundles that call `require()` for `stream`, `buffer`, `events`, etc. Required for `@emotion/server` and similar packages. Adds ~50ms to worker init. Disabled by default.
+- `AGENTS.md` renamed from `CLAUDE.md` (OpenCode canonical name).
+- Refactored `Rakefile` — task namespaces extracted to `rakelib/` (`cargo.rake`, `samples.rake`, `test.rake`).
+- Renamed `test_integration_vite_ssr.rb` to `test_integration_samples.rb`.
+- Split test suite: `test:main` (52 tests, no node_builtins) and `test:node_builtins` (1 test, node_builtins enabled). Merged coverage validated at 100%.
+- `/.opencode/` added to `.gitignore`.
 
 ## [0.1.0-alpha.2] - 2026-05-02
 
