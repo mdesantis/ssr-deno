@@ -2,7 +2,7 @@
 
 Minimal Vite + Preact SSR sample. Same contract as `react-ssr-app` but with Preact instead of React.
 
-**Status:** ◐ Implemented with workaround — JSX transform broken (see below).
+**Status:** ◐ Implemented with workaround — JSX transform broken by Vite 8/Deno napi-rs compat issue (see below).
 
 ---
 
@@ -14,7 +14,7 @@ Minimal Vite + Preact SSR sample. Same contract as `react-ssr-app` but with Prea
 | `preact-render-to-string` | SSR: `renderToString()` |
 | `vite` | Bundler |
 
-No `@preact/preset-vite` needed — current sample uses `h()` directly instead of JSX.
+No JSX transform plugin needed — sample uses `h()` directly instead of JSX.
 
 ---
 
@@ -32,7 +32,7 @@ No `@preact/preset-vite` needed — current sample uses `h()` directly instead o
 
 ---
 
-## SSR entry (current)
+## SSR entry
 
 ```ts
 import { renderToString } from 'preact-render-to-string'
@@ -46,34 +46,41 @@ function render(argsJson: string): string {
 globalThis.render = render
 ```
 
-Uses `h()` instead of JSX because the JSX transform is broken.
-
 ---
 
-## JSX transform issue
+## Root cause: JSX transform blocked by Deno/napi-rs compat
 
-**Blocking:** Vite 8 uses rolldown (not esbuild) for transforms. `@preact/preset-vite` doesn't handle rolldown's JSX pipeline correctly in Vite 8.
+Vite 8 uses Rolldown (1.0.0-rc.17) which uses OXC for built-in JSX transforms.
+OXC is a Rust native addon (napi-rs). In Deno's npm compat layer, passing
+complex nested JS objects to Rust bindings causes a type conversion failure.
 
-Error:
-```
-[builtin:vite-transform] Error: Expected `>` but found `Identifier`
-  at src/entry-server.ts:6:30
-    renderToString(<App data={data} />)
+**Proof:**
+```js
+// Fails in Deno:
+utils.transformSync('test.tsx', code, { lang: 'tsx', jsx: { ... } })
+// Works:
+utils.transformSync('test.tsx', code, JSON.stringify({ lang: 'tsx', jsx: { ... } }))
 ```
 
 **Attempted fixes (all failed):**
-1. `@preact/preset-vite` + `jsx: "react-jsx"` / `jsxImportSource: "preact"` — fails to parse JSX
-2. Removing preset, keeping deno.json `jsx: "react-jsx"` / `jsxImportSource: "preact"` — same error
-3. Using `.tsx` extension with various jsx config combos — rolldown rejects the JSX tokens
+1. `@preact/preset-vite` v2.10.5 — plugin detects rolldown and sets `oxc` JSX config,
+   but the native transform still fails to parse `<` as JSX token.
+2. `@vitejs/plugin-react` v6.0.1 — same issue, OXC transform receives options
+   as object not JSON string.
+3. `@vitejs/plugin-react` + `babel: true` + `@rolldown/plugin-babel` — Babel mode
+   can't engage because the built-in native transform runs first and fails.
+4. `.jsx` extension — same parser error.
+5. `oxc` config in vite.config.ts — doesn't override the native plugin behavior.
+6. `--unstable-bare-node-builtins` flag — no effect.
 
-**Workaround:** Use `h()` (Preact's `createElement`) directly. No JSX needed. Build works. Bundle is 23 KB.
+**Workaround:** Use `h()` (Preact's `createElement`) directly. No JSX needed.
+Build works. Bundle is 23 KB (vs 453 KB for React sample).
 
-**Proper fix needed:** Either:
-- Wait for `@preact/preset-vite` to support Vite 8 / rolldown
-- Or configure Vite 8 to use esbuild instead of rolldown for JSX transforms (if possible)
-- Or use `preact/compat` with the React JSX runtime (might work with different plugin config)
-
-**Status:** ◐ Implementation works via `h()` workaround. JSX sample blocked until rolldown JSX compat is resolved.
+**When this can be fixed:**
+- Vite 8 stable release (may fix how OXC options are passed to native addon)
+- Rolldown update that accepts stringified transform options
+- Deno update that improves napi-rs object passing
+- Revisit when any of these ship.
 
 ---
 

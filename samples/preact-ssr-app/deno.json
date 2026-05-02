@@ -15,7 +15,6 @@
   "imports": {
     "preact": "npm:preact@^10.29.0",
     "preact-render-to-string": "npm:preact-render-to-string@^6.6.0",
-    "preact/hooks": "npm:preact@^10.29.0/hooks",
     "vite": "npm:vite@^8.0.10",
     "@types/deno": "npm:@types/deno@^2.0.0"
   },
