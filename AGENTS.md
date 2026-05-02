@@ -6,6 +6,8 @@
 - **Diagrams must be ASCII art, not Mermaid or other diagram tools.** All diagrams in plans, docs, and comments must use hand-crafted ASCII art with Unicode box-drawing characters (┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼ ▶ ▲ ▼). Never use ```mermaid or other diagram DSLs. If you encounter diagrams written in another format, recreate them from scratch by hand — do not attempt to convert them with automated tools or converters.
 - **Every change must be accompanied by a documentation audit.** Before writing any code, first identify which docs, comments, README sections, RBS signatures, or plan files could become stale as a result of the change. Update them in lockstep with the code — not after. This applies to: setting accessor comments, public API docs, source-level inline comments, README usage sections, RBS type signatures, and plan files that reference the modified area. Do not leave documentation drift for a later cleanup pass.
 
+- **Do not mark a plan step as completed if it has open dependencies.** A step should only be marked ✅ when ALL its dependency steps are also ✅. If a step has open/pending dependencies, mark it ◐ (partial) or leave it [ ] (pending). If a plan as a whole has any open steps, it should remain in `plans/` — only move fully completed plans to `plans/archived/`.
+
 ## Workflow
 
 - **Always run `bundle exec rake` (full pipeline) after any changeset.** Never run `bundle exec rake test` or other subset — only the full `bundle exec rake` counts. This runs: compilation (Rust native extension), Rust unit tests (`cargo test -p ssr_deno_core`), Vite SSR sample build, Ruby tests, RuboCop linting, SimpleCov coverage check (must be 100% line + 100% branch), and RBS signature validation. Do not consider a changeset complete until `bundle exec rake` exits 0.

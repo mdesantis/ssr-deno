@@ -315,7 +315,7 @@ bin/console
 
 ## Architecture
 
-See [`plans/architecture.md`](plans/architecture.md) for a detailed overview of the project architecture, component design, and data flow.
+See [`docs/architecture.md`](docs/architecture.md) for a detailed overview of the project architecture, component design, and data flow.
 
 ## Contributing
 
