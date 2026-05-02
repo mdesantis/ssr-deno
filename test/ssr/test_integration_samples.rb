@@ -86,4 +86,20 @@ module SSR
       assert_includes html, 'Vue'
     end
   end
+
+  class TestIntegrationPreactSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/preact-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'Preact SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_preact_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ data: { name: 'Preact' } })
+
+      assert_includes html, 'Preact'
+      assert_includes html, 'Preact SSR'
+    end
+  end
 end

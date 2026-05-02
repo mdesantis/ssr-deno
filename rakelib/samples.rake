@@ -8,6 +8,7 @@ SAMPLES = %w[
   react-mui-emotion-ssr-app
   react-mui-ssr-app
   react-emotion-mui-dashboard-ssr-app
+  preact-ssr-app
 ].freeze
 
 desc 'Build all SSR sample bundles'
