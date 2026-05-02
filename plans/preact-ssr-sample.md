@@ -76,6 +76,24 @@ native resolver is invoked.
 
 Related Deno issue: [denoland/deno#33787](https://github.com/denoland/deno/issues/33787)
 
+### Deep dive: who owns the fix?
+
+Three layers, none at fault alone:
+
+| Layer | Role | Why it can't fix it |
+|-------|------|---------------------|
+| **napi-rs** | JS↔Rust bridge library | Just passes calls through. Doesn't do module resolution. |
+| **Rolldown** | Rust bundler (uses napi-rs) | Reads `node_modules/` via `fs::read`/`stat` — standard behavior. Works in Node because `node_modules/react/` exists there. Not Rolldown's job to know about Deno import maps. |
+| **Deno** | JS runtime | Installs npm packages locally but does NOT create fs-level symlinks for import map aliases. E.g., `react → npm:preact/compat` installs `node_modules/preact/` but not `node_modules/react/`. Native addons can't see the alias. |
+
+**Where a fix could land:**
+
+1. **Deno** — Best place. When `nodeModulesDir: auto` is active and an import map entry aliases one package to another, Deno could create a symlink at the source name. E.g., `node_modules/react/` → symlink to `node_modules/preact/compat/`. This costs nothing and makes native addons work without changes.
+
+2. **Rolldown** — Could expose a JS resolve hook via napi-rs so the JS layer (which knows about import maps) can resolve specifiers before the native code reads filesystem. Deeper API change.
+
+3. **Vite** — Already has the workaround (`resolve.alias` at JS level before native resolver runs). This is what we use.
+
 ---
 
 ## Integration
