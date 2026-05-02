@@ -6,6 +6,8 @@
 
 require 'simplecov'
 
+SimpleCov.command_name ENV.fetch('SIMPLECOV_COMMAND_NAME', 'test:main')
+
 SimpleCov.start do
   enable_coverage :branch
   add_filter 'test/dummy/'

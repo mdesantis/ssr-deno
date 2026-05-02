@@ -39,8 +39,21 @@ task 'test:node_builtins' do
   RUBY
 
   File.write(File.join(tmp, 'test_runner_node.rb'), runner)
-  ruby "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_node.rb')
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:node_builtins' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_node.rb'))
 end
 
 desc 'Run all test suites'
 task test: %w[test:main test:node_builtins]
+
+desc 'Check merged coverage (runs after test:node_builtins)'
+task 'coverage:check' do
+  require 'simplecov'
+  require 'json'
+  rs_path = File.join(SimpleCov.coverage_path, '.resultset.json')
+  abort 'No coverage results — run `rake test` first' unless File.exist?(rs_path)
+  results = SimpleCov::ResultMerger.merged_result
+  line = results.covered_percent
+  puts "Merged line coverage: #{line.round(2)}%"
+  abort "Merged coverage #{line.round(2)}% is below 100%" if line < 100.0
+end
