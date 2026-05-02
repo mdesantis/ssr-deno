@@ -16,6 +16,8 @@ use deno_runtime::FeatureChecker;
 use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
 use crate::nop_types::NopPermissionDescriptorParser;
+use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;
+use crate::require_loader::DenoNodeRequireLoader;
 use crate::sys::Sys;
 
 pub use ssr_deno_core::DenoError;
@@ -331,6 +333,35 @@ fn worker_thread_main(
     });
 }
 
+/// Injects `globalThis.require` into the V8 context by loading
+/// `createRequire` from Deno's built-in `node:module` via async import.
+fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
+    // The deno_node extension registers node:module polyfill via its extension
+    // system. When import('node:module') is called, the extension serves the
+    // source code directly (not through the module loader). We use microtask
+    // polling to let the async import resolve synchronously.
+    worker
+        .execute_script(
+            "<ssr-deno:require>",
+            r#"
+            globalThis.__ssr_require_promise = (async () => {
+                const { createRequire } = await import('node:module');
+                globalThis.require = createRequire('file:///');
+            })();
+            "#
+            .to_string()
+            .into(),
+        )
+        .map_err(|e| format!("Failed to start require import: {e}"))?;
+
+    let isolate = worker.js_runtime.v8_isolate();
+    for _ in 0..10_000 {
+        isolate.perform_microtask_checkpoint();
+    }
+
+    Ok(())
+}
+
 /// Evaluates the bundle code and moves `globalThis.render` into the bundle
 /// namespace: `globalThis.__ssr_bundles[bundle_id] = { render: globalThis.render }`.
 fn load_bundle_in_worker(
@@ -339,6 +370,12 @@ fn load_bundle_in_worker(
     bundle_code: String,
     script_name: &'static str,
 ) -> Result<(), String> {
+    // Provide globalThis.require for bundles that use Node.js built-in modules.
+    // Uses Deno's module system to load `createRequire` from node:module.
+    if let Err(e) = setup_require(worker) {
+        return Err(format!("Failed to set up require: {e}"));
+    }
+
     if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
         return Err(format!("Failed to evaluate SSR bundle: {e}"));
     }
@@ -366,14 +403,62 @@ fn load_bundle_in_worker(
 }
 
 fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker, String> {
+    let node_services = {
+        use std::borrow::Cow;
+        use node_resolver::{
+            DenoIsBuiltInNodeModuleChecker,
+            NodeResolverOptions, NodeConditionOptions,
+            PackageJsonResolver,
+            cache::NodeResolutionSys,
+        };
+        use deno_runtime::deno_fs::sync::MaybeArc;
+        use deno_runtime::deno_node::{NodeResolver, NodeExtInitServices, NodeRequireLoaderRc};
+
+        let loader: NodeRequireLoaderRc = std::rc::Rc::new(DenoNodeRequireLoader);
+
+        let pkg_json_resolver = MaybeArc::new(
+            PackageJsonResolver::new(Sys, None),
+        );
+
+        let resolver: MaybeArc<
+            NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>,
+        > = {
+            let r = NodeResolver::new(
+                NopInNpmPackageChecker,
+                DenoIsBuiltInNodeModuleChecker,
+                NopNpmPackageFolderResolver,
+                pkg_json_resolver.clone(),
+                NodeResolutionSys::new(Sys, None),
+                NodeResolverOptions {
+                    conditions: NodeConditionOptions {
+                        conditions: vec![Cow::Borrowed("node"), Cow::Borrowed("import")],
+                        import_conditions_override: None,
+                        require_conditions_override: None,
+                    },
+                    is_browser_platform: false,
+                    bundle_mode: true,
+                    typescript_version: None,
+                },
+            );
+            MaybeArc::new(r)
+        };
+
+        Some(NodeExtInitServices {
+            node_require_loader: loader,
+            node_resolver: resolver,
+            pkg_json_resolver,
+            sys: Sys,
+        })
+    };
+
     let services = WorkerServiceOptions {
         blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()),
         broadcast_channel: Default::default(),
         deno_rt_native_addon_loader: None,
         feature_checker: Arc::new(FeatureChecker::default()),
         fs: Arc::new(deno_runtime::deno_fs::RealFs),
-        module_loader: std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader),
-        node_services: None,
+        module_loader: std::rc::Rc::new(NodeBuiltinOnlyModuleLoader),
+        node_services,
         npm_process_state_provider: None,
         permissions: PermissionsContainer::new(
             Arc::new(NopPermissionDescriptorParser),

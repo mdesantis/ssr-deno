@@ -493,3 +493,6 @@ impl sys_traits::BaseEnvVar for Sys {
         std::env::var_os(key)
     }
 }
+
+// NodeResolverSys and ExtNodeSys have blanket impls in their respective
+// crates — Sys already satisfies all supertraits via the Base* impls above.

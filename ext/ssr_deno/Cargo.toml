@@ -21,6 +21,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 deno_runtime = { version = "0.255.0", features = ["transpile", "hmr"] }
 deno_semver = "=0.9.1"
+deno_error = "=0.7.1"
 node_resolver = "=0.85.0"
 sys_traits = "=0.1.27"
 libc = "0.2"

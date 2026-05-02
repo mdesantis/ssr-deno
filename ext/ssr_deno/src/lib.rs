@@ -1,5 +1,7 @@
 mod deno_runtime_wrapper;
+mod node_builtin_loader;
 mod nop_types;
+mod require_loader;
 mod sys;
 
 use deno_runtime_wrapper::{DenoError, IsolatePool};

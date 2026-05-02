@@ -2,12 +2,14 @@ import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
 import { CacheProvider } from '@emotion/react'
 import createCache from '@emotion/cache'
+import createEmotionServer from '@emotion/server/create-instance'
 import App from './App.tsx'
 
 function render(argsJson: string): string {
   const { data } = JSON.parse(argsJson)
 
   const cache = createCache({ key: 'ssr' })
+  const { extractCriticalToChunks, constructStyleTagsFromChunks } = createEmotionServer(cache)
 
   const html = renderToString(
     createElement(CacheProvider, { value: cache },
@@ -15,24 +17,10 @@ function render(argsJson: string): string {
     )
   )
 
-  const styles = extractEmotionStyles(cache)
-  const css = `<style data-emotion="ssr">${styles}</style>`
+  const emotionChunks = extractCriticalToChunks(html)
+  const css = constructStyleTagsFromChunks(emotionChunks)
 
   return JSON.stringify({ html, css })
-}
-
-function extractEmotionStyles(cache: ReturnType<typeof createCache>): string {
-  const inserted = (cache as unknown as { inserted: Record<string, string | true> }).inserted
-  const styles: string[] = []
-
-  for (const id of Object.keys(inserted)) {
-    const style = inserted[id]
-    if (typeof style === 'string') {
-      styles.push(style)
-    }
-  }
-
-  return styles.join('')
 }
 
 // @ts-ignore: globalThis augmentation
