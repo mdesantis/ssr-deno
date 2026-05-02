@@ -23,7 +23,7 @@ if (typeof renderFn !== "function") {
 const sizeKB = (bundleCode.length / 1024).toFixed(0);
 console.log(`Bundle loaded successfully (${sizeKB} KB)`);
 
-Deno.serve({ port: PORT }, (req: Request) => {
+Deno.serve({ port: PORT }, (_req: Request) => {
   try {
     const result = renderFn(JSON.stringify({}));
     const { html, css } = JSON.parse(result);
