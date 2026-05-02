@@ -1,6 +1,6 @@
 /// <reference types="@types/deno" />
 
-const PORT = parseInt(Deno.env.get("PORT") || "3108", 10)
+const PORT = parseInt(Deno.env.get("PORT") || "3101", 10)
 
 function render(name: string): string {
   return `<!DOCTYPE html>

@@ -1,0 +1,14 @@
+{
+  "name": "@ssr-deno/barebone-ssr-app",
+  "version": "1.0.0",
+  "exports": "./serve.deno.ts",
+  "lock": "deno.lock",
+  "nodeModulesDir": "auto",
+  "exclude": ["node_modules/"],
+  "tasks": {
+    "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
+  },
+  "imports": {
+    "@types/deno": "npm:@types/deno@^2.0.0"
+  }
+}

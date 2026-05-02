@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@types/deno@2": "2.5.0"
+  },
+  "npm": {
+    "@types/deno@2.5.0": {
+      "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@types/deno@2"
+    ]
+  }
+}

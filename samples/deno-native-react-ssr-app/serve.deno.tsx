@@ -2,7 +2,7 @@
 
 import { renderToString } from "react-dom/server"
 
-const PORT = parseInt(Deno.env.get("PORT") || "3109", 10)
+const PORT = parseInt(Deno.env.get("PORT") || "3103", 10)
 
 function App({ name }: { name: string }) {
   return (

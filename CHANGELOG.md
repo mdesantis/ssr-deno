@@ -11,7 +11,7 @@
 - New sample: `samples/react-mui-emotion-ssr-app` — React 19 + MUI v9 SSR with Emotion CSS extraction.
 - New sample: `samples/react-ssr-app` — React 19 SSR (renamed from `vite-ssr-app`, all samples use Vite).
 - README: add SSR bundle creation guide (bundle contract, vanilla/Vue/Svelte/React patterns).
-- Consistent serve ports across samples (vanilla=3100, react=3101, vue=3102, svelte=3103).
+- Serve ports renumbered by complexity: barebone=3100, deno-native=3101, vanilla=3102, deno-native-react=3103, svelte=3104, vue=3105, preact=3106, react=3107, react-mui=3108, react-mui-emotion=3109, dashboard=3110.
 - Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.
 - `SSR::Deno.node_builtins_enabled=` config option (default: `false`) — enables Node.js built-in module support for bundles that call `require()` for `stream`, `buffer`, `events`, etc. Required for `@emotion/server` and similar packages. Adds ~50ms to worker init. Disabled by default.
 - `AGENTS.md` renamed from `CLAUDE.md` (OpenCode canonical name).

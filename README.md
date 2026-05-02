@@ -211,7 +211,7 @@ Each sample defines `deno task build` and `deno task serve` in its `deno.json`:
 ```bash
 cd samples/vanilla-ssr-app
 deno task build                # produces dist/server/entry-server.js
-deno task serve                # starts a test server on localhost:3100
+deno task serve                # starts a test server on localhost:3102 (vanilla)
 ```
 
 Build all samples at once:
