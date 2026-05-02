@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+SSR::Deno.render_timeout_ms = 2000
 SSR::Deno.node_builtins_enabled = true
 
 module SSR

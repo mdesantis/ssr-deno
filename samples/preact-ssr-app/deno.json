@@ -15,6 +15,10 @@
   "imports": {
     "preact": "npm:preact@^10.29.0",
     "preact-render-to-string": "npm:preact-render-to-string@^6.6.0",
+    "react": "npm:react@^19.0.0",
+    "react-dom": "npm:react-dom@^19.0.0",
+    "react-dom/server": "npm:react-dom@^19.0.0/server",
+    "react/jsx-runtime": "npm:react@^19.0.0/jsx-runtime",
     "vite": "npm:vite@^8.0.10",
     "@types/deno": "npm:@types/deno@^2.0.0"
   },
@@ -22,7 +26,9 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "types": [
-      "npm:@types/deno"
+      "npm:@types/deno",
+      "npm:@types/react@^19.0.0",
+      "npm:@types/react-dom@^19.0.0"
     ]
   }
 }

@@ -1,9 +1,16 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@types/deno@*": "2.5.0",
     "npm:@types/deno@2": "2.5.0",
+    "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.14",
+    "npm:@types/react@19": "19.2.14",
     "npm:preact-render-to-string@^6.6.0": "6.6.7_preact@10.29.1",
+    "npm:preact@10.29.1": "10.29.1",
     "npm:preact@^10.29.0": "10.29.1",
+    "npm:react-dom@19": "19.2.5_react@19.2.5",
+    "npm:react@19": "19.2.5",
+    "npm:react@19.2.5": "19.2.5",
     "npm:vite@*": "8.0.10",
     "npm:vite@^8.0.10": "8.0.10"
   },
@@ -129,6 +136,21 @@
     "@types/deno@2.5.0": {
       "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
     },
+    "@types/react-dom@19.2.3_@types+react@19.2.14": {
+      "integrity": "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==",
+      "dependencies": [
+        "@types/react"
+      ]
+    },
+    "@types/react@19.2.14": {
+      "integrity": "sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==",
+      "dependencies": [
+        "csstype"
+      ]
+    },
+    "csstype@3.2.3": {
+      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="
+    },
     "detect-libc@2.1.2": {
       "integrity": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="
     },
@@ -247,6 +269,16 @@
     "preact@10.29.1": {
       "integrity": "sha512-gQCLc/vWroE8lIpleXtdJhTFDogTdZG9AjMUpVkDf2iTCNwYNWA+u16dL41TqUDJO4gm2IgrcMv3uTpjd4Pwmg=="
     },
+    "react-dom@19.2.5_react@19.2.5": {
+      "integrity": "sha512-J5bAZz+DXMMwW/wV3xzKke59Af6CHY7G4uYLN1OvBcKEsWOs4pQExj86BBKamxl/Ik5bx9whOrvBlSDfWzgSag==",
+      "dependencies": [
+        "react",
+        "scheduler"
+      ]
+    },
+    "react@19.2.5": {
+      "integrity": "sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA=="
+    },
     "rolldown@1.0.0-rc.17": {
       "integrity": "sha512-ZrT53oAKrtA4+YtBWPQbtPOxIbVDbxT0orcYERKd63VJTF13zPcgXTvD4843L8pcsI7M6MErt8QtON6lrB9tyA==",
       "dependencies": [
@@ -271,6 +303,9 @@
         "@rolldown/binding-win32-x64-msvc"
       ],
       "bin": true
+    },
+    "scheduler@0.27.0": {
+      "integrity": "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="
     },
     "source-map-js@1.2.1": {
       "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="
@@ -304,8 +339,12 @@
     "dependencies": [
       "npm:@types/deno@*",
       "npm:@types/deno@2",
+      "npm:@types/react-dom@19",
+      "npm:@types/react@19",
       "npm:preact-render-to-string@^6.6.0",
       "npm:preact@^10.29.0",
+      "npm:react-dom@19",
+      "npm:react@19",
       "npm:vite@^8.0.10"
     ]
   }

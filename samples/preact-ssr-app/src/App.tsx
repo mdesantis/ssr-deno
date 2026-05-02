@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 interface AppProps {
   data?: {
     name?: string
