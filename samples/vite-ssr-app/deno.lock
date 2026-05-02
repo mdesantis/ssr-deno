@@ -1,6 +1,8 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@types/deno@*": "2.5.0",
+    "npm:@types/deno@2": "2.5.0",
     "npm:@types/react-dom@^19.2.3": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@^19.2.14": "19.2.14",
     "npm:@vitejs/plugin-react@^6.0.1": "6.0.1_vite@8.0.10",
@@ -130,6 +132,9 @@
       "dependencies": [
         "tslib"
       ]
+    },
+    "@types/deno@2.5.0": {
+      "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
     },
     "@types/react-dom@19.2.3_@types+react@19.2.14": {
       "integrity": "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==",
@@ -330,6 +335,8 @@
   },
   "workspace": {
     "dependencies": [
+      "npm:@types/deno@*",
+      "npm:@types/deno@2",
       "npm:@types/react-dom@^19.2.3",
       "npm:@types/react@^19.2.14",
       "npm:@vitejs/plugin-react@^6.0.1",

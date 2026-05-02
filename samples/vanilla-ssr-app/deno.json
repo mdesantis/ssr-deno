@@ -13,6 +13,7 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "vite": "npm:vite@^8.0.10"
+    "vite": "npm:vite@^8.0.10",
+    "@types/deno": "npm:@types/deno@^2.0.0"
   }
 }

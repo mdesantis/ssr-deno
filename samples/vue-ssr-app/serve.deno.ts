@@ -1,3 +1,5 @@
+/// <reference types="@types/deno" />
+
 const PORT = parseInt(Deno.env.get("PORT") || "3101", 10);
 const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
 

@@ -16,6 +16,7 @@
     "vue": "npm:vue@^3.5.13",
     "vue/server-renderer": "npm:vue@^3.5.13/server-renderer",
     "@vitejs/plugin-vue": "npm:@vitejs/plugin-vue@^5.2.4",
-    "vite": "npm:vite@^8.0.10"
+    "vite": "npm:vite@^8.0.10",
+    "@types/deno": "npm:@types/deno@^2.0.0"
   }
 }

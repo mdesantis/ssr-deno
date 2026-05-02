@@ -1,3 +1,5 @@
+/// <reference types="@types/deno" />
+
 /**
  * Deno test server for the Vite SSR bundle.
  *

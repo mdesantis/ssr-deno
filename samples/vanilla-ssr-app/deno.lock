@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@types/deno@2": "2.5.0",
     "npm:vite@*": "8.0.10",
     "npm:vite@^8.0.10": "8.0.10"
   },
@@ -122,6 +123,9 @@
       "dependencies": [
         "tslib"
       ]
+    },
+    "@types/deno@2.5.0": {
+      "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
     },
     "detect-libc@2.1.2": {
       "integrity": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="
@@ -287,6 +291,7 @@
   },
   "workspace": {
     "dependencies": [
+      "npm:@types/deno@2",
       "npm:vite@^8.0.10"
     ]
   }
