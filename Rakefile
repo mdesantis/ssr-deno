@@ -32,6 +32,7 @@ SAMPLES = %w[
   vite-ssr-app
   vanilla-ssr-app
   vue-ssr-app
+  svelte-ssr-app
 ].freeze
 
 namespace :samples do

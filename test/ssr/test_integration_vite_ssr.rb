@@ -37,6 +37,23 @@ module SSR
     end
   end
 
+  class TestIntegrationSvelteSsr < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/svelte-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'Svelte SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_svelte_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ data: { name: 'Svelte' } })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'Svelte'
+      assert_includes html, '<div id="root">'
+    end
+  end
+
   class TestIntegrationVueSsr < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vue-ssr-app/dist/server/entry-server.js', __dir__)
 

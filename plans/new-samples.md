@@ -286,7 +286,7 @@ end
 |------|------|-----------|
 | 1 | ✅ Async render support in Rust (promise polling) | — |
 | 2 | ✅ Vanilla SSR sample | — |
-| 3 | Svelte SSR sample | — |
+| 3 | ✅ Svelte SSR sample | — |
 | 4 | ✅ Vue SSR sample | Step 1 (async) |
 | 5 | React + MUI SSR sample | — |
 | 6 | React + Emotion + MUI Dashboard sample | — |
