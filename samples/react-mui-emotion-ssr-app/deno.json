@@ -1,5 +1,5 @@
 {
-  "name": "@ssr-deno/react-mui-plain-ssr-app",
+  "name": "@ssr-deno/react-mui-emotion-ssr-app",
   "version": "1.0.0",
   "exports": "./serve.deno.ts",
   "lock": "deno.lock",

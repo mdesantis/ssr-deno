@@ -151,7 +151,7 @@ globalThis.render = render
 
 ## Sample 4: React + MUI SSR (`samples/react-mui-ssr-app/`)
 
-**Purpose:** React 19 with Material UI. Includes MUI SSR CSS extraction via emotion cache.
+**Purpose:** React 19 with Material UI. Returns plain HTML — consuming app handles MUI styles.
 
 **Deps:** `react`, `react-dom`, `@mui/material`, `@mui/icons-material`, `@emotion/react`, `@emotion/styled`, `@vitejs/plugin-react`, `vite`
 
@@ -160,33 +160,22 @@ globalThis.render = render
 ```ts
 import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
-import createEmotionCache from './createEmotionCache'
 import { CacheProvider } from '@emotion/react'
+import createCache from '@emotion/cache'
 import App from './App'
 
 function render(argsJson: string): string {
   const { data } = JSON.parse(argsJson)
-  const cache = createEmotionCache()
-
+  const cache = createCache({ key: 'mui' })
   const html = renderToString(
     createElement(CacheProvider, { value: cache },
       createElement(App, { data })
     )
   )
-
-  // Extract emotion CSS from cache
-  const emotionStyles = extractCriticalToChunks(cache)
-  const css = constructStyleTagsFromChunks(emotionStyles)
-
-  return JSON.stringify({ html, css })
+  return html
 }
 globalThis.render = render
 ```
-
-**CSS-in-JS strategy** (see [`plans/rails-integration.md`](../plans/rails-integration.md) §11):
-- Entry returns `{html, css}` JSON
-- Ruby calls `bundle.render(data, raw_output: true)` and parses result
-- CSS injected into `<head>`, HTML into `<body>`
 
 **Files to create:**
 
@@ -195,11 +184,29 @@ globalThis.render = render
 | [`samples/react-mui-ssr-app/deno.json`](../samples/react-mui-ssr-app/deno.json) | react, react-dom, @mui, @emotion, vite imports |
 | [`samples/react-mui-ssr-app/vite.config.ts`](../samples/react-mui-ssr-app/vite.config.ts) | plugin: react() |
 | [`samples/react-mui-ssr-app/tsconfig.json`](../samples/react-mui-ssr-app/tsconfig.json) | same |
-| [`samples/react-mui-ssr-app/serve.deno.ts`](../samples/react-mui-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
-| [`samples/react-mui-ssr-app/src/entry-server.ts`](../samples/react-mui-ssr-app/src/entry-server.ts) | emotion cache + renderToString + CSS extract |
+| [`samples/react-mui-ssr-app/serve.deno.ts`](../samples/react-mui-ssr-app/serve.deno.ts) | standard test server |
+| [`samples/react-mui-ssr-app/src/entry-server.ts`](../samples/react-mui-ssr-app/src/entry-server.ts) | CacheProvider + renderToString |
 | [`samples/react-mui-ssr-app/src/App.tsx`](../samples/react-mui-ssr-app/src/App.tsx) | MUI components (Button, Typography, Card) |
-| [`samples/react-mui-ssr-app/src/createEmotionCache.ts`](../samples/react-mui-ssr-app/src/createEmotionCache.ts) | emotion cache factory |
-| [`samples/react-mui-ssr-app/src/components/`](../samples/react-mui-ssr-app/src/components/) | MUI-based components |
+
+## Sample 4b: React + MUI + Emotion SSR (`samples/react-mui-emotion-ssr-app/`)
+
+**Purpose:** React 19 with Material UI. Includes explicit Emotion CSS extraction.
+
+**Deps:** Same as Sample 4 + `@emotion/cache`.
+
+**Key entry:** Wraps with `CacheProvider`, extracts CSS from `cache.inserted` after render, returns `{html, css}` JSON.
+
+**Files to create:**
+
+| File | Content |
+|------|---------|
+| [`samples/react-mui-emotion-ssr-app/deno.json`](../samples/react-mui-emotion-ssr-app/deno.json) | same + @emotion/cache |
+| [`samples/react-mui-emotion-ssr-app/vite.config.ts`](../samples/react-mui-emotion-ssr-app/vite.config.ts) | plugin: react() |
+| [`samples/react-mui-emotion-ssr-app/tsconfig.json`](../samples/react-mui-emotion-ssr-app/tsconfig.json) | same |
+| [`samples/react-mui-emotion-ssr-app/serve.deno.ts`](../samples/react-mui-emotion-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
+| [`samples/react-mui-emotion-ssr-app/src/entry-server.ts`](../samples/react-mui-emotion-ssr-app/src/entry-server.ts) | emotion cache + CSS extraction |
+| [`samples/react-mui-emotion-ssr-app/src/App.tsx`](../samples/react-mui-emotion-ssr-app/src/App.tsx) | same as Sample 4 |
+| [`samples/react-mui-emotion-ssr-app/src/components/MuiCard.tsx`](../samples/react-mui-emotion-ssr-app/src/components/MuiCard.tsx) | reusable MUI Card component |
 
 ---
 
@@ -244,6 +251,7 @@ SAMPLES = %w[
   vue-ssr-app
   svelte-ssr-app
   react-mui-ssr-app
+  react-mui-emotion-ssr-app
   react-emotion-mui-dashboard-ssr-app
 ]
 

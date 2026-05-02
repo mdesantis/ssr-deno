@@ -54,14 +54,14 @@ module SSR
     end
   end
 
-  class TestIntegrationReactMuiPlainSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/react-mui-plain-ssr-app/dist/server/entry-server.js', __dir__)
+  class TestIntegrationReactMuiSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/react-mui-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React MUI Plain SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      skip 'React MUI SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
     end
 
-    def test_render_react_mui_plain_ssr
+    def test_render_react_mui_ssr
       bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
       html = bundle.render({ data: { name: 'MUI' } })
 
@@ -71,14 +71,14 @@ module SSR
     end
   end
 
-  class TestIntegrationReactMuiSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/react-mui-ssr-app/dist/server/entry-server.js', __dir__)
+  class TestIntegrationReactMuiEmotionSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/react-mui-emotion-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React MUI SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      skip 'React MUI Emotion SSR bundle not built' unless File.exist?(BUNDLE_PATH)
     end
 
-    def test_render_react_mui_ssr
+    def test_render_react_mui_emotion_ssr
       bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
       result = bundle.render({ data: { name: 'MUI' } })
 

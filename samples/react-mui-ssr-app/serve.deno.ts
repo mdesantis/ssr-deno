@@ -1,6 +1,6 @@
 /// <reference types="@types/deno" />
 
-const PORT = parseInt(Deno.env.get("PORT") || "3104", 10);
+const PORT = parseInt(Deno.env.get("PORT") || "3105", 10);
 const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
 
 const bundleCode = await Deno.readTextFile(BUNDLE_PATH);
@@ -25,14 +25,8 @@ Deno.serve({ port: PORT }, (req: Request) => {
   const name = url.searchParams.get("name") || "World";
 
   try {
-    const result = renderFn(JSON.stringify({ data: { name } }));
-    const { html, css } = JSON.parse(result);
-    const fullHtml = `<!DOCTYPE html>
-<html>
-  <head>${css}<title>React MUI SSR</title></head>
-  <body><div id="root">${html}</div></body>
-</html>`;
-    return new Response(fullHtml, {
+    const html = renderFn(JSON.stringify({ data: { name } }));
+    return new Response(html, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
