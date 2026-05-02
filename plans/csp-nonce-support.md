@@ -1,70 +1,73 @@
 # CSP Nonce Support
 
-Add Content-Security-Policy nonce support for inline `<script>` tags in SSR output.
+Document how to pass CSP nonce through SSR data hash. No library code changes needed — nonce already flows through `ssr_render` data.
 
 Extracted from `rails-integration.md` Phase 3 — see that plan for full context.
 
 ---
 
-## Problem
+## Current capability
 
-Some SSR frameworks (e.g. Emotion, styled-components) inject inline `<script>` tags into HTML output. When CSP is enabled, these inline scripts are blocked unless they carry a valid `nonce` attribute matching the response's CSP header.
+Nonce already passable via JS `render` data hash. User controls propagation entirely from JS side:
 
-## Requirements
+```ruby
+# Rails view — pass nonce through data hash
+<%= ssr_render({ page: "home", nonce: content_security_policy_nonce }) %>
+```
 
-- `ssr_render` helper must accept a `nonce:` option
-- Nonce value passed through to rendered HTML `<script>` tags
-- Compatible with Rails CSRF protection's `content_security_policy_nonce` helper
-- CSP nonce from controller flows through to SSR output
-- Default: no nonce (backward-compatible, no CSP enforcement)
+```ts
+// entry-server.ts — JS side reads nonce from data
+function render(argsJson: string): string {
+  const { data, nonce } = JSON.parse(argsJson)
+  // use nonce for inline <script>/<style> tags
+}
+```
 
-## Approach
-
-### Option A: Pass nonce through render data
-
-Add `nonce` to the data hash sent to JS `render` function. JS-side entry point reads `data.nonce` and applies it to inline `<script>` tags.
-
-**Pro:** No API change to `Bundle#render`. Only the view helper changes.
-
-**Con:** Every JS bundle must explicitly handle nonce propagation.
-
-### Option B: Post-process HTML output
-
-After rendering, parse HTML and inject `nonce` attribute into all inline `<script>` tags before returning.
-
-**Pro:** Zero JS-side changes. Works with any framework.
-
-**Con:** HTML parsing overhead. Fragile regex-based injection.
-
-### Option C: Template handler injection
-
-Create a `.ssr` template handler that wraps SSR output with CSP-aware layout.
-
-**Pro:** Clean separation. No changes to existing helpers.
-
-**Con:** Requires new template handler. Deferred feature.
+No gem-side changes required.
 
 ---
 
-## Implementation
+## Scope
 
-### View Helper change
+1. **Document** in `lib/ssr/deno/rails/helper.rb` and README how to pass nonce via `ssr_render` data hash
+2. **(Optional)** Update `samples/react-mui-emotion-ssr-app/` to demonstrate nonce usage with Emotion `<style>` tags
 
-```ruby
-def ssr_render(data = nil, **options)
-  nonce = options.delete(:nonce) || content_security_policy_nonce(request)
-  bundle_name = options.delete(:bundle) || :application
-  bundle = find_bundle!(bundle_name)
-  html = bundle.render(data, **options)
-  html = inject_nonce(html, nonce) if nonce
-  html.html_safe
-end
-```
+---
 
-### Nonce injection
+## Emotion nonce example
 
-```
-── TBD: Decide Option A vs B vs C
+Emotion's `createCache` accepts a `nonce` option. JS entry reads nonce from data:
+
+```ts
+import { renderToString } from 'react-dom/server'
+import { createElement } from 'react'
+import { CacheProvider } from '@emotion/react'
+import createCache from '@emotion/cache'
+import createEmotionServer from '@emotion/server/create-instance'
+import App from './App.tsx'
+
+function render(argsJson: string): string {
+  const { data, nonce } = JSON.parse(argsJson)
+
+  const cache = createCache({
+    key: 'ssr',
+    nonce, // ← propagate nonce to inline <style> tags
+  })
+  const { extractCriticalToChunks, constructStyleTagsFromChunks } = createEmotionServer(cache)
+
+  const html = renderToString(
+    createElement(CacheProvider, { value: cache },
+      createElement(App, { data })
+    )
+  )
+
+  const emotionChunks = extractCriticalToChunks(html)
+  const css = constructStyleTagsFromChunks(emotionChunks)  // ← tags include nonce
+
+  return JSON.stringify({ html, css })
+}
+
+globalThis.render = render
 ```
 
 ---
@@ -73,14 +76,14 @@ end
 
 | File | Change |
 |------|--------|
-| `lib/ssr/deno/rails/helper.rb` | Add `nonce:` option, injection logic |
-| `test/ssr/rails/helper_test.rb` | Add nonce test cases |
+| `lib/ssr/deno/rails/helper.rb` | Add doc comment: nonce via data hash |
+| `README.md` | Add CSP nonce usage section |
+| `samples/react-mui-emotion-ssr-app/src/entry-server.ts` | (Optional) Add nonce support from data |
 
 ---
 
 ## Verification
 
-1. Bundle renders without nonce when none provided
-2. Inline `<script>` tags get nonce when `nonce:` provided
-3. CSP header + nonce = no CSP violation in browser
-4. Existing tests still pass
+1. CSP nonce works through data hash — no gem code change needed
+2. README example correct
+3. Optional sample builds and nonce passes through
