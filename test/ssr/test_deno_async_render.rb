@@ -9,6 +9,7 @@ module SSR
     ASYNC_RESOLVE   = File.expand_path('../fixtures/async-resolve-bundle.js', __dir__)
     ASYNC_REJECT    = File.expand_path('../fixtures/async-reject-bundle.js', __dir__)
     ASYNC_CHAINED   = File.expand_path('../fixtures/async-chained-bundle.js', __dir__)
+    ASYNC_HANG      = File.expand_path('../fixtures/async-hang-bundle.js', __dir__)
 
     def test_sync_render_still_works
       bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
@@ -44,6 +45,15 @@ module SSR
       html = bundle.render({})
 
       assert_includes html, 'async-chained'
+    end
+
+    def test_promise_never_settles_raises_render_error
+      bundle = SSR::Deno::Bundle.new(ASYNC_HANG)
+      error = assert_raises(SSR::Deno::RenderError) do
+        bundle.render({})
+      end
+
+      assert_includes error.message, 'promise did not settle'
     end
   end
 end
