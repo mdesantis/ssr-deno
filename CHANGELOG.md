@@ -1,3 +1,16 @@
+## Unreleased
+
+### Added
+- New sample: `samples/vite-preact-ssr-app` — Preact SSR with Vite, uses `resolve.alias` for React compat.
+- `SSR::Deno.heap_stats!` — raises `JsRuntimeNotInitializedError` / `JsRuntimeWorkerError` instead of returning empty Hash.
+
+### Changed
+- `SSR::Deno.heap_stats` now returns empty Hash with warning instead of raising when runtime not initialized. Use `heap_stats!` to get the old behavior.
+- README rewritten from scratch: self-contained quick start (`File.write` inline bundle), no inline framework examples (links to samples instead), expandable samples table with clickable directory links.
+- All Vite-based sample directories prefixed with `vite-`: `vanilla-ssr-app` → `vite-ssr-app`, `react-ssr-app` → `vite-react-ssr-app`, `vue-ssr-app` → `vite-vue-ssr-app`, `svelte-ssr-app` → `vite-svelte-ssr-app`, `preact-ssr-app` → `vite-preact-ssr-app`, `react-mui-ssr-app` → `vite-react-mui-ssr-app`, `react-mui-emotion-ssr-app` → `vite-react-mui-emotion-ssr-app`, `react-emotion-mui-dashboard-ssr-app` → `vite-react-emotion-mui-dashboard-ssr-app`.
+- barebone sample now has standalone `serve.deno.ts` HTTP server (consistent with all others).
+- Dashboard render timeout increased to 2000ms to prevent flaky CI timeouts.
+
 ## [0.1.0-alpha.3] - 2026-05-02
 
 ### Added
@@ -9,9 +22,11 @@
 - New sample: `samples/vite-svelte-ssr-app` — Svelte 5 SSR with `@sveltejs/vite-plugin-svelte`.
 - New sample: `samples/vite-react-mui-ssr-app` — React 19 + MUI v9 SSR (plain HTML, no CSS extraction).
 - New sample: `samples/vite-react-mui-emotion-ssr-app` — React 19 + MUI v9 SSR with Emotion CSS extraction.
-- New sample: `samples/vite-react-ssr-app` — React 19 SSR (renamed from `vite-ssr-app`, all samples use Vite).
+- New sample: `samples/vite-react-emotion-mui-dashboard-ssr-app` — full MUI dashboard with charts, data grid, date pickers.
+- New sample: `samples/vite-react-ssr-app` — React 19 SSR.
+- New sample: `samples/vite-vue-ssr-app` — Vue 3 SSR.
 - README: add SSR bundle creation guide (bundle contract, vanilla/Vue/Svelte/React patterns).
-- Serve ports renumbered by complexity: barebone=3100, deno-native=3101, vite-ssr=3102, deno-native-react=3103, svelte=3104, vue=3105, preact=3106, react=3107, react-mui=3108, react-mui-emotion=3109, dashboard=3110.
+- Serve ports renumbered by complexity: barebone=3100, deno-native=3101, vite-ssr=3102, deno-native-react=3103, vite-svelte=3104, vite-vue=3105, vite-preact=3106, vite-react=3107, vite-react-mui=3108, vite-react-mui-emotion=3109, vite-react-emotion-mui-dashboard=3110.
 - Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.
 - `SSR::Deno.node_builtins_enabled=` config option (default: `false`) — enables Node.js built-in module support for bundles that call `require()` for `stream`, `buffer`, `events`, etc. Required for `@emotion/server` and similar packages. Adds ~50ms to worker init. Disabled by default.
 - `AGENTS.md` renamed from `CLAUDE.md` (OpenCode canonical name).
@@ -19,8 +34,6 @@
 - Renamed `test_integration_vite_ssr.rb` to `test_integration_samples.rb`.
 - Split test suite: `test:main` (52 tests, no node_builtins) and `test:node_builtins` (1 test, node_builtins enabled). Merged coverage validated at 100%.
 - `/.opencode/` added to `.gitignore`.
-
-### Changed
 - Rails config: `node_builtins_enabled` option added to generator template.
 
 ## [0.1.0-alpha.2] - 2026-05-02
