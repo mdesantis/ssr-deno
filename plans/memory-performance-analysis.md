@@ -80,9 +80,9 @@ During `renderToString`:
 
 1. **No per-request isolation** — All renders share the same V8 context. A memory-leaking component (e.g., accumulating event listeners, growing caches) affects all subsequent renders until GC runs.
 
-2. **Bundle code is never unloaded** — Once loaded via [`load_bundle_in_worker`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:230), the code stays in V8 heap for the process lifetime. Only `reload` replaces it.
+2. **Bundle code is never unloaded** — Once loaded via [`load_bundle_in_worker`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:230), the code stays in V8 heap for the process lifetime. Only `reload` replaces it.
 
-3. **`Box::leak` for script names** — At [`deno_runtime_wrapper.rs:131`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:131), each bundle load leaks the script filename string. At ~50 bytes per leak × bundle reloads in development, this is negligible (~5 KB after 100 reloads).
+3. **`Box::leak` for script names** — At [`deno_runtime_wrapper/mod.rs:131`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:131), each bundle load leaks the script filename string. At ~50 bytes per leak × bundle reloads in development, this is negligible (~5 KB after 100 reloads).
 
 4. **V8 GC pressure** — V8's GC runs independently of Ruby's GC. Under high request throughput, V8 may accumulate garbage between renders, causing periodic latency spikes.
 
@@ -293,7 +293,7 @@ Same bottleneck. Ractors don't help SSR throughput unless we have multiple V8 is
 
 If a `renderToString` hangs (e.g., infinite loop in component), the V8 isolate is blocked indefinitely. All subsequent SSR requests queue up and eventually time out at the Rack/HTTP layer.
 
-**Mitigation:** Added configurable timeout on the reply channel receiver side in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:154) using `std::sync::mpsc::Receiver::recv_timeout`. Configured via `SSR::Deno.render_timeout_ms=` (default 500ms).
+**Mitigation:** Added configurable timeout on the reply channel receiver side in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:154) using `std::sync::mpsc::Receiver::recv_timeout`. Configured via `SSR::Deno.render_timeout_ms=` (default 500ms).
 
 ### 5.3 V8 GC Pause
 
@@ -339,7 +339,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.3 Long Term
 
-7. ✅ **Multiple V8 isolates** — Implemented. See [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (`IsolatePool`). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
+7. ✅ **Multiple V8 isolates** — Implemented. See [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (`IsolatePool`). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
 
 ---
 

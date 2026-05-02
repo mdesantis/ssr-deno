@@ -83,7 +83,7 @@ Minor API win — communicates read-only intent.
 
 | File | Change |
 |------|--------|
-| `ext/ssr_deno/src/deno_runtime_wrapper.rs` | Apply refactorings 1-3 above |
+| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Apply refactorings 1-3 above |
 | `plans/call_render_refactor.md` | This file — checklist marked on completion |
 
 ## Not doing

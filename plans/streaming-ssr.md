@@ -1,7 +1,7 @@
 # Streaming SSR
 
 > **Source:** Recommendation #5 from [`memory-performance-analysis.md`](memory-performance-analysis.md)
-> **Cross-refs:** [`architecture.md`](architecture.md) (data flow: Ruby → JSON → V8 → HTML), [`helper.rb`](../lib/ssr/deno/rails/helper.rb) (current `ssr_render` returns complete string), [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) (blocking render call)
+> **Cross-refs:** [`architecture.md`](architecture.md) (data flow: Ruby → JSON → V8 → HTML), [`helper.rb`](../lib/ssr/deno/rails/helper.rb) (current `ssr_render` returns complete string), [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (blocking render call)
 
 ---
 
@@ -308,7 +308,7 @@ Or, if `streaming.enabled` is true, `ssr_render` automatically uses streaming wh
 
 ## Changes
 
-### 1. [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+### 1. [`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs)
 
 - Add `Chunk` enum: `Html(String)`, `Error(String)`, `Done`
 - Add `WorkerMsg::StreamRender` variant with `chunk_tx: tokio::sync::mpsc::Sender<Chunk>`
@@ -400,7 +400,7 @@ curl -N http://localhost:3000/some_page
 
 ## Implementation Order
 
-1. Add `Chunk` enum and `WorkerMsg::StreamRender` variant in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+1. Add `Chunk` enum and `WorkerMsg::StreamRender` variant in [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs)
 2. Add `call_stream_render` function (JS bridge for streaming)
 3. Add `block_on_stream_render` method to `DenoRuntimeWrapper`
 4. Add `native_stream_render` in [`lib.rs`](../ext/ssr_deno/src/lib.rs)

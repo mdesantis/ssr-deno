@@ -125,7 +125,7 @@ A Ruby gem that embeds the [`deno_runtime`](https://docs.rs/deno_runtime/latest/
   │   └──────────────────────┘    │                                             │
   │                               ▼                                             │
   │   ┌──────────────────────────────────────────────────────────────────────┐  │
-  │   │                    deno_runtime_wrapper.rs                           │  │
+  │   │     deno_runtime_wrapper/  (mod.rs + call_render.rs)                  │  │
   │   └──┬───────────────────────────────┬───────────────────────────────────┘  │
   │      │                               │                                      │
   │      ▼                               ▼                                      │
@@ -172,7 +172,9 @@ ssr-deno/
 │   └── ssr_deno/                    # Rust crate (Cargo.toml, src/)
 │       └── src/
 │           ├── lib.rs               # magnus entrypoint
-│           ├── deno_runtime_wrapper.rs  # DenoRuntimeWrapper (MainWorker-based)
+│           ├── deno_runtime_wrapper/
+│           │   ├── mod.rs              # IsolateHandle, IsolatePool, thread
+│           │   └── call_render.rs      # call_render, heap_stats
 │           ├── sys.rs               # Sys type + sys_traits implementations
 │           └── nop_types.rs         # NOP types for generic parameters
 ├── lib/
@@ -283,7 +285,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
 }
 ```
 
-#### `deno_runtime_wrapper.rs` — Runtime Lifecycle
+#### `deno_runtime_wrapper/` — Runtime Lifecycle
 
 This is the core module. The Ruby thread holds only an mpsc `Sender`; the
 `deno_runtime::MainWorker` lives on a dedicated background thread
@@ -585,7 +587,7 @@ implemented yet.
 1. ✅ **Updated [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml)**
    - Added `deno_runtime`, `deno_semver`, `node_resolver`, `sys_traits`, `libc`
 
-2. ✅ **Rewrote [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)**
+2. ✅ **Rewrote [`ext/ssr_deno/src/deno_runtime_wrapper/`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs)**
    - Uses `MainWorker::bootstrap_from_options` with three generic type parameters
    - V8 scope access via `pin!/init()/ContextScope` pattern
    - `MainWorker` pinned to a dedicated `"deno-worker"` thread with a
@@ -607,7 +609,8 @@ implemented yet.
 6. ✅ **Refactored into separate modules**
    - [`ext/ssr_deno/src/sys.rs`](../ext/ssr_deno/src/sys.rs) — `Sys` type + all `sys_traits` impls
    - [`ext/ssr_deno/src/nop_types.rs`](../ext/ssr_deno/src/nop_types.rs) — NOP types for generic params
-   - [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) — only `DenoRuntimeWrapper`
+   - [`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) — `IsolateHandle`, `IsolatePool`, worker thread
+   - [`ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs) — `call_render`, `collect_heap_stats`
 
 7. ✅ **Fixed runtime issues for Vite SSR sample rendering**
    - Added `features = ["transpile"]` to `deno_runtime` — enables TypeScript transpilation for `deno_telemetry` extension sources

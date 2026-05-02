@@ -2,7 +2,7 @@
 
 ## Problem
 
-[`call_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:431) only handles sync function return. Frameworks with async SSR APIs fail:
+[`call_render`](../ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs) only handles sync function return. Frameworks with async SSR APIs fail:
 
 | Framework | SSR API | Returns | Needs async? |
 |-----------|---------|---------|-------------|
@@ -13,7 +13,7 @@
 
 ## Approach
 
-Modify [`call_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:431) to detect `v8::Promise` return and poll V8 microtask queue until settlement.
+Modify [`call_render`](../ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs) to detect `v8::Promise` return and poll V8 microtask queue until settlement.
 
 ### Detection + Polling (inlined in `call_render`)
 
@@ -71,7 +71,7 @@ if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
 
 1. **Scope chain must be dropped before polling** — the `v8::HandleScope` borrows `&mut isolate`, so it must be dropped before calling `isolate.perform_microtask_checkpoint()`. The `v8::Global<Promise>` bridges the gap.
 
-2. **Timeout** — existing timeout on `reply_rx.recv_timeout` in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:101) still applies. If promise takes >500ms (default), `recv_timeout` fires and caller gets timeout error.
+2. **Timeout** — existing timeout on `reply_rx.recv_timeout` in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) still applies. If promise takes >500ms (default), `recv_timeout` fires and caller gets timeout error.
 
 3. **`MAX_POLLS` safety valve** — prevents infinite loop if V8 microtask queue doesn't settle. Set to 10_000; at ~1µs per checkpoint this is effectively infinite, but prevents unbounded CPU if a promise never settles.
 
@@ -81,7 +81,7 @@ if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
 
 | File | Change |
 |------|--------|
-| [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) | Inline async promise polling in `call_render` using `v8::Global<v8::Promise>` + `isolate.perform_microtask_checkpoint()` |
+| [`ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs) | Inline async promise polling in `call_render` using `v8::Global<v8::Promise>` + `isolate.perform_microtask_checkpoint()` |
 | [`test/fixtures/async-immediate-bundle.js`](../test/fixtures/async-immediate-bundle.js) | New fixture: async function returning string |
 | [`test/fixtures/async-resolve-bundle.js`](../test/fixtures/async-resolve-bundle.js) | New fixture: `Promise.resolve()` |
 | [`test/fixtures/async-reject-bundle.js`](../test/fixtures/async-reject-bundle.js) | New fixture: `Promise.reject()` |

@@ -27,7 +27,7 @@ Heap stats are relatively expensive to collect (V8 must pause to gather statisti
 
 ## Changes
 
-### 1. [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+### 1. [`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs)
 
 **Add `HeapStats` variant to `WorkerMsg`:**
 
@@ -227,7 +227,7 @@ end
 
 ## Implementation Order
 
-1. Add `HeapStats` variant to `WorkerMsg` in [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs)
+1. Add `HeapStats` variant to `WorkerMsg` in [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs)
 2. Add `heap_stats` method to `DenoRuntimeWrapper`
 3. Add handler in `worker_thread_main`
 4. Add `native_heap_stats` function in [`lib.rs`](../ext/ssr_deno/src/lib.rs)

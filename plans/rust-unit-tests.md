@@ -32,7 +32,7 @@ ext/ssr_deno/
 │           └── lib.rs  #     DenoError, MAX_ISOLATES, pure functions
 ├── src/
 │   ├── lib.rs                     # existing cdylib
-│   ├── deno_runtime_wrapper.rs    # imports from ssr_deno_core
+│   ├── deno_runtime_wrapper/mod.rs    # imports from ssr_deno_core
 │   ├── sys.rs
 │   └── nop_types.rs
 └── target/
@@ -44,7 +44,7 @@ Running tests: `cargo test -p ssr_deno_core`
 
 ### 1. `DenoError` enum + Display + Error impl
 
-Move from [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:24-45) to `ssr_deno_core`.
+Move from [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:24-45) to `ssr_deno_core`.
 
 **Tests:**
 - `BundleLoad(msg)` → Display includes msg
@@ -57,14 +57,14 @@ Move from [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.r
 
 ### 2. `MAX_ISOLATES` constant
 
-Move from [`deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:70) to `ssr_deno_core`.
+Move from [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:70) to `ssr_deno_core`.
 
 **Tests:**
 - Value is `8` (the documented hard cap)
 
 ### 3. `validate_pool_size(size)` — extracted from `IsolatePool::new()`
 
-The validation in [`IsolatePool::new()`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:148-170) (size 0 rejected, size > `MAX_ISOLATES` rejected) can't be tested because `new()` spawns real V8 threads. Extract into a pure function `validate_pool_size(size: usize) -> Result<(), DenoError>`.
+The validation in [`IsolatePool::new()`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:148-170) (size 0 rejected, size > `MAX_ISOLATES` rejected) can't be tested because `new()` spawns real V8 threads. Extract into a pure function `validate_pool_size(size: usize) -> Result<(), DenoError>`.
 
 **Tests:**
 - Rejects `size == 0` with `WorkerInit` error
@@ -74,7 +74,7 @@ The validation in [`IsolatePool::new()`](../ext/ssr_deno/src/deno_runtime_wrappe
 
 ### 4. Round-robin counter — extracted from `next_handle()`
 
-The [`next_handle()`](../ext/ssr_deno/src/deno_runtime_wrapper.rs:181-183) uses `fetch_add(1, Relaxed) % len`. Extract into `next_index(counter: &AtomicUsize, len: usize) -> usize`.
+The [`next_handle()`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:181-183) uses `fetch_add(1, Relaxed) % len`. Extract into `next_index(counter: &AtomicUsize, len: usize) -> usize`.
 
 **Tests:**
 - With 3 slots, 6 calls cycles `[0, 1, 2, 0, 1, 2]`
@@ -130,9 +130,9 @@ Can be tested in `ssr_deno_core` or left as-is. Low priority.
 
 2. ✅ **Create `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml`** — no dependencies beyond `std`.
 
-3. ✅ **Create `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs`** — move `DenoError`, `MAX_ISOLATES`, pure functions from `deno_runtime_wrapper.rs` and `lib.rs`. Add tests.
+3. ✅ **Create `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs`** — move `DenoError`, `MAX_ISOLATES`, pure functions from `deno_runtime_wrapper/mod.rs` and `lib.rs`. Add tests.
 
-4. ✅ **Update `deno_runtime_wrapper.rs`** — import from `ssr_deno_core` instead of defining locally.
+4. ✅ **Update `deno_runtime_wrapper/mod.rs`** — import from `ssr_deno_core` instead of defining locally.
 
 5. ✅ **Update `lib.rs`** — import `max_heap_size_mb_checked` from `ssr_deno_core`; remove old `#[cfg(test)]` module.
 
@@ -147,5 +147,5 @@ Can be tested in `ssr_deno_core` or left as-is. Low priority.
 | Modify | [`ext/ssr_deno/Cargo.toml`](../ext/ssr_deno/Cargo.toml) (add `[workspace]`) |
 | Create | `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml` |
 | Create | `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` |
-| Modify | [`ext/ssr_deno/src/deno_runtime_wrapper.rs`](../ext/ssr_deno/src/deno_runtime_wrapper.rs) |
+| Modify | [`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) |
 | Modify | [`ext/ssr_deno/src/lib.rs`](../ext/ssr_deno/src/lib.rs) |
