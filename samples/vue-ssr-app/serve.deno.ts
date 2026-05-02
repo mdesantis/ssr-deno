@@ -18,12 +18,12 @@ if (typeof renderFn !== "function") {
 const sizeKB = (bundleCode.length / 1024).toFixed(0);
 console.log(`Bundle loaded successfully (${sizeKB} KB)`);
 
-Deno.serve({ port: PORT }, (req: Request) => {
+Deno.serve({ port: PORT }, async (req: Request) => {
   const url = new URL(req.url);
   const name = url.searchParams.get("name") || "World";
 
   try {
-    const html = renderFn(JSON.stringify({ data: { name } }));
+    const html = await renderFn(JSON.stringify({ data: { name } }));
     return new Response(html, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
