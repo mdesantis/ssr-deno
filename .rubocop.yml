@@ -20,6 +20,10 @@ Layout/HeredocIndentation:
 Layout/LineLength:
   Max: 120
 
+Metrics/BlockLength:
+  Exclude:
+    - 'Rakefile'
+
 Metrics/MethodLength:
   Max: 15
   CountAsOne:

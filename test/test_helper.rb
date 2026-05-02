@@ -12,7 +12,8 @@ SimpleCov.start do
   add_filter 'test/'
   add_filter 'lib/ssr/deno/rails.rb'
   add_filter 'lib/ssr/deno/rails/'
-  minimum_coverage line: 100, branch: 100
+  # Coverage thresholds are enforced on the merged report
+  # (both test:main and test:node_builtins combined).
   formatter SimpleCov::Formatter::MultiFormatter.new(
     [
       SimpleCov::Formatter::SimpleFormatter,
@@ -29,7 +30,6 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'ssr/deno'
 
 SSR::Deno.isolate_pool_size = 1
-SSR::Deno.node_builtins_enabled = true
 
 # ---------------------------------------------------------------------------
 # Test framework
