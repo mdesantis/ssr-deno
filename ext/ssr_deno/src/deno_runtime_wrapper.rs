@@ -425,10 +425,9 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
 }
 
 // ---------------------------------------------------------------------------
-// V8 render call (sync + async)
+// call_render (sync + async)
 // ---------------------------------------------------------------------------
 
-// ── Phase 1 (scope chain) / Phase 2 (isolate-only) bridge ─────────────────
 struct AsyncHandle {
     global_promise: v8::Global<v8::Promise>,
     was_pending: bool,
@@ -443,22 +442,13 @@ fn call_render(
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
 
-    // ── Raw Isolate pointer for Global::new ──────────────────────────────
-    // `v8::Global::new` needs `&Isolate`. Inside Phase 1's scope chain,
-    // TryCatch holds `&mut context_scope` so we cannot borrow `&Isolate`
-    // from the scope chain.  We store a raw pointer here (before any mutable
-    // borrow of `isolate`), reborrow it inside Phase 1 when needed.
-    // SAFETY: `isolate` (`&mut OwnedIsolate`) lives for the entire function,
-    // so the raw pointer remains valid for all accesses within `call_render`.
+    // Raw Isolate pointer for Global::new inside scope chain.
+    // TryCatch holds `&mut context_scope` blocking `&Isolate` borrow from
+    // the scope.  SAFETY: isolate lives for entire function.
     let isolate_raw: *const v8::Isolate = &**isolate as *const v8::Isolate;
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Phase 1 — scope chain is alive
-    // ═══════════════════════════════════════════════════════════════════════
-    //
-    // The scope chain *must* live inside a block so its mutable borrow on
-    // `isolate` is released when the block ends.  Outside the block `isolate`
-    // is available for direct calls (perform_microtask_checkpoint, etc.).
+    // ══════════════════════════════════════════════════════════════════
+    // Phase 1 — scope chain alive (block-scoped to release isolate borrow)
     let async_handle: Option<AsyncHandle> = {
         let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.as_mut().init();
@@ -467,39 +457,29 @@ fn call_render(
 
         let global = context_local.global(&mut context_scope);
 
-        // globalThis.__ssr_bundles
-        let bundles_key = v8::String::new(&mut context_scope, "__ssr_bundles").unwrap();
-        let bundles_val = global
-            .get(&mut context_scope, bundles_key.into())
-            .filter(|v| !v.is_undefined() && !v.is_null())
-            .ok_or_else(|| {
-                DenoError::BundleNotFound(format!("No bundles loaded (id: {bundle_id})"))
-            })?;
+        // ── Traversal helper: get a property, filter undefined/null ──────
+        let mut get_prop = |obj: v8::Local<v8::Object>, key: &str| -> Result<v8::Local<v8::Value>, DenoError> {
+            let k = v8::String::new(&mut context_scope, key).unwrap();
+            obj.get(&mut context_scope, k.into())
+                .filter(|v| !v.is_undefined() && !v.is_null())
+                .ok_or_else(|| {
+                    DenoError::BundleNotFound(
+                        format!("Property '{key}' not found on SSR object (id: {bundle_id})"),
+                    )
+                })
+        };
 
+        let bundles_val = get_prop(global, "__ssr_bundles")?;
         let bundles_obj: v8::Local<v8::Object> = bundles_val.try_into().map_err(|_| {
             DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
         })?;
 
-        // globalThis.__ssr_bundles[bundle_id]
-        let id_key = v8::String::new(&mut context_scope, bundle_id).unwrap();
-        let entry_val = bundles_obj
-            .get(&mut context_scope, id_key.into())
-            .filter(|v| !v.is_undefined() && !v.is_null())
-            .ok_or_else(|| DenoError::BundleNotFound(format!("Bundle '{bundle_id}' not found")))?;
-
+        let entry_val = get_prop(bundles_obj, bundle_id)?;
         let entry_obj: v8::Local<v8::Object> = entry_val.try_into().map_err(|_| {
             DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
         })?;
 
-        // globalThis.__ssr_bundles[bundle_id].render
-        let render_key = v8::String::new(&mut context_scope, "render").unwrap();
-        let render_val = entry_obj
-            .get(&mut context_scope, render_key.into())
-            .filter(|v| !v.is_undefined() && !v.is_null())
-            .ok_or_else(|| {
-                DenoError::BundleNotFound(format!("Bundle '{bundle_id}' has no render function"))
-            })?;
-
+        let render_val = get_prop(entry_obj, "render")?;
         let render_fn: v8::Local<v8::Function> = render_val.try_into().map_err(|_| {
             DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
         })?;
@@ -524,7 +504,6 @@ fn call_render(
             }
         };
 
-        // ── Async detection ──────────────────────────────────────────────
         if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
             let was_pending = promise.state() == v8::PromiseState::Pending;
             // SAFETY: isolate_raw is valid (isolate lives for entire fn).
@@ -534,17 +513,15 @@ fn call_render(
                 was_pending,
             })
         } else {
-            // Synchronous (non-Promise) result — handle immediately.
             let json_str = v8::json::stringify(&try_catch, result).ok_or_else(|| {
                 DenoError::Render("Cannot serialize render result to JSON".to_string())
             })?;
             return Ok(json_str.to_rust_string_lossy(&try_catch));
         }
-    }; // ── scope chain dropped here → isolate borrow released ──────────────
+    }; // │ scope chain dropped — isolate borrow released
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Phase 2 — isolate is free (scope chain dead)
-    // ═══════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════
+    // Phase 2 — isolate free (scope chain dead)
 
     let AsyncHandle {
         global_promise,
@@ -574,18 +551,13 @@ fn call_render(
         }
     }
 
-    // ── Re-create scope chain to read the settled result ────────────────
-    //
-    // global_promise.open() needs &mut Isolate.  We obtain it through the
-    // newly-created scope chain via AsMut<Isolate> to avoid a second
-    // mutable borrow of `isolate` (HandleScope already holds the first).
-    let result = {
+    {
         let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.as_mut().init();
         let context_local = v8::Local::new(&mut scope, &context);
         let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
 
-        // Get &mut Isolate from the scope chain itself.
+        // Open the Global through the scope chain to get &mut Isolate.
         let promise_ref = global_promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
 
         match promise_ref.state() {
@@ -616,8 +588,7 @@ fn call_render(
                     .to_string(),
             )),
         }
-    };
-    result
+    }
 }
 
 // ---------------------------------------------------------------------------
