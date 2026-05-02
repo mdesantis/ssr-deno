@@ -54,6 +54,23 @@ module SSR
     end
   end
 
+  class TestIntegrationReactMuiPlainSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/react-mui-plain-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'React MUI Plain SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_react_mui_plain_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ data: { name: 'MUI' } })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'MUI'
+      assert_includes html, 'MuiContainer'
+    end
+  end
+
   class TestIntegrationReactMuiSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/react-mui-ssr-app/dist/server/entry-server.js', __dir__)
 
