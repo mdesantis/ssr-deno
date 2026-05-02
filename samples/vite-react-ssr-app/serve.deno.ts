@@ -18,7 +18,7 @@
  * Usage:
  *   deno run --allow-read --allow-net serve.deno.ts
  *
- * Then open http://localhost:3107?name=Maurizio
+ * Then open http://localhost:3107?name=Developer
  */
 
 const PORT = parseInt(Deno.env.get("PORT") || "3107", 10);
@@ -82,4 +82,4 @@ Deno.serve({ port: PORT }, (req: Request) => {
 });
 
 console.log(`React SSR test server running at http://localhost:${PORT}`);
-console.log(`Try: http://localhost:${PORT}?name=Maurizio`);
+console.log(`Try: http://localhost:${PORT}?name=Developer`);

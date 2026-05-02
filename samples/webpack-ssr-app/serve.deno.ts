@@ -36,4 +36,4 @@ Deno.serve({ port: PORT }, (req: Request) => {
 });
 
 console.log(`Webpack SSR test server running at http://localhost:${PORT}`);
-console.log(`Try: http://localhost:${PORT}?name=Maurizio`);
+console.log(`Try: http://localhost:${PORT}?name=Developer`);

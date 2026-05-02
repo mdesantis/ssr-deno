@@ -34,4 +34,4 @@ Deno.serve({ port: PORT }, (_req: Request) => {
 });
 
 console.log(`Preact SSR test server running at http://localhost:${PORT}`);
-console.log(`Try: http://localhost:${PORT}?name=Maurizio`);
+console.log(`Try: http://localhost:${PORT}?name=Developer`);

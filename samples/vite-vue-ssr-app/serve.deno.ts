@@ -38,4 +38,4 @@ Deno.serve({ port: PORT }, async (req: Request) => {
 });
 
 console.log(`Vue SSR test server running at http://localhost:${PORT}`);
-console.log(`Try: http://localhost:${PORT}?name=Maurizio`);
+console.log(`Try: http://localhost:${PORT}?name=Developer`);
