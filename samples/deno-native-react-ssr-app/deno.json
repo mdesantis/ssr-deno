@@ -1,0 +1,27 @@
+{
+  "name": "@ssr-deno/deno-native-react-ssr-app",
+  "version": "1.0.0",
+  "exports": "./serve.deno.tsx",
+  "lock": "deno.lock",
+  "nodeModulesDir": "auto",
+  "exclude": ["node_modules/"],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": [
+      "npm:@types/deno",
+      "npm:@types/react@^19.0.0",
+      "npm:@types/react-dom@^19.0.0"
+    ]
+  },
+  "tasks": {
+    "serve": "deno run --allow-read --allow-net --allow-env serve.deno.tsx"
+  },
+  "imports": {
+    "react": "npm:react@^19.0.0",
+    "react-dom": "npm:react-dom@^19.0.0",
+    "react-dom/server": "npm:react-dom@^19.0.0/server",
+    "react/jsx-runtime": "npm:react@^19.0.0/jsx-runtime",
+    "@types/deno": "npm:@types/deno@^2.0.0"
+  }
+}

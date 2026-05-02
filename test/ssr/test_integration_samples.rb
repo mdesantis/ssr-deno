@@ -87,6 +87,19 @@ module SSR
     end
   end
 
+  class TestIntegrationBareboneSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/barebone-ssr-app/entry-server.js', __dir__)
+
+    def test_render_barebone
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ name: 'Barebone' })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'Barebone'
+      assert_includes html, '<div id="root">'
+    end
+  end
+
   class TestIntegrationPreactSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/preact-ssr-app/dist/server/entry-server.js', __dir__)
 

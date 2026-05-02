@@ -1,6 +1,9 @@
 ## [0.1.0-alpha.3] - 2026-05-02
 
 ### Added
+- New sample: `samples/deno-native-ssr-app` — vanilla SSR with Deno's built-in `Deno.serve()`, no Vite, no build step.
+- New sample: `samples/deno-native-react-ssr-app` — React 19 SSR with Deno native `npm:` imports, no Vite, no build step.
+- New sample: `samples/barebone-ssr-app` — plain JS SSR bundle (no framework, no Deno APIs), loadable directly via `SSR::Deno::Bundle`.
 - V8 heap metrics via `SSR::Deno.heap_stats` — returns `total_heap_size`, `used_heap_size`, `heap_size_limit`, and 10 other V8 memory counters as a Hash. Rails subscriber emits `heap_stats.ssr_deno` every N renders (configurable via `config.ssr_deno.heap_stats_sample_rate`, default 100).
 - Async SSR render support — `call_render` detects `v8::Promise` return and polls V8 microtask queue until settlement. Enables Vue 3 SSR and other async render frameworks.
 - New sample: `samples/svelte-ssr-app` — Svelte 5 SSR with `@sveltejs/vite-plugin-svelte`.
