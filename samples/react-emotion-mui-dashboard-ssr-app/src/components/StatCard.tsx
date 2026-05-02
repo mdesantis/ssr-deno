@@ -103,7 +103,7 @@ export default function StatCard({
           </Stack>
           <Box sx={{ width: '100%', height: 50 }}>
             <SparkLineChart
-              color={chartColor}
+              colors={[chartColor]}
               data={data}
               area
               showHighlight

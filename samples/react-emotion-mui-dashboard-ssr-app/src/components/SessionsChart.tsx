@@ -73,10 +73,9 @@ export default function SessionsChart() {
               scaleType: 'point',
               data,
               tickInterval: (index, i) => (i + 1) % 5 === 0,
-              height: 24,
             },
           ]}
-          yAxis={[{ width: 50 }]}
+          yAxis={[{}]}
           series={[
             {
               id: 'direct',
@@ -135,7 +134,6 @@ export default function SessionsChart() {
               fill: "url('#direct')",
             },
           }}
-          hideLegend
         >
           <AreaGradient color={theme.palette.primary.dark} id="organic" />
           <AreaGradient color={theme.palette.primary.main} id="referral" />

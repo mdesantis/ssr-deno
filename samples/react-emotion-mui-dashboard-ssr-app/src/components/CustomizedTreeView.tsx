@@ -17,33 +17,31 @@ import {
 } from '@mui/x-tree-view/TreeItem';
 import { TreeItemIcon } from '@mui/x-tree-view/TreeItemIcon';
 import { TreeItemProvider } from '@mui/x-tree-view/TreeItemProvider';
-import { TreeViewBaseItem } from '@mui/x-tree-view/models';
+import { TreeViewDefaultItemModelProperties } from '@mui/x-tree-view/models';
 import { useTheme } from '@mui/material/styles';
 
 type Color = 'blue' | 'green';
 
 type ExtendedTreeItemProps = {
   color?: Color;
-  id: string;
-  label: string;
 };
 
-const ITEMS: TreeViewBaseItem<ExtendedTreeItemProps>[] = [
+const ITEMS = [
   {
     id: '1',
     label: 'Website',
     children: [
-      { id: '1.1', label: 'Home', color: 'green' },
-      { id: '1.2', label: 'Pricing', color: 'green' },
-      { id: '1.3', label: 'About us', color: 'green' },
+      { id: '1.1', label: 'Home', color: 'green' as const },
+      { id: '1.2', label: 'Pricing', color: 'green' as const },
+      { id: '1.3', label: 'About us', color: 'green' as const },
       {
         id: '1.4',
         label: 'Blog',
         children: [
-          { id: '1.1.1', label: 'Announcements', color: 'blue' },
-          { id: '1.1.2', label: 'April lookahead', color: 'blue' },
-          { id: '1.1.3', label: "What's new", color: 'blue' },
-          { id: '1.1.4', label: 'Meet the team', color: 'blue' },
+          { id: '1.1.1', label: 'Announcements', color: 'blue' as const },
+          { id: '1.1.2', label: 'April lookahead', color: 'blue' as const },
+          { id: '1.1.3', label: "What's new", color: 'blue' as const },
+          { id: '1.1.4', label: 'Meet the team', color: 'blue' as const },
         ],
       },
     ],
@@ -52,23 +50,23 @@ const ITEMS: TreeViewBaseItem<ExtendedTreeItemProps>[] = [
     id: '2',
     label: 'Store',
     children: [
-      { id: '2.1', label: 'All products', color: 'green' },
+      { id: '2.1', label: 'All products', color: 'green' as const },
       {
         id: '2.2',
         label: 'Categories',
         children: [
-          { id: '2.2.1', label: 'Gadgets', color: 'blue' },
-          { id: '2.2.2', label: 'Phones', color: 'blue' },
-          { id: '2.2.3', label: 'Wearables', color: 'blue' },
+          { id: '2.2.1', label: 'Gadgets', color: 'blue' as const },
+          { id: '2.2.2', label: 'Phones', color: 'blue' as const },
+          { id: '2.2.3', label: 'Wearables', color: 'blue' as const },
         ],
       },
-      { id: '2.3', label: 'Bestsellers', color: 'green' },
-      { id: '2.4', label: 'Sales', color: 'green' },
+      { id: '2.3', label: 'Bestsellers', color: 'green' as const },
+      { id: '2.4', label: 'Sales', color: 'green' as const },
     ],
   },
-  { id: '4', label: 'Contact', color: 'blue' },
-  { id: '5', label: 'Help', color: 'blue' },
-];
+  { id: '4', label: 'Contact', color: 'blue' as const },
+  { id: '5', label: 'Help', color: 'blue' as const },
+] as (TreeViewDefaultItemModelProperties & ExtendedTreeItemProps)[];
 
 function DotIcon({ color }: { color: string }) {
   return (
@@ -155,6 +153,7 @@ const CustomTreeItem = React.forwardRef(function CustomTreeItem(
               focused: status.focused,
               disabled: status.disabled,
             }),
+            status,
           })}
         >
           {status.expandable && (
