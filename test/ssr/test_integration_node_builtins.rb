@@ -23,4 +23,23 @@ module SSR
       assert_includes parsed['html'], 'MuiContainer'
     end
   end
+
+  class TestIntegrationReactMuiDashboardSSR < Minitest::Test
+    BUNDLE_DIR = '../../samples/react-emotion-mui-dashboard-ssr-app/dist/server'
+    BUNDLE_PATH = File.expand_path("#{BUNDLE_DIR}/entry-server.js", __dir__)
+
+    def setup
+      skip 'React MUI Dashboard SSR bundle not built' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_react_mui_dashboard_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      result = bundle.render({ data: { name: 'Dashboard' } })
+      parsed = JSON.parse(result)
+
+      assert_kind_of String, parsed['html']
+      assert_kind_of String, parsed['css']
+      assert_includes parsed['html'], 'MuiBox'
+    end
+  end
 end
