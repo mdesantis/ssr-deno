@@ -106,7 +106,7 @@ globalThis.render = render
 - `ssr.target: 'webworker'` — produces a bundle using only Web APIs (safe default; not a gem requirement).
 - `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']` — prevents packages like `@emotion/cache` from resolving to their browser-specific build.
 
-See `samples/` for complete working examples across vanilla TS, React 19, Vue 3, Svelte 5, and MUI v9.
+See `samples/` for 11 complete working examples: barebone (plain JS), deno-native (no Vite), vanilla TS, React 19, Vue 3, Svelte 5, Preact, MUI v9, Emotion CSS, and a full dashboard.
 
 ---
 
@@ -210,10 +210,15 @@ rakelib/
 └── test.rake                          # test:main, test:node_builtins
 
 samples/
-├── vite-ssr-app/                   # Plain TS, no framework
-├── vite-react-ssr-app/                     # React 19 basic
-├── vite-react-mui-ssr-app/                 # React 19 + MUI v9 (plain HTML)
-├── vite-react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS
-├── vite-vue-ssr-app/                       # Vue 3
-└── vite-svelte-ssr-app/                    # Svelte 5
+├── barebone-ssr-app/                       # Plain JS, zero deps
+├── deno-native-ssr-app/                    # Deno.serve() + template strings, no build
+├── deno-native-react-ssr-app/              # Deno.serve() + React 19, no build
+├── vite-ssr-app/                           # Plain TS + Vite
+├── vite-react-ssr-app/                     # React 19 + Vite
+├── vite-react-mui-ssr-app/                 # React 19 + MUI v9 + Vite
+├── vite-react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS + Vite
+├── vite-react-emotion-mui-dashboard-ssr-app/  # Full dashboard + Vite
+├── vite-vue-ssr-app/                       # Vue 3 + Vite
+├── vite-svelte-ssr-app/                    # Svelte 5 + Vite
+└── vite-preact-ssr-app/                    # Preact + Vite
 ```

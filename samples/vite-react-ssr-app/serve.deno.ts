@@ -18,7 +18,7 @@
  * Usage:
  *   deno run --allow-read --allow-net serve.deno.ts
  *
- * Then open http://localhost:3101?name=Maurizio
+ * Then open http://localhost:3107?name=Maurizio
  */
 
 const PORT = parseInt(Deno.env.get("PORT") || "3107", 10);

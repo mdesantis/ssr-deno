@@ -83,7 +83,7 @@ globalThis.render = render
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/deno.json` | baseline + new deps |
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/vite.config.ts` | same as emotion sample |
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/tsconfig.json` | same as emotion sample |
-| `samples/vite-react-emotion-mui-dashboard-ssr-app/serve.deno.ts` | same pattern, PORT=3106 |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/serve.deno.ts` | same pattern, PORT=3110 |
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/src/entry-server.ts` | new (SSR wrapper) |
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/src/Dashboard.tsx` | from MUI template |
 | `samples/vite-react-emotion-mui-dashboard-ssr-app/src/components/*.tsx` (20) | from MUI template |

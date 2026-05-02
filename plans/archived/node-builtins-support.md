@@ -78,7 +78,7 @@ Swap `vite-react-mui-emotion-ssr-app/src/entry-server.ts` back to using
 
 1. `deno task build` — bundle includes `require("stream")` calls
 2. `deno task serve` — bundle loads without `require is not defined` error
-3. `curl http://localhost:3105?name=Test` — returns HTML with Emotion styles
+3. `curl http://localhost:3109?name=Test` — returns HTML with Emotion styles
 4. `bundle exec rake` — full pipeline passes
 
 ### Phase 1 result ✅

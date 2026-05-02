@@ -37,7 +37,7 @@ Vue SSR `renderToString` returns a `Promise`. Current [`call_render`](../ext/ssr
 
 ---
 
-## Sample 1: Vanilla SSR (`samples/vite-vanilla-ssr-app/`)
+## Sample 1: Vanilla SSR (`samples/vite-ssr-app/`)
 
 **Purpose:** Baseline. No framework. Pure TS template literals.
 
@@ -61,11 +61,11 @@ globalThis.render = render
 
 | File | Content |
 |------|---------|
-| [`samples/vite-vanilla-ssr-app/deno.json`](../samples/vite-vanilla-ssr-app/deno.json) | imports: vite; tasks: build, serve |
-| [`samples/vite-vanilla-ssr-app/vite.config.ts`](../samples/vite-vanilla-ssr-app/vite.config.ts) | no plugins; ssr.target webworker |
-| [`samples/vite-vanilla-ssr-app/tsconfig.json`](../samples/vite-vanilla-ssr-app/tsconfig.json) | same as existing |
-| [`samples/vite-vanilla-ssr-app/serve.deno.ts`](../samples/vite-vanilla-ssr-app/serve.deno.ts) | same as existing |
-| [`samples/vite-vanilla-ssr-app/src/entry-server.ts`](../samples/vite-vanilla-ssr-app/src/entry-server.ts) | sync render fn |
+| [`samples/vite-ssr-app/deno.json`](../samples/vite-ssr-app/deno.json) | imports: vite; tasks: build, serve |
+| [`samples/vite-ssr-app/vite.config.ts`](../samples/vite-ssr-app/vite.config.ts) | no plugins; ssr.target webworker |
+| [`samples/vite-ssr-app/tsconfig.json`](../samples/vite-ssr-app/tsconfig.json) | same as existing |
+| [`samples/vite-ssr-app/serve.deno.ts`](../samples/vite-ssr-app/serve.deno.ts) | same as existing |
+| [`samples/vite-ssr-app/src/entry-server.ts`](../samples/vite-ssr-app/src/entry-server.ts) | sync render fn |
 
 ---
 
@@ -263,7 +263,7 @@ end
 
 ```ruby
 def test_render_vanilla_ssr
-  bundle = SSR::Deno::Bundle.new('samples/vite-vanilla-ssr-app/dist/server/entry-server.js')
+  bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
   result = bundle.render({ name: 'World' })
   assert_includes result, 'Hello World'
 end
