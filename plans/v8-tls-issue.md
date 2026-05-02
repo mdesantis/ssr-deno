@@ -38,6 +38,14 @@ This requires a local clone of the full [`rusty_v8`](https://github.com/denoland
 
 ## Upstream Fix
 
-PR [#1970](https://github.com/denoland/rusty_v8/pull/1970) on `denoland/rusty_v8` is the correct fix. It replaces the broken `extra_cflags` injection (PR [#1911](https://github.com/denoland/rusty_v8/pull/1911), which used a GN arg that was silently ignored) with `v8_monolithic_for_shared_library=true`, a real declared GN arg.
+The fix is two-part — both PRs are required:
 
-Once PR #1970 lands, we can remove the `[patch.crates-io]` override and the `V8_FROM_SOURCE` / `GN_ARGS` environment variables, and use the published crate directly.
+1. **[v8 PR #20](https://github.com/denoland/v8/pull/20)** (denoland/v8) — adds `V8_TLS_USED_IN_LIBRARY` define to V8's `internal_config` GN target. This is the define that actually changes the TLS model from `local-exec` to `local-dynamic` in V8's own `.cc` files.
+
+2. **[rusty_v8 PR #1970](https://github.com/denoland/rusty_v8/pull/1970)** (denoland/rusty_v8) — passes `v8_monolithic_for_shared_library=true` GN arg when building V8. This triggers the condition patched by PR #20.
+
+**Dependency chain:** PR #1970 is **blocked on v8 PR #20** landing and being rolled into the next `*-lkgr-denoland` autoroll. Without PR #20, the `v8_monolithic_for_shared_library` GN arg exists but does nothing — it's not wired to any define in V8's `internal_config`.
+
+**Why the workaround works now:** `V8_FROM_SOURCE=true` applies floated patches from `vendor/rusty_v8/patches/`, which already includes the v8-level TLS patch (the same change as PR #20). This is why `GN_ARGS='v8_monolithic_for_shared_library=true'` works locally despite the PRs not being merged upstream.
+
+Once both PRs are merged and the published crate includes the fix, we can remove the `[patch.crates-io]` override and the `V8_FROM_SOURCE` / `GN_ARGS` environment variables, and use the published crate directly.
