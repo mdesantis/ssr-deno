@@ -1,4 +1,5 @@
 /// <reference types="@types/deno" />
+import { createRequire } from 'node:module'
 
 const PORT = parseInt(Deno.env.get("PORT") || "3105", 10);
 const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
@@ -6,12 +7,14 @@ const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
 const bundleCode = await Deno.readTextFile(BUNDLE_PATH);
 const scriptCode = bundleCode.replace(/export\s+\{[^}]+\};?\s*$/, "");
 
-const fn = new Function(`
+const require = createRequire(BUNDLE_PATH);
+
+const fn = new Function('require', `
   ${scriptCode}
   return typeof render !== "undefined" ? render : null;
 `);
 
-const renderFn = fn();
+const renderFn = fn(require);
 if (typeof renderFn !== "function") {
   console.error("Bundle did not export a render function");
   Deno.exit(1);

@@ -8,6 +8,7 @@ export default defineConfig({
     noExternal: true,
     resolve: {
       conditions: ['edge-light', 'module', 'browser', 'development'],
+      builtins: ['stream', 'buffer', 'events', 'string_decoder'],
     },
   },
   build: {
