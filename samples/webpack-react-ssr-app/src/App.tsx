@@ -1,0 +1,30 @@
+import HelloWorld from './components/HelloWorld'
+
+interface AppProps {
+  data?: {
+    [key: string]: unknown
+  }
+}
+
+export default function App({ data }: AppProps) {
+  const name = (data?.name as string | undefined) ?? 'World'
+
+  return (
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <title>SSR with Webpack + React</title>
+      </head>
+      <body>
+        <div id="root">
+          <HelloWorld name={name} />
+          {Object.keys(data ?? {}).length > 0 && (
+            <pre style={{ marginTop: '2rem', padding: '1rem', background: '#f5f5f5' }}>
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          )}
+        </div>
+      </body>
+    </html>
+  )
+}

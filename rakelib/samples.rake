@@ -10,6 +10,7 @@ SAMPLES = %w[
   vite-react-emotion-mui-dashboard-ssr-app
   vite-preact-ssr-app
   webpack-ssr-app
+  webpack-react-ssr-app
 ].freeze
 
 desc 'Build all SSR sample bundles'

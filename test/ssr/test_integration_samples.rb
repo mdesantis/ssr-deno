@@ -117,6 +117,24 @@ module SSR
     end
   end
 
+  class TestIntegrationWebpackReactSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/webpack-react-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'Webpack React SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_webpack_react_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ data: { name: 'WebpackReact' } })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'WebpackReact'
+      assert_includes html, '<div id="root">'
+      assert_includes html, 'Webpack SSR'
+    end
+  end
+
   class TestIntegrationPreactSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vite-preact-ssr-app/dist/server/entry-server.js', __dir__)
 
