@@ -429,11 +429,11 @@ export default defineConfig({
 })
 ```
 
-> **`ssr.noExternal: true`** is critical. Without it, Vite produces a bundle with external `import` statements for dependencies like `react` and `react-dom`. The embedded Deno runtime cannot resolve these external imports — it has no package manager or `node_modules` access. With `noExternal: true`, Vite (via rolndown) inlines **all** dependencies into a single self-contained file with zero `import` statements. The bundle assigns `render` to `globalThis`, making it ideal for direct evaluation in the embedded V8 isolate.
->
-> **`ssr.target: 'webworker'** ensures the bundle only uses Web APIs, avoiding Node.js-specific references that would fail in the embedded V8 context. Note however that the gem's native extension can evaluate bundles with any SSR target — `webworker` is a safe default.
->
-> **`ssr.resolve.conditions`** with `'edge-light'` before `'browser'` prevents packages like `@emotion/cache` from resolving to their browser-specific build (which assumes `document` exists) when targeting `webworker`. See [`plans/archived/edge-light-resolution.md`](plans/archived/edge-light-resolution.md).
+**`ssr.noExternal: true`** is critical. Without it, Vite produces a bundle with external `import` statements for dependencies like `react` and `react-dom`. The embedded Deno runtime cannot resolve these external imports — it has no package manager or `node_modules` access. With `noExternal: true`, Vite (via rolndown) inlines **all** dependencies into a single self-contained file with zero `import` statements. The bundle assigns `render` to `globalThis`, making it ideal for direct evaluation in the embedded V8 isolate.
+
+**`ssr.target: 'webworker'`** ensures the bundle only uses Web APIs, avoiding Node.js-specific references that would fail in the embedded V8 context. Note however that the gem's native extension can evaluate bundles with any SSR target — `webworker` is a safe default.
+
+**`ssr.resolve.conditions`** with `'edge-light'` before `'browser'` prevents packages like `@emotion/cache` from resolving to their browser-specific build (which assumes `document` exists) when targeting `webworker`. See [`plans/archived/edge-light-resolution.md`](plans/archived/edge-light-resolution.md).
 
 The entry file should assign a `render` function to `globalThis`:
 
