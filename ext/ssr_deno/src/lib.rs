@@ -184,6 +184,13 @@ fn native_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// Queries V8 heap statistics from the isolate pool.
+fn native_heap_stats() -> Result<String, Error> {
+    get_pool()?
+        .heap_stats()
+        .map_err(|e| js_runtime_worker_error(e.to_string()))
+}
+
 /// The magnus init function — called when Ruby loads the native extension.
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
@@ -223,6 +230,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_set_render_timeout_ms",
         function!(native_set_render_timeout_ms, 1),
+    )?;
+    deno_module.define_singleton_method(
+        "native_heap_stats",
+        function!(native_heap_stats, 0),
     )?;
     Ok(())
 }

@@ -10,6 +10,7 @@ module SSR
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
       config.ssr_deno.max_heap_size_mb = nil # nil = 64 MB (default)
       config.ssr_deno.isolate_pool_size = Rails.env.production? ? nil : 1 # nil = auto-detect from CPU count
+      config.ssr_deno.heap_stats_sample_rate = 100 # emit heap stats every N renders
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
@@ -41,6 +42,29 @@ module SSR
           SSR::Deno::Bundle.registry.register(name, bundle)
         rescue ArgumentError
           Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} already registered. Skipping."
+        end
+      end
+
+      # Sample V8 heap stats periodically and emit heap_stats.ssr_deno events.
+      initializer 'ssr_deno.heap_stats', after: 'ssr_deno.subscribe_events' do |_app|
+        sample_rate = config.ssr_deno.heap_stats_sample_rate
+        counter = 0
+        mutex = Mutex.new
+
+        ActiveSupport::Notifications.subscribe('render.ssr_deno') do |*_args|
+          should_sample = false
+
+          mutex.synchronize do
+            counter += 1
+            should_sample = (counter % sample_rate).zero?
+          end
+
+          next unless should_sample
+
+          stats = SSR::Deno.heap_stats
+          ActiveSupport::Notifications.instrument('heap_stats.ssr_deno', stats)
+        rescue SSR::Deno::Error => error
+          Rails.logger.warn "[ssr-deno] Failed to collect heap stats: #{error.message}"
         end
       end
 

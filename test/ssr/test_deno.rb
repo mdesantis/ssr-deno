@@ -4,6 +4,8 @@ require 'test_helper'
 
 module SSR
   class TestDeno < Minitest::Test
+    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
+
     def test_that_it_has_a_version_number
       refute_nil ::SSR::Deno::VERSION
     end
@@ -13,27 +15,34 @@ module SSR
     end
 
     def test_set_max_heap_size_mb
-      # May raise JsRuntimeInitializationError if another test already
-      # initialized the pool (INITIALIZED OnceLock guard). We accept either
-      # outcome — the purpose is coverage of the accessor and the native method.
       SSR::Deno.max_heap_size_mb = 128
     rescue SSR::Deno::JsRuntimeInitializationError
-      # runtime already initialized, that's fine
+      # pool already initialized, that's fine
     end
 
     def test_set_isolate_pool_size
-      # May raise JsRuntimeInitializationError if another test already
-      # initialized the pool (INITIALIZED OnceLock guard). We accept either
-      # outcome — the purpose is coverage of the accessor and the native method.
       SSR::Deno.isolate_pool_size = 4
     rescue SSR::Deno::JsRuntimeInitializationError
-      # runtime already initialized, that's fine
+      # pool already initialized, that's fine
     end
 
     def test_set_render_timeout_ms
       SSR::Deno.render_timeout_ms = 200
     rescue SSR::Deno::JsRuntimeInitializationError
-      # runtime already initialized, that's fine
+      # pool already initialized, that's fine
+    end
+
+    def test_heap_stats
+      SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
+
+      stats = SSR::Deno.heap_stats
+
+      assert_kind_of Hash, stats
+      assert stats.key?('total_heap_size')
+      assert stats.key?('used_heap_size')
+      assert stats.key?('heap_size_limit')
+      assert_kind_of Integer, stats['total_heap_size']
+      assert_operator stats['total_heap_size'], :>, 0
     end
   end
 end

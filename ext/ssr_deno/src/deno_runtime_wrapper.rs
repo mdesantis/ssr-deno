@@ -38,6 +38,9 @@ enum WorkerMsg {
         args_json: String,
         reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
     },
+    HeapStats {
+        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,21 @@ impl IsolateHandle {
         }
     }
 
+    /// Queries V8 heap statistics from this isolate's thread.
+    pub fn block_on_heap_stats(&self) -> Result<String, DenoError> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+        self.tx
+            .blocking_send(WorkerMsg::HeapStats { reply: reply_tx })
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| {
+                DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
+            })?
+    }
+
     /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.
     fn blocking_send(&self, msg: WorkerMsg) -> Result<(), DenoError> {
         self.tx
@@ -167,6 +185,11 @@ impl IsolatePool {
     /// Blocks until the result arrives.
     pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         self.next_handle().block_on_render(bundle_id, args_json)
+    }
+
+    /// Queries V8 heap statistics from the next available isolate.
+    pub fn heap_stats(&self) -> Result<String, DenoError> {
+        self.next_handle().block_on_heap_stats()
     }
 
     /// Loads a bundle into **every** isolate by broadcasting the bundle code.
@@ -289,6 +312,10 @@ fn worker_thread_main(
                     reply,
                 } => {
                     let result = call_render(&mut worker, &bundle_id, &args_json);
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::HeapStats { reply } => {
+                    let result = collect_heap_stats(&mut worker);
                     let _ = reply.send(result);
                 }
             }
@@ -474,4 +501,32 @@ fn call_render(
         .ok_or_else(|| DenoError::Render("Cannot serialize render result to JSON".to_string()))?;
 
     Ok(json_str.to_rust_string_lossy(&try_catch))
+}
+
+// ---------------------------------------------------------------------------
+// V8 heap statistics
+// ---------------------------------------------------------------------------
+
+fn collect_heap_stats(worker: &mut MainWorker) -> Result<String, DenoError> {
+    let js_runtime = &mut worker.js_runtime;
+    let isolate = js_runtime.v8_isolate();
+    let stats = isolate.get_heap_statistics();
+
+    let stats_json = serde_json::json!({
+        "total_heap_size": stats.total_heap_size(),
+        "total_heap_size_executable": stats.total_heap_size_executable(),
+        "total_physical_size": stats.total_physical_size(),
+        "total_available_size": stats.total_available_size(),
+        "used_heap_size": stats.used_heap_size(),
+        "heap_size_limit": stats.heap_size_limit(),
+        "malloced_memory": stats.malloced_memory(),
+        "external_memory": stats.external_memory(),
+        "peak_malloced_memory": stats.peak_malloced_memory(),
+        "number_of_native_contexts": stats.number_of_native_contexts(),
+        "number_of_detached_contexts": stats.number_of_detached_contexts(),
+        "total_global_handles_size": stats.total_global_handles_size(),
+        "used_global_handles_size": stats.used_global_handles_size(),
+    });
+
+    Ok(stats_json.to_string())
 }

@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- V8 heap metrics via `SSR::Deno.heap_stats` — returns `total_heap_size`, `used_heap_size`, `heap_size_limit`, and 10 other V8 memory counters as a Hash. Rails subscriber emits `heap_stats.ssr_deno` every N renders (configurable via `config.ssr_deno.heap_stats_sample_rate`, default 100).
+
 ## [0.1.0-alpha.2] - 2026-05-02
 
 ### Changed

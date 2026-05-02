@@ -52,6 +52,17 @@ module SSR
       def render_timeout_ms=(milliseconds)
         native_set_render_timeout_ms(milliseconds.to_i)
       end
+
+      # Returns V8 heap statistics from the isolate pool as a Hash.
+      # Keys include: total_heap_size, used_heap_size, heap_size_limit, etc.
+      # Runtime must be initialized (call Bundle.new first).
+      #
+      # @return [Hash<String, Integer>]
+      # @raise [JsRuntimeNotInitializedError] if pool not initialized
+      # @raise [JsRuntimeWorkerError] if worker thread has exited
+      def heap_stats
+        JSON.parse(native_heap_stats)
+      end
     end
   end
 end
