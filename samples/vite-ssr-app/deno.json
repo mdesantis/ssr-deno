@@ -1,5 +1,5 @@
 {
-  "name": "@ssr-deno/vite-vanilla-ssr-app",
+  "name": "@ssr-deno/vite-ssr-app",
   "version": "1.0.0",
   "exports": "./serve.deno.ts",
   "lock": "deno.lock",

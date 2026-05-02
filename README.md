@@ -94,7 +94,7 @@ function render(argsJson: string): string {
 globalThis.render = render
 ```
 
-Full sample: [`samples/vite-vanilla-ssr-app/`](samples/vite-vanilla-ssr-app/)
+Full sample: [`samples/vite-ssr-app/`](samples/vite-ssr-app/)
 
 ### Vue 3
 
@@ -209,7 +209,7 @@ when `ssr.target: 'webworker'` is set. See
 Each sample defines `deno task build` and `deno task serve` in its `deno.json`:
 
 ```bash
-cd samples/vite-vanilla-ssr-app
+cd samples/vite-ssr-app
 deno task build                # produces dist/server/entry-server.js
 deno task serve                # starts a test server on localhost:3102 (vanilla)
 ```
@@ -226,7 +226,7 @@ bundle exec rake samples:build
 require 'ssr/deno'
 
 # Point to the built entry file
-bundle = SSR::Deno::Bundle.new('samples/vite-vanilla-ssr-app/dist/server/entry-server.js')
+bundle = SSR::Deno::Bundle.new('samples/vite-ssr-app/dist/server/entry-server.js')
 
 # Data is auto-serialized to JSON and passed to the render function
 html = bundle.render({ name: 'World' })

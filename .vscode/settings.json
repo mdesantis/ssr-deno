@@ -6,7 +6,7 @@
     "samples/vite-react-mui-ssr-app",
     "samples/vite-react-mui-emotion-ssr-app",
     "samples/vite-react-emotion-mui-dashboard-ssr-app",
-    "samples/vite-vanilla-ssr-app",
+    "samples/vite-ssr-app",
     "samples/vite-vue-ssr-app",
     "samples/vite-svelte-ssr-app",
   ],

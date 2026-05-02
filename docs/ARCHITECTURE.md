@@ -210,7 +210,7 @@ rakelib/
 └── test.rake                          # test:main, test:node_builtins
 
 samples/
-├── vite-vanilla-ssr-app/                   # Plain TS, no framework
+├── vite-ssr-app/                   # Plain TS, no framework
 ├── vite-react-ssr-app/                     # React 19 basic
 ├── vite-react-mui-ssr-app/                 # React 19 + MUI v9 (plain HTML)
 ├── vite-react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS

@@ -21,7 +21,7 @@ module SSR
   end
 
   class TestIntegrationVanillaSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vite-vanilla-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Vanilla SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)

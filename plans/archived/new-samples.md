@@ -230,7 +230,7 @@ Update [`Rakefile`](../Rakefile) `namespace :samples` to build all samples:
 ```ruby
 SAMPLES = %w[
   vite-react-ssr-app
-  vite-vanilla-ssr-app
+vite-ssr-app
   vite-vue-ssr-app
   vite-svelte-ssr-app
   vite-react-mui-ssr-app
