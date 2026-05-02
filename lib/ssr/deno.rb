@@ -69,7 +69,8 @@ module SSR
       end
 
       # Returns V8 heap statistics from the isolate pool as a Hash.
-      # Runtime must be initialized (call Bundle.new first).
+      # Returns an empty Hash and prints a warning if the runtime is not yet
+      # initialized (no Bundle.new has been called yet).
       #
       # Exposed counters (all Integer):
       #   total_heap_size             – total V8 heap usage (bytes)
@@ -87,10 +88,12 @@ module SSR
       #   used_global_handles_size    – live persistent handles (bytes)
       #
       # @return [Hash<String, Integer>]
-      # @raise [JsRuntimeNotInitializedError] if pool not initialized
       # @raise [JsRuntimeWorkerError] if worker thread has exited
       def heap_stats
         JSON.parse(native_heap_stats)
+      rescue JsRuntimeNotInitializedError => error
+        warn "[ssr-deno] #{error.message}"
+        {}
       end
     end
   end

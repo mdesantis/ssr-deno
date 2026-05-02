@@ -44,5 +44,23 @@ module SSR
       assert_kind_of Integer, stats['total_heap_size']
       assert_operator stats['total_heap_size'], :>, 0
     end
+
+    def test_heap_stats_before_initialization_returns_empty_hash
+      klass = SSR::Deno.singleton_class
+
+      klass.alias_method(:original_native_heap_stats, :native_heap_stats)
+      klass.define_method(:native_heap_stats) do
+        raise SSR::Deno::JsRuntimeNotInitializedError, 'pool not initialized'
+      end
+
+      assert_output(nil, /not initialized/) do
+        stats = SSR::Deno.heap_stats
+
+        assert_equal({}, stats)
+      end
+    ensure
+      klass.alias_method(:native_heap_stats, :original_native_heap_stats)
+      klass.remove_method(:original_native_heap_stats)
+    end
   end
 end
