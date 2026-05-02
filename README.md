@@ -64,7 +64,172 @@ The isolate pool distributes render requests across multiple V8 isolates in roun
 
 Each isolate gets its own V8 heap (configured by `max_heap_size_mb`), its own Deno runtime, and its own worker thread. Render requests are dispatched without locks — just atomic counter increment + channel send.
 
-### Rails integration
+### Creating SSR bundles
+
+`ssr-deno` loads Vite SSR production bundles and calls their `render` function. Each bundle must expose a `globalThis.render(argsJson: string): string` function. The `samples/` directory contains complete working examples for each framework.
+
+### Bundle contract
+
+```
+globalThis.render(argsJson: string): string
+```
+
+Arguments are passed as a JSON string. The return value must be a complete HTML string (or a Promise that resolves to one — the Rust runtime auto-detects async render functions and polls the V8 microtask queue until settlement).
+
+### Vanilla (no framework)
+
+```ts
+// src/entry-server.ts — plain TypeScript, no framework
+function render(argsJson: string): string {
+  const { name } = JSON.parse(argsJson)
+  return `<!DOCTYPE html>
+<html>
+  <head><title>Hello ${name}</title></head>
+  <body>
+    <div id="root"><h1>Hello ${name}!</h1></div>
+  </body>
+</html>`
+}
+
+globalThis.render = render
+```
+
+Full sample: [`samples/vanilla-ssr-app/`](samples/vanilla-ssr-app/)
+
+### Vue 3
+
+```ts
+// src/entry-server.ts
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import App from './App.vue'
+
+async function render(argsJson: string): Promise<string> {
+  const { data } = JSON.parse(argsJson)
+  const app = createSSRApp(App, { data })
+  const body = await renderToString(app)
+  return `<!DOCTYPE html>
+<html>
+  <head><title>Hello</title></head>
+  <body><div id="root">${body}</div></body>
+</html>`
+}
+
+globalThis.render = render
+```
+
+Vue's `renderToString` returns a Promise — async render functions are handled transparently.
+
+Full sample: [`samples/vue-ssr-app/`](samples/vue-ssr-app/)
+
+### Svelte 5
+
+```ts
+// src/entry-server.ts
+import { render as renderSvelte } from 'svelte/server'
+import App from './App.svelte'
+
+function render(argsJson: string): string {
+  const { data } = JSON.parse(argsJson)
+  const result = renderSvelte(App, { props: { data } })
+  return `<!DOCTYPE html>
+<html>
+  <head>${result.head}<title>Hello</title></head>
+  <body><div id="root">${result.body}</div></body>
+</html>`
+}
+
+globalThis.render = render
+```
+
+Svelte 5's `render` from `svelte/server` is synchronous and returns `{ head, body }`.
+
+Full sample: [`samples/svelte-ssr-app/`](samples/svelte-ssr-app/)
+
+### React 19
+
+```tsx
+// src/entry-server.tsx
+import { renderToString } from 'react-dom/server'
+import { createElement } from 'react'
+import App from './App'
+
+function render(argsJson: string): string {
+  const { data } = JSON.parse(argsJson)
+  const html = renderToString(createElement(App, { data }))
+  return `<!DOCTYPE html>
+<html>
+  <head><title>Hello</title></head>
+  <body><div id="root">${html}</div></body>
+</html>`
+}
+
+globalThis.render = render
+```
+
+React's `renderToString` is synchronous.
+
+Full sample: [`samples/vite-ssr-app/`](samples/vite-ssr-app/)
+
+### Vite configuration
+
+All samples use the same Vite SSR build setup. Framework-specific builds add their respective Vite plugin:
+
+```ts
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  ssr: {
+    target: 'webworker',
+    noExternal: true,          // bundle all dependencies
+  },
+  build: {
+    ssr: true,
+    outDir: 'dist/server',
+    rollupOptions: {
+      input: 'src/entry-server.ts',
+    },
+  },
+})
+```
+
+| Framework | Vite plugin |
+|-----------|-------------|
+| Vue 3 | `@vitejs/plugin-vue` |
+| Svelte 5 | `@sveltejs/vite-plugin-svelte` |
+| React 19 | `@vitejs/plugin-react` |
+
+### Building and running
+
+Each sample defines `deno task build` and `deno task serve` in its `deno.json`:
+
+```bash
+cd samples/vanilla-ssr-app
+deno task build                # produces dist/server/entry-server.js
+deno task serve                # starts a test server on localhost:3100
+```
+
+Build all samples at once:
+
+```bash
+bundle exec rake samples:build
+```
+
+### Loading a bundle in Ruby
+
+```ruby
+require 'ssr/deno'
+
+# Point to the built entry file
+bundle = SSR::Deno::Bundle.new('samples/vanilla-ssr-app/dist/server/entry-server.js')
+
+# Data is auto-serialized to JSON and passed to the render function
+html = bundle.render({ name: 'World' })
+puts html
+# => <!DOCTYPE html>\n<html>...
+```
+
+## Rails integration
 
 Add to your Gemfile:
 
