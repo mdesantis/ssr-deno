@@ -273,17 +273,19 @@ end
 
 ## Implementation Order
 
-| Step | What | Depends on |
-|------|------|-----------|
-| 1 | ✅ Async render support in Rust (promise polling) | — |
-| 2 | ✅ Vanilla SSR sample | — |
-| 3 | ✅ Svelte SSR sample | — |
-| 4 | ✅ Vue SSR sample | Step 1 (async) |
-| 5 | ✅ React + MUI SSR sample | — |
-| 6 | React + Emotion + MUI Dashboard sample | See [`plans/react-emotion-mui-dashboard-ssr-app.md`](react-emotion-mui-dashboard-ssr-app.md) |
-| 7 | ◐ Update Rakefile samples:build (partial — excludes dashboard) | Steps 2-6 |
-| 8 | ◐ Update integration tests (partial — excludes dashboard) | Steps 2-6 |
-| 9 | ✅ `bundle exec rake` — full pipeline verify | Steps 1-8 |
+| Step | What | Status |
+|------|------|--------|
+| 1 | Async render support in Rust (promise polling) | ✅ |
+| 2 | Vanilla SSR sample | ✅ |
+| 3 | Svelte SSR sample | ✅ |
+| 4 | Vue SSR sample | ✅ |
+| 5 | React + MUI SSR sample | ✅ |
+| 6 | React + Emotion + MUI Dashboard sample | ✅ |
+| 7 | Update Rakefile samples:build | ✅ |
+| 8 | Update integration tests | ✅ |
+| 9 | `bundle exec rake` — full pipeline verify | ✅ |
+
+All samples implemented. Move plan to `plans/archived/` after confirming no open questions remain.
 
 ---
 
