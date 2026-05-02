@@ -14,36 +14,11 @@ Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
 end
 
-# Test tasks live in rakelib/test.rake (test:main, test:node_builtins).
+# Task files in rakelib/:
+#   cargo.rake   — cargo:test
+#   samples.rake — samples:build, samples:build:<name>
+#   test.rake    — test:main, test:node_builtins
 
 RuboCop::RakeTask.new
-
-namespace :cargo do
-  desc 'Run Rust unit tests for the ssr_deno_core crate (no V8 build required)'
-  task :test do
-    sh 'cargo', 'test', '-p', 'ssr_deno_core', chdir: 'ext/ssr_deno'
-  end
-end
-
-SAMPLES = %w[
-  react-ssr-app
-  vanilla-ssr-app
-  vue-ssr-app
-  svelte-ssr-app
-  react-mui-emotion-ssr-app
-  react-mui-ssr-app
-].freeze
-
-namespace :samples do
-  desc 'Build all SSR sample bundles'
-  task build: SAMPLES.map { |s| "build:#{s}" }
-
-  SAMPLES.each do |sample|
-    desc "Build the #{sample} SSR bundle"
-    task "build:#{sample}" do
-      sh 'deno', 'task', 'build', chdir: "samples/#{sample}"
-    end
-  end
-end
 
 task default: %i[compile cargo:test samples:build test rubocop rbs]
