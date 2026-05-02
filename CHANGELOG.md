@@ -2,14 +2,14 @@
 
 ### Added
 - New sample: `samples/deno-native-ssr-app` — vanilla SSR with Deno's built-in `Deno.serve()`, no Vite, no build step.
-- New sample: `samples/deno-native-react-ssr-app` — React 19 SSR with Deno native `npm:` imports, no Vite, no build step.
+- New sample: `samples/deno-native-vite-react-ssr-app` — React 19 SSR with Deno native `npm:` imports, no Vite, no build step.
 - New sample: `samples/barebone-ssr-app` — plain JS SSR bundle (no framework, no Deno APIs), loadable directly via `SSR::Deno::Bundle`.
 - V8 heap metrics via `SSR::Deno.heap_stats` — returns `total_heap_size`, `used_heap_size`, `heap_size_limit`, and 10 other V8 memory counters as a Hash. Rails subscriber emits `heap_stats.ssr_deno` every N renders (configurable via `config.ssr_deno.heap_stats_sample_rate`, default 100).
 - Async SSR render support — `call_render` detects `v8::Promise` return and polls V8 microtask queue until settlement. Enables Vue 3 SSR and other async render frameworks.
-- New sample: `samples/svelte-ssr-app` — Svelte 5 SSR with `@sveltejs/vite-plugin-svelte`.
-- New sample: `samples/react-mui-ssr-app` — React 19 + MUI v9 SSR (plain HTML, no CSS extraction).
-- New sample: `samples/react-mui-emotion-ssr-app` — React 19 + MUI v9 SSR with Emotion CSS extraction.
-- New sample: `samples/react-ssr-app` — React 19 SSR (renamed from `vite-ssr-app`, all samples use Vite).
+- New sample: `samples/vite-svelte-ssr-app` — Svelte 5 SSR with `@sveltejs/vite-plugin-svelte`.
+- New sample: `samples/vite-react-mui-ssr-app` — React 19 + MUI v9 SSR (plain HTML, no CSS extraction).
+- New sample: `samples/vite-react-mui-emotion-ssr-app` — React 19 + MUI v9 SSR with Emotion CSS extraction.
+- New sample: `samples/vite-react-ssr-app` — React 19 SSR (renamed from `vite-ssr-app`, all samples use Vite).
 - README: add SSR bundle creation guide (bundle contract, vanilla/Vue/Svelte/React patterns).
 - Serve ports renumbered by complexity: barebone=3100, deno-native=3101, vanilla=3102, deno-native-react=3103, svelte=3104, vue=3105, preact=3106, react=3107, react-mui=3108, react-mui-emotion=3109, dashboard=3110.
 - Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.

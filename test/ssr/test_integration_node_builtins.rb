@@ -7,7 +7,7 @@ SSR::Deno.node_builtins_enabled = true
 
 module SSR
   class TestIntegrationReactMuiEmotionSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/react-mui-emotion-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-react-mui-emotion-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'React MUI Emotion SSR bundle not built' unless File.exist?(BUNDLE_PATH)
@@ -26,7 +26,7 @@ module SSR
   end
 
   class TestIntegrationReactMuiDashboardSSR < Minitest::Test
-    BUNDLE_DIR = '../../samples/react-emotion-mui-dashboard-ssr-app/dist/server'
+    BUNDLE_DIR = '../../samples/vite-react-emotion-mui-dashboard-ssr-app/dist/server'
     BUNDLE_PATH = File.expand_path("#{BUNDLE_DIR}/entry-server.js", __dir__)
 
     def setup

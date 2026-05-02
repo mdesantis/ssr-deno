@@ -8,7 +8,7 @@ Source: https://github.com/mui/material-ui/tree/v9.0.0/docs/data/material/gettin
 
 ## Scope
 
-Copy ~30 files from MUI's template into `samples/react-emotion-mui-dashboard-ssr-app/`:
+Copy ~30 files from MUI's template into `samples/vite-react-emotion-mui-dashboard-ssr-app/`:
 - `Dashboard.tsx` — main component
 - `components/*.tsx` (20 files) — AppNavbar, SideMenu, Header, MainGrid, StatCard, charts, etc.
 - `theme/customizations/*.ts` (5 files) — charts, dataGrid, datePickers, treeView
@@ -21,7 +21,7 @@ Add scaffold files (deno.json, vite.config.ts, tsconfig.json, serve.deno.ts, .gi
 
 ## Additional npm deps
 
-Beyond `react-mui-emotion-ssr-app` baseline:
+Beyond `vite-react-mui-emotion-ssr-app` baseline:
 
 | Package | Version |
 |---------|---------|
@@ -42,7 +42,7 @@ Use community edition `@mui/x-data-grid`, NOT `@mui/x-data-grid-pro` (MIT licens
 3. **`entry-server.ts`** — new file, wraps Dashboard in Emotion CacheProvider, extracts CSS
 4. **Remove `Title.tsx.preview`** — not needed, it's a demo preview asset
 5. **Remove `README.md`** — not needed in sample
-6. **`serve.deno.ts`** — same pattern as `react-mui-emotion-ssr-app` (JSON parse `{html, css}`)
+6. **`serve.deno.ts`** — same pattern as `vite-react-mui-emotion-ssr-app` (JSON parse `{html, css}`)
 
 ---
 
@@ -79,18 +79,18 @@ globalThis.render = render
 
 | File | Source |
 |------|--------|
-| `samples/react-emotion-mui-dashboard-ssr-app/.gitignore` | copy from sibling sample |
-| `samples/react-emotion-mui-dashboard-ssr-app/deno.json` | baseline + new deps |
-| `samples/react-emotion-mui-dashboard-ssr-app/vite.config.ts` | same as emotion sample |
-| `samples/react-emotion-mui-dashboard-ssr-app/tsconfig.json` | same as emotion sample |
-| `samples/react-emotion-mui-dashboard-ssr-app/serve.deno.ts` | same pattern, PORT=3106 |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts` | new (SSR wrapper) |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/Dashboard.tsx` | from MUI template |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/components/*.tsx` (20) | from MUI template |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/theme/customizations/*.ts` (5) | from MUI template |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/shared-theme/*.tsx` (4) | from MUI `templates/shared-theme/` |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/internals/components/` | from MUI template |
-| `samples/react-emotion-mui-dashboard-ssr-app/src/internals/data/` | from MUI template |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/.gitignore` | copy from sibling sample |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/deno.json` | baseline + new deps |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/vite.config.ts` | same as emotion sample |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/tsconfig.json` | same as emotion sample |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/serve.deno.ts` | same pattern, PORT=3106 |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/entry-server.ts` | new (SSR wrapper) |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/Dashboard.tsx` | from MUI template |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/components/*.tsx` (20) | from MUI template |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/theme/customizations/*.ts` (5) | from MUI template |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/shared-theme/*.tsx` (4) | from MUI `templates/shared-theme/` |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/internals/components/` | from MUI template |
+| `samples/vite-react-emotion-mui-dashboard-ssr-app/src/internals/data/` | from MUI template |
 
 ---
 

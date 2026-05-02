@@ -73,8 +73,8 @@ export default defineConfig({
 
 If the fix works:
 
-1. Remove `document` stub from `react-mui-emotion-ssr-app/src/entry-server.ts`
-2. Remove `document` stub from `react-mui-ssr-app/src/entry-server.ts`
+1. Remove `document` stub from `vite-react-mui-emotion-ssr-app/src/entry-server.ts`
+2. Remove `document` stub from `vite-react-mui-ssr-app/src/entry-server.ts`
 3. Update `plans/react-mui-workarounds.md` — mark workaround #1 as resolved
 4. Apply the Vite config change to both MUI samples
 5. Copy `.opencode/plans/edge-light-resolution.md` to `plans/edge-light-resolution.md`

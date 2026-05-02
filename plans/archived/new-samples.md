@@ -1,6 +1,6 @@
 # New Sample Apps — Plan
 
-Add 5 new SSR sample apps under `samples/` following [`samples/react-ssr-app/`](../samples/react-ssr-app/) pattern.
+Add 5 new SSR sample apps under `samples/` following [`samples/vite-react-ssr-app/`](../samples/vite-react-ssr-app/) pattern.
 
 ---
 
@@ -8,7 +8,7 @@ Add 5 new SSR sample apps under `samples/` following [`samples/react-ssr-app/`](
 
 1. `deno task build` → `dist/server/entry-server.js` (self-contained, `noExternal: true`)
 2. `globalThis.render(argsJson: string): string` — Ruby calls this via V8
-3. `deno task serve` — manual test server (same [`serve.deno.ts`](../samples/react-ssr-app/serve.deno.ts) pattern)
+3. `deno task serve` — manual test server (same [`serve.deno.ts`](../samples/vite-react-ssr-app/serve.deno.ts) pattern)
 4. Works with `SSR::Deno::Bundle.new(path)` + `bundle.render(data)`
 
 **Pattern:**
@@ -16,7 +16,7 @@ Add 5 new SSR sample apps under `samples/` following [`samples/react-ssr-app/`](
 ```
 samples/{name}/
 ├── deno.json          # tasks: build, serve; npm imports
-├── serve.deno.ts      # Deno HTTP server (copy from react-ssr-app)
+├── serve.deno.ts      # Deno HTTP server (copy from vite-react-ssr-app)
 ├── tsconfig.json      # TypeScript config
 ├── vite.config.ts     # Vite SSR config
 └── src/
@@ -37,7 +37,7 @@ Vue SSR `renderToString` returns a `Promise`. Current [`call_render`](../ext/ssr
 
 ---
 
-## Sample 1: Vanilla SSR (`samples/vanilla-ssr-app/`)
+## Sample 1: Vanilla SSR (`samples/vite-vanilla-ssr-app/`)
 
 **Purpose:** Baseline. No framework. Pure TS template literals.
 
@@ -61,15 +61,15 @@ globalThis.render = render
 
 | File | Content |
 |------|---------|
-| [`samples/vanilla-ssr-app/deno.json`](../samples/vanilla-ssr-app/deno.json) | imports: vite; tasks: build, serve |
-| [`samples/vanilla-ssr-app/vite.config.ts`](../samples/vanilla-ssr-app/vite.config.ts) | no plugins; ssr.target webworker |
-| [`samples/vanilla-ssr-app/tsconfig.json`](../samples/vanilla-ssr-app/tsconfig.json) | same as existing |
-| [`samples/vanilla-ssr-app/serve.deno.ts`](../samples/vanilla-ssr-app/serve.deno.ts) | same as existing |
-| [`samples/vanilla-ssr-app/src/entry-server.ts`](../samples/vanilla-ssr-app/src/entry-server.ts) | sync render fn |
+| [`samples/vite-vanilla-ssr-app/deno.json`](../samples/vite-vanilla-ssr-app/deno.json) | imports: vite; tasks: build, serve |
+| [`samples/vite-vanilla-ssr-app/vite.config.ts`](../samples/vite-vanilla-ssr-app/vite.config.ts) | no plugins; ssr.target webworker |
+| [`samples/vite-vanilla-ssr-app/tsconfig.json`](../samples/vite-vanilla-ssr-app/tsconfig.json) | same as existing |
+| [`samples/vite-vanilla-ssr-app/serve.deno.ts`](../samples/vite-vanilla-ssr-app/serve.deno.ts) | same as existing |
+| [`samples/vite-vanilla-ssr-app/src/entry-server.ts`](../samples/vite-vanilla-ssr-app/src/entry-server.ts) | sync render fn |
 
 ---
 
-## Sample 2: Vue SSR (`samples/vue-ssr-app/`)
+## Sample 2: Vue SSR (`samples/vite-vue-ssr-app/`)
 
 **Purpose:** Vue 3 SSR with SFC.
 
@@ -96,19 +96,19 @@ globalThis.render = render
 
 | File | Content |
 |------|---------|
-| [`samples/vue-ssr-app/deno.json`](../samples/vue-ssr-app/deno.json) | vue/vue-ssr/vite-plugin-vue imports |
-| [`samples/vue-ssr-app/vite.config.ts`](../samples/vue-ssr-app/vite.config.ts) | plugin: vue() |
-| [`samples/vue-ssr-app/tsconfig.json`](../samples/vue-ssr-app/tsconfig.json) | same |
-| [`samples/vue-ssr-app/serve.deno.ts`](../samples/vue-ssr-app/serve.deno.ts) | same pattern |
-| [`samples/vue-ssr-app/src/entry-server.ts`](../samples/vue-ssr-app/src/entry-server.ts) | async render, await renderToString |
-| [`samples/vue-ssr-app/src/App.vue`](../samples/vue-ssr-app/src/App.vue) | Vue SFC with full HTML doc |
-| [`samples/vue-ssr-app/src/components/HelloWorld.vue`](../samples/vue-ssr-app/src/components/HelloWorld.vue) | child component |
+| [`samples/vite-vue-ssr-app/deno.json`](../samples/vite-vue-ssr-app/deno.json) | vue/vue-ssr/vite-plugin-vue imports |
+| [`samples/vite-vue-ssr-app/vite.config.ts`](../samples/vite-vue-ssr-app/vite.config.ts) | plugin: vue() |
+| [`samples/vite-vue-ssr-app/tsconfig.json`](../samples/vite-vue-ssr-app/tsconfig.json) | same |
+| [`samples/vite-vue-ssr-app/serve.deno.ts`](../samples/vite-vue-ssr-app/serve.deno.ts) | same pattern |
+| [`samples/vite-vue-ssr-app/src/entry-server.ts`](../samples/vite-vue-ssr-app/src/entry-server.ts) | async render, await renderToString |
+| [`samples/vite-vue-ssr-app/src/App.vue`](../samples/vite-vue-ssr-app/src/App.vue) | Vue SFC with full HTML doc |
+| [`samples/vite-vue-ssr-app/src/components/HelloWorld.vue`](../samples/vite-vue-ssr-app/src/components/HelloWorld.vue) | child component |
 
 **Note:** Vue SFC uses `<template>` not TSX. Vite `@vitejs/plugin-vue` handles `.vue` compilation.
 
 ---
 
-## Sample 3: Svelte SSR (`samples/svelte-ssr-app/`)
+## Sample 3: Svelte SSR (`samples/vite-svelte-ssr-app/`)
 
 **Purpose:** Svelte 5 SSR.
 
@@ -139,17 +139,17 @@ globalThis.render = render
 
 | File | Content |
 |------|---------|
-| [`samples/svelte-ssr-app/deno.json`](../samples/svelte-ssr-app/deno.json) | svelte, svelte/vite-plugin imports |
-| [`samples/svelte-ssr-app/vite.config.ts`](../samples/svelte-ssr-app/vite.config.ts) | plugin: svelte() |
-| [`samples/svelte-ssr-app/tsconfig.json`](../samples/svelte-ssr-app/tsconfig.json) | same |
-| [`samples/svelte-ssr-app/serve.deno.ts`](../samples/svelte-ssr-app/serve.deno.ts) | same pattern |
-| [`samples/svelte-ssr-app/src/entry-server.ts`](../samples/svelte-ssr-app/src/entry-server.ts) | sync render via svelte/server render() |
-| [`samples/svelte-ssr-app/src/App.svelte`](../samples/svelte-ssr-app/src/App.svelte) | Svelte component |
-| [`samples/svelte-ssr-app/src/components/HelloWorld.svelte`](../samples/svelte-ssr-app/src/components/HelloWorld.svelte) | child component |
+| [`samples/vite-svelte-ssr-app/deno.json`](../samples/vite-svelte-ssr-app/deno.json) | svelte, svelte/vite-plugin imports |
+| [`samples/vite-svelte-ssr-app/vite.config.ts`](../samples/vite-svelte-ssr-app/vite.config.ts) | plugin: svelte() |
+| [`samples/vite-svelte-ssr-app/tsconfig.json`](../samples/vite-svelte-ssr-app/tsconfig.json) | same |
+| [`samples/vite-svelte-ssr-app/serve.deno.ts`](../samples/vite-svelte-ssr-app/serve.deno.ts) | same pattern |
+| [`samples/vite-svelte-ssr-app/src/entry-server.ts`](../samples/vite-svelte-ssr-app/src/entry-server.ts) | sync render via svelte/server render() |
+| [`samples/vite-svelte-ssr-app/src/App.svelte`](../samples/vite-svelte-ssr-app/src/App.svelte) | Svelte component |
+| [`samples/vite-svelte-ssr-app/src/components/HelloWorld.svelte`](../samples/vite-svelte-ssr-app/src/components/HelloWorld.svelte) | child component |
 
 ---
 
-## Sample 4: React + MUI SSR (`samples/react-mui-ssr-app/`)
+## Sample 4: React + MUI SSR (`samples/vite-react-mui-ssr-app/`)
 
 **Purpose:** React 19 with Material UI. Returns plain HTML — consuming app handles MUI styles.
 
@@ -185,14 +185,14 @@ under `ssr.target: 'webworker'`. See [`plans/archived/edge-light-resolution.md`]
 
 | File | Content |
 |------|---------|
-| [`samples/react-mui-ssr-app/deno.json`](../samples/react-mui-ssr-app/deno.json) | react, react-dom, @mui, @emotion, vite imports |
-| [`samples/react-mui-ssr-app/vite.config.ts`](../samples/react-mui-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
-| [`samples/react-mui-ssr-app/tsconfig.json`](../samples/react-mui-ssr-app/tsconfig.json) | same |
-| [`samples/react-mui-ssr-app/serve.deno.ts`](../samples/react-mui-ssr-app/serve.deno.ts) | standard test server |
-| [`samples/react-mui-ssr-app/src/entry-server.ts`](../samples/react-mui-ssr-app/src/entry-server.ts) | CacheProvider + renderToString |
-| [`samples/react-mui-ssr-app/src/App.tsx`](../samples/react-mui-ssr-app/src/App.tsx) | MUI components (Button, Typography, Card) |
+| [`samples/vite-react-mui-ssr-app/deno.json`](../samples/vite-react-mui-ssr-app/deno.json) | react, react-dom, @mui, @emotion, vite imports |
+| [`samples/vite-react-mui-ssr-app/vite.config.ts`](../samples/vite-react-mui-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
+| [`samples/vite-react-mui-ssr-app/tsconfig.json`](../samples/vite-react-mui-ssr-app/tsconfig.json) | same |
+| [`samples/vite-react-mui-ssr-app/serve.deno.ts`](../samples/vite-react-mui-ssr-app/serve.deno.ts) | standard test server |
+| [`samples/vite-react-mui-ssr-app/src/entry-server.ts`](../samples/vite-react-mui-ssr-app/src/entry-server.ts) | CacheProvider + renderToString |
+| [`samples/vite-react-mui-ssr-app/src/App.tsx`](../samples/vite-react-mui-ssr-app/src/App.tsx) | MUI components (Button, Typography, Card) |
 
-## Sample 4b: React + MUI + Emotion SSR (`samples/react-mui-emotion-ssr-app/`)
+## Sample 4b: React + MUI + Emotion SSR (`samples/vite-react-mui-emotion-ssr-app/`)
 
 **Purpose:** React 19 with Material UI. Includes explicit Emotion CSS extraction.
 
@@ -204,22 +204,22 @@ under `ssr.target: 'webworker'`. See [`plans/archived/edge-light-resolution.md`]
 
 | File | Content |
 |------|---------|
-| [`samples/react-mui-emotion-ssr-app/deno.json`](../samples/react-mui-emotion-ssr-app/deno.json) | same + @emotion/cache |
-| [`samples/react-mui-emotion-ssr-app/vite.config.ts`](../samples/react-mui-emotion-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
-| [`samples/react-mui-emotion-ssr-app/tsconfig.json`](../samples/react-mui-emotion-ssr-app/tsconfig.json) | same |
-| [`samples/react-mui-emotion-ssr-app/serve.deno.ts`](../samples/react-mui-emotion-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
-| [`samples/react-mui-emotion-ssr-app/src/entry-server.ts`](../samples/react-mui-emotion-ssr-app/src/entry-server.ts) | emotion cache + CSS extraction |
-| [`samples/react-mui-emotion-ssr-app/src/App.tsx`](../samples/react-mui-emotion-ssr-app/src/App.tsx) | same as Sample 4 |
-| [`samples/react-mui-emotion-ssr-app/src/components/MuiCard.tsx`](../samples/react-mui-emotion-ssr-app/src/components/MuiCard.tsx) | reusable MUI Card component |
+| [`samples/vite-react-mui-emotion-ssr-app/deno.json`](../samples/vite-react-mui-emotion-ssr-app/deno.json) | same + @emotion/cache |
+| [`samples/vite-react-mui-emotion-ssr-app/vite.config.ts`](../samples/vite-react-mui-emotion-ssr-app/vite.config.ts) | plugin: react() + edge-light resolve conditions |
+| [`samples/vite-react-mui-emotion-ssr-app/tsconfig.json`](../samples/vite-react-mui-emotion-ssr-app/tsconfig.json) | same |
+| [`samples/vite-react-mui-emotion-ssr-app/serve.deno.ts`](../samples/vite-react-mui-emotion-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
+| [`samples/vite-react-mui-emotion-ssr-app/src/entry-server.ts`](../samples/vite-react-mui-emotion-ssr-app/src/entry-server.ts) | emotion cache + CSS extraction |
+| [`samples/vite-react-mui-emotion-ssr-app/src/App.tsx`](../samples/vite-react-mui-emotion-ssr-app/src/App.tsx) | same as Sample 4 |
+| [`samples/vite-react-mui-emotion-ssr-app/src/components/MuiCard.tsx`](../samples/vite-react-mui-emotion-ssr-app/src/components/MuiCard.tsx) | reusable MUI Card component |
 
 ---
 
-## Sample 5: React + Emotion + MUI Dashboard (`samples/react-emotion-mui-dashboard-ssr-app/`)
+## Sample 5: React + Emotion + MUI Dashboard (`samples/vite-react-emotion-mui-dashboard-ssr-app/`)
 
 Port MUI v9.0.0 official dashboard template. Complex real-world layout with
 AppBar, Drawer, DataGrid, charts, date pickers, tree view, and stat cards.
 
-See separate plan: [`plans/react-emotion-mui-dashboard-ssr-app.md`](../plans/react-emotion-mui-dashboard-ssr-app.md)
+See separate plan: [`plans/vite-react-emotion-mui-dashboard-ssr-app.md`](../plans/vite-react-emotion-mui-dashboard-ssr-app.md)
 
 ---
 
@@ -229,13 +229,13 @@ Update [`Rakefile`](../Rakefile) `namespace :samples` to build all samples:
 
 ```ruby
 SAMPLES = %w[
-  react-ssr-app
-  vanilla-ssr-app
-  vue-ssr-app
-  svelte-ssr-app
-  react-mui-ssr-app
-  react-mui-emotion-ssr-app
-  react-emotion-mui-dashboard-ssr-app
+  vite-react-ssr-app
+  vite-vanilla-ssr-app
+  vite-vue-ssr-app
+  vite-svelte-ssr-app
+  vite-react-mui-ssr-app
+  vite-react-mui-emotion-ssr-app
+  vite-react-emotion-mui-dashboard-ssr-app
 ]
 
 namespace :samples do
@@ -263,7 +263,7 @@ end
 
 ```ruby
 def test_render_vanilla_ssr
-  bundle = SSR::Deno::Bundle.new('samples/vanilla-ssr-app/dist/server/entry-server.js')
+  bundle = SSR::Deno::Bundle.new('samples/vite-vanilla-ssr-app/dist/server/entry-server.js')
   result = bundle.render({ name: 'World' })
   assert_includes result, 'Hello World'
 end
@@ -294,4 +294,4 @@ All samples implemented. Move plan to `plans/archived/` after confirming no open
 1. **Vue async:** Confirmed Vue `renderToString` returns Promise → Step 1 required. Alternative: use synchronous wrapper (not possible with Vue 3 API).
 2. **Svelte version:** Svelte 5's `svelte/server` render is sync. Confirm Svelte 5 is available via npm (yes).
 3. **MUI X DataGrid:** May need licensing. Can use basic MUI Core Table instead if DataGrid license issue.
-4. **serve.deno.ts for MUI samples:** Since MUI samples return `{html, css}` JSON, the test server needs to parse and construct full HTML. ✅ Done — both MUI samples have working `serve.deno.ts` (plain for `react-mui-ssr-app`, JSON-parsing for `react-mui-emotion-ssr-app`).
+4. **serve.deno.ts for MUI samples:** Since MUI samples return `{html, css}` JSON, the test server needs to parse and construct full HTML. ✅ Done — both MUI samples have working `serve.deno.ts` (plain for `vite-react-mui-ssr-app`, JSON-parsing for `vite-react-mui-emotion-ssr-app`).

@@ -132,7 +132,7 @@ declarations and `use` statements accordingly.
 ## Verification
 
 1. `bundle exec rake compile` — must compile without errors
-2. `deno task build` in `react-mui-emotion-ssr-app` — bundle builds
+2. `deno task build` in `vite-react-mui-emotion-ssr-app` — bundle builds
 3. Switch `entry-server.ts` back to `@emotion/server` imports
 4. `bundle exec rake test` — `TestIntegrationReactMuiEmotionSSR` passes
 5. `deno task serve` — manual test also works

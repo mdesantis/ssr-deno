@@ -94,7 +94,7 @@ function render(argsJson: string): string {
 globalThis.render = render
 ```
 
-Full sample: [`samples/vanilla-ssr-app/`](samples/vanilla-ssr-app/)
+Full sample: [`samples/vite-vanilla-ssr-app/`](samples/vite-vanilla-ssr-app/)
 
 ### Vue 3
 
@@ -120,7 +120,7 @@ globalThis.render = render
 
 Vue's `renderToString` returns a Promise — async render functions are handled transparently.
 
-Full sample: [`samples/vue-ssr-app/`](samples/vue-ssr-app/)
+Full sample: [`samples/vite-vue-ssr-app/`](samples/vite-vue-ssr-app/)
 
 ### Svelte 5
 
@@ -144,7 +144,7 @@ globalThis.render = render
 
 Svelte 5's `render` from `svelte/server` is synchronous and returns `{ head, body }`.
 
-Full sample: [`samples/svelte-ssr-app/`](samples/svelte-ssr-app/)
+Full sample: [`samples/vite-svelte-ssr-app/`](samples/vite-svelte-ssr-app/)
 
 ### React 19
 
@@ -169,7 +169,7 @@ globalThis.render = render
 
 React's `renderToString` is synchronous.
 
-Full sample: [`samples/react-ssr-app/`](samples/react-ssr-app/)
+Full sample: [`samples/vite-react-ssr-app/`](samples/vite-react-ssr-app/)
 
 ### Vite configuration
 
@@ -209,7 +209,7 @@ when `ssr.target: 'webworker'` is set. See
 Each sample defines `deno task build` and `deno task serve` in its `deno.json`:
 
 ```bash
-cd samples/vanilla-ssr-app
+cd samples/vite-vanilla-ssr-app
 deno task build                # produces dist/server/entry-server.js
 deno task serve                # starts a test server on localhost:3102 (vanilla)
 ```
@@ -226,7 +226,7 @@ bundle exec rake samples:build
 require 'ssr/deno'
 
 # Point to the built entry file
-bundle = SSR::Deno::Bundle.new('samples/vanilla-ssr-app/dist/server/entry-server.js')
+bundle = SSR::Deno::Bundle.new('samples/vite-vanilla-ssr-app/dist/server/entry-server.js')
 
 # Data is auto-serialized to JSON and passed to the render function
 html = bundle.render({ name: 'World' })

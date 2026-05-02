@@ -4,7 +4,7 @@ require 'test_helper'
 
 module SSR
   class TestIntegrationReactSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/react-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'React SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
@@ -21,7 +21,7 @@ module SSR
   end
 
   class TestIntegrationVanillaSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vanilla-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-vanilla-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Vanilla SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
@@ -38,7 +38,7 @@ module SSR
   end
 
   class TestIntegrationSvelteSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/svelte-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-svelte-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Svelte SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
@@ -55,7 +55,7 @@ module SSR
   end
 
   class TestIntegrationReactMuiSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/react-mui-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-react-mui-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'React MUI SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
@@ -72,7 +72,7 @@ module SSR
   end
 
   class TestIntegrationVueSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/vue-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-vue-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Vue SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
@@ -101,7 +101,7 @@ module SSR
   end
 
   class TestIntegrationPreactSSR < Minitest::Test
-    BUNDLE_PATH = File.expand_path('../../samples/preact-ssr-app/dist/server/entry-server.js', __dir__)
+    BUNDLE_PATH = File.expand_path('../../samples/vite-preact-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
       skip 'Preact SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)

@@ -1,6 +1,6 @@
 # Preact SSR Sample
 
-Minimal Vite + Preact SSR sample. Same contract as `react-ssr-app` but with Preact instead of React.
+Minimal Vite + Preact SSR sample. Same contract as `vite-react-ssr-app` but with Preact instead of React.
 
 **Status:** ✅ JSX + full Preact SSR working. Uses `resolve.alias` to bridge Deno import map gap.
 
@@ -26,7 +26,7 @@ No plugins needed. Aliases are set in `vite.config.ts` via `resolve.alias`.
 | `deno.json` | preact deps + vite |
 | `vite.config.ts` | resolve.alias for preact/compat, ssr.target webworker |
 | `tsconfig.json` | basic TS config |
-| `serve.deno.ts` | same pattern as `react-ssr-app` PORT=3107 |
+| `serve.deno.ts` | same pattern as `vite-react-ssr-app` PORT=3107 |
 | `src/entry-server.tsx` | `globalThis.render` using JSX + Preact SSR |
 | `src/App.tsx` | Simple Preact component with JSX |
 

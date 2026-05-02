@@ -210,10 +210,10 @@ rakelib/
 └── test.rake                          # test:main, test:node_builtins
 
 samples/
-├── vanilla-ssr-app/                   # Plain TS, no framework
-├── react-ssr-app/                     # React 19 basic
-├── react-mui-ssr-app/                 # React 19 + MUI v9 (plain HTML)
-├── react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS
-├── vue-ssr-app/                       # Vue 3
-└── svelte-ssr-app/                    # Svelte 5
+├── vite-vanilla-ssr-app/                   # Plain TS, no framework
+├── vite-react-ssr-app/                     # React 19 basic
+├── vite-react-mui-ssr-app/                 # React 19 + MUI v9 (plain HTML)
+├── vite-react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS
+├── vite-vue-ssr-app/                       # Vue 3
+└── vite-svelte-ssr-app/                    # Svelte 5
 ```

@@ -1,5 +1,5 @@
 {
-  "name": "@ssr-deno/svelte-ssr-app",
+  "name": "@ssr-deno/vite-svelte-ssr-app",
   "version": "1.0.0",
   "exports": "./serve.deno.ts",
   "lock": "deno.lock",

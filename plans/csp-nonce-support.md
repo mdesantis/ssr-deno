@@ -30,7 +30,7 @@ No gem-side changes required.
 ## Scope
 
 1. **Document** in `lib/ssr/deno/rails/helper.rb` and README how to pass nonce via `ssr_render` data hash
-2. **(Optional)** Update `samples/react-mui-emotion-ssr-app/` to demonstrate nonce usage with Emotion `<style>` tags
+2. **(Optional)** Update `samples/vite-react-mui-emotion-ssr-app/` to demonstrate nonce usage with Emotion `<style>` tags
 
 ---
 
@@ -78,7 +78,7 @@ globalThis.render = render
 |------|--------|
 | `lib/ssr/deno/rails/helper.rb` | Add doc comment: nonce via data hash |
 | `README.md` | Add CSP nonce usage section |
-| `samples/react-mui-emotion-ssr-app/src/entry-server.ts` | (Optional) Add nonce support from data |
+| `samples/vite-react-mui-emotion-ssr-app/src/entry-server.ts` | (Optional) Add nonce support from data |
 
 ---
 

@@ -71,7 +71,7 @@ const renderFn = fn(require);
 
 ### Step 3: Re-enable `@emotion/server` in MUI emotion sample
 
-Swap `react-mui-emotion-ssr-app/src/entry-server.ts` back to using
+Swap `vite-react-mui-emotion-ssr-app/src/entry-server.ts` back to using
 `@emotion/server/create-instance` instead of manual CSS extraction.
 
 ### Step 4: Verify

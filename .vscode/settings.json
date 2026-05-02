@@ -1,14 +1,14 @@
 {
   // Enable Deno for all SSR sample directories
   "deno.enablePaths": [
-    "samples/preact-ssr-app",
-    "samples/react-ssr-app",
-    "samples/react-mui-ssr-app",
-    "samples/react-mui-emotion-ssr-app",
-    "samples/react-emotion-mui-dashboard-ssr-app",
-    "samples/vanilla-ssr-app",
-    "samples/vue-ssr-app",
-    "samples/svelte-ssr-app",
+    "samples/vite-preact-ssr-app",
+    "samples/vite-react-ssr-app",
+    "samples/vite-react-mui-ssr-app",
+    "samples/vite-react-mui-emotion-ssr-app",
+    "samples/vite-react-emotion-mui-dashboard-ssr-app",
+    "samples/vite-vanilla-ssr-app",
+    "samples/vite-vue-ssr-app",
+    "samples/vite-svelte-ssr-app",
   ],
   // Use the Deno language server for .ts files in the samples directory
   "deno.codeLens.test": true,

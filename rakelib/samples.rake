@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 SAMPLES = %w[
-  react-ssr-app
-  vanilla-ssr-app
-  vue-ssr-app
-  svelte-ssr-app
-  react-mui-emotion-ssr-app
-  react-mui-ssr-app
-  react-emotion-mui-dashboard-ssr-app
-  preact-ssr-app
+  vite-react-ssr-app
+  vite-vanilla-ssr-app
+  vite-vue-ssr-app
+  vite-svelte-ssr-app
+  vite-react-mui-emotion-ssr-app
+  vite-react-mui-ssr-app
+  vite-react-emotion-mui-dashboard-ssr-app
+  vite-preact-ssr-app
 ].freeze
 
 desc 'Build all SSR sample bundles'
