@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- New sample: `samples/node-ssr-app` — vanilla TypeScript SSR with esbuild, zero Deno. Node.js build (`npm run build`) and serve (`node serve.mjs`).
 - New sample: `samples/vite-preact-ssr-app` — Preact SSR with Vite, uses `resolve.alias` for React compat.
 - New sample: `samples/webpack-ssr-app` — vanilla TypeScript SSR with Webpack 5, no framework.
 - New sample: `samples/webpack-react-ssr-app` — React 19 SSR with Webpack 5.

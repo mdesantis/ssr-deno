@@ -222,5 +222,6 @@ samples/
 ├── vite-svelte-ssr-app/                    # Svelte 5 + Vite
 ├── vite-preact-ssr-app/                    # Preact + Vite
 ├── webpack-ssr-app/                        # Plain TS + Webpack 5
-└── webpack-react-ssr-app/                 # React 19 + Webpack 5
+├── webpack-react-ssr-app/                  # React 19 + Webpack 5
+└── node-ssr-app/                           # Plain TS + esbuild (Node.js)
 ```

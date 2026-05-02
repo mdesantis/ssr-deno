@@ -150,4 +150,21 @@ module SSR
       assert_includes html, 'Preact SSR'
     end
   end
+
+  class TestIntegrationNodeSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/node-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'Node SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_node_ssr
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+      html = bundle.render({ name: 'Node' })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'Node'
+      assert_includes html, '<div id="root">'
+    end
+  end
 end
