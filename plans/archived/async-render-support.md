@@ -93,6 +93,6 @@ if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
 
 ## Cross-refs
 
-- Required by: [`plans/new-samples.md`](new-samples.md) (Vue SSR sample)
+- Required by: [`plans/archived/new-samples.md`](new-samples.md) (Vue SSR sample)
 - Depends on: `v8::OwnedIsolate::perform_microtask_checkpoint()` (available in current `rusty_v8`)
 - Constraint: `v8::GetIsolate` is `pub(crate)` in [`vendor/rusty_v8/src/scope.rs:282`](../vendor/rusty_v8/src/scope.rs:282) — cannot be used from external crates

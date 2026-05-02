@@ -125,11 +125,11 @@ ssr-deno/
 │   ├── react-mui-ssr-app/           # Sample React 19 + MUI v9 (plain HTML)
 │   └── react-mui-emotion-ssr-app/   # Sample React 19 + MUI v9 + Emotion CSS
 ├── plans/                           # Active plans (pending steps)
-│   ├── new-samples.md
 │   ├── streaming-ssr.md
 │   ├── memory-performance-analysis.md
 │   ├── v8-tls-issue.md
 │   └── archived/                    # Fully completed plans
+│       ├── new-samples.md
 ├── .github/workflows/
 │   └── ci.yml                       # CI pipeline
 ├── AGENTS.md                        # Project conventions (OpenCode)
