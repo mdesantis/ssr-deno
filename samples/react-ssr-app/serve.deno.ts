@@ -1,7 +1,7 @@
 /// <reference types="@types/deno" />
 
 /**
- * Deno test server for the Vite SSR bundle.
+ * Deno test server for the React SSR bundle.
  *
  * This simulates what the Ruby gem will do via deno_runtime::MainWorker:
  * 1. Load the built SSR bundle (self-contained, all deps inlined)

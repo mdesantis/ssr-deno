@@ -197,7 +197,10 @@ ssr-deno/
 ├── sig/                             # RBS type signatures
 ├── test/                            # Minitest suite
 ├── samples/
-│   └── react-ssr-app/                # Sample React SSR project (deno.json, src/, dist/)
+│   ├── vanilla-ssr-app/              # Sample vanilla TS SSR project
+│   ├── vue-ssr-app/                  # Sample Vue 3 SSR project
+│   ├── svelte-ssr-app/               # Sample Svelte 5 SSR project
+│   └── react-ssr-app/                # Sample React 19 SSR project (deno.json, src/, dist/)
 ├── plans/                           # Architecture and migration plans
 │   ├── architecture.md
 │   ├── ci-speedup.md

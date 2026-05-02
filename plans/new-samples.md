@@ -125,11 +125,11 @@ import App from './App.svelte'
 function render(argsJson: string): string {
   const { data } = JSON.parse(argsJson)
   const result = render(App, { props: { data } })
-  // result: { head: string, html: string, css: { code: string } }
+  // result: { head: string, body: string }
   return `<!DOCTYPE html>
 <html>
-  <head>${result.head}<style>${result.css.code}</style></head>
-  <body><div id="root">${result.html}</div></body>
+  <head>${result.head}<title>Hello</title></head>
+  <body><div id="root">${result.body}</div></body>
 </html>`
 }
 globalThis.render = render

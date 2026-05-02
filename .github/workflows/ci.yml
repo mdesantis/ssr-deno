@@ -81,7 +81,7 @@ jobs:
           deno-version: v2.x
       - name: Compile native extension
         run: bundle exec rake compile
-      - name: Build Vite SSR sample bundle
+      - name: Build SSR sample bundles
         run: bundle exec rake samples:build
       - name: Run tests
         run: bundle exec rake test

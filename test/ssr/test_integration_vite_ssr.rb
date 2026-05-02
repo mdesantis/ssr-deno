@@ -7,7 +7,7 @@ module SSR
     BUNDLE_PATH = File.expand_path('../../samples/react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Vite SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      skip 'React SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
     end
 
     def test_render_produces_valid_html
