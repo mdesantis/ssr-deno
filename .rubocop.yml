@@ -23,6 +23,7 @@ Layout/LineLength:
 Metrics/BlockLength:
   Exclude:
     - 'Rakefile'
+    - 'rakelib/**/*'
 
 Metrics/MethodLength:
   Max: 15

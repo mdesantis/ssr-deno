@@ -23,6 +23,7 @@ task 'test:main' do
              .reject { |f| f.include?('test_integration_node_builtins') }
              .reject { |f| f.include?('test_helper') }
   runner = "require '#{helper}'\n"
+
   files.each { |f| runner << "require '#{f}'\n" }
   File.write(File.join(tmp, 'test_runner_main.rb'), runner)
   ruby "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_main.rb')
@@ -36,6 +37,7 @@ task 'test:node_builtins' do
     SSR::Deno.node_builtins_enabled = true
     require '#{node_test}'
   RUBY
+
   File.write(File.join(tmp, 'test_runner_node.rb'), runner)
   ruby "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_node.rb')
 end
