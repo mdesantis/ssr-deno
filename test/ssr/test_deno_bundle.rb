@@ -63,6 +63,7 @@ module SSR
 
     def test_auto_reload_triggers_reload_if_changed
       @bundle.auto_reload = true
+
       html = @bundle.render({ data: { name: 'AutoReload' } })
 
       assert_includes html, 'AutoReload'
@@ -91,7 +92,6 @@ module SSR
 
     def test_instrument_noop_when_active_support_notifications_not_loaded
       original = ActiveSupport.send(:remove_const, :Notifications)
-
       result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }
 
       assert_equal 'yielded', result
