@@ -28,10 +28,21 @@ namespace :cargo do
   end
 end
 
+SAMPLES = %w[
+  vite-ssr-app
+  vanilla-ssr-app
+  vue-ssr-app
+].freeze
+
 namespace :samples do
-  desc 'Build the vite-ssr-app SSR bundle'
-  task :build do
-    sh 'deno', 'task', 'build', chdir: 'samples/vite-ssr-app'
+  desc 'Build all SSR sample bundles'
+  task build: SAMPLES.map { |s| "build:#{s}" }
+
+  SAMPLES.each do |sample|
+    desc "Build the #{sample} SSR bundle"
+    task "build:#{sample}" do
+      sh 'deno', 'task', 'build', chdir: "samples/#{sample}"
+    end
   end
 end
 
