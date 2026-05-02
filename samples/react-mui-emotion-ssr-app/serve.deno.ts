@@ -1,6 +1,6 @@
 /// <reference types="@types/deno" />
 
-const PORT = parseInt(Deno.env.get("PORT") || "3104", 10);
+const PORT = parseInt(Deno.env.get("PORT") || "3105", 10);
 const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
 
 const bundleCode = await Deno.readTextFile(BUNDLE_PATH);
