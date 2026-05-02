@@ -242,6 +242,12 @@ mod tests {
         assert_eq!(cfg.render_timeout_ms, 500);
     }
 
+    #[test]
+    fn config_default_node_builtins() {
+        let cfg = Config::default();
+        assert!(!cfg.node_builtins);
+    }
+
     // -----------------------------------------------------------------------
     // validate_render_timeout_ms
     // -----------------------------------------------------------------------
@@ -361,6 +367,13 @@ mod tests {
         assert_eq!(next_index(&counter, 3), (usize::MAX - 1) % 3);  // returns (MAX-1)%3, counter now MAX
         assert_eq!(next_index(&counter, 3), (usize::MAX) % 3);      // returns MAX%3, counter wraps to 0
         assert_eq!(next_index(&counter, 3), 0);                     // returns 0 (old value), counter now 1
+    }
+
+    #[test]
+    #[should_panic(expected = "attempt to calculate the remainder with a divisor of zero")]
+    fn next_index_panics_on_zero_len() {
+        let counter = AtomicUsize::new(0);
+        next_index(&counter, 0);
     }
 
     // -----------------------------------------------------------------------
