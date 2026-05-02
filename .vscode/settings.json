@@ -1,13 +1,18 @@
 {
-  // Enable Deno for the samples directory (Vite SSR sample uses Deno)
+  // Enable Deno for all SSR sample directories
   "deno.enablePaths": [
-    "samples/vite-ssr-app"
+    "samples/react-ssr-app",
+    "samples/react-mui-ssr-app",
+    "samples/react-mui-emotion-ssr-app",
+    "samples/vanilla-ssr-app",
+    "samples/vue-ssr-app",
+    "samples/svelte-ssr-app"
   ],
   // Use the Deno language server for .ts files in the samples directory
   "deno.codeLens.test": true,
   // Disable the built-in TypeScript language server for Deno-managed files
   // to avoid conflicts between TS and Deno type checking
-  "deno.config": "./samples/vite-ssr-app/deno.json",
+  // deno.config omitted — each sample has its own deno.json
   // Disable JSON schema fetching from remote hosts to avoid untrusted location errors
   "json.schemaDownload.enable": false,
   // Point rust-analyzer to the nested Cargo.toml since the workspace root
