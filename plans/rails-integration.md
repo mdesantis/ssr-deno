@@ -540,9 +540,9 @@ lib/
 - [x] Write generator tests
 
 ### Phase 3: Production Hardening
-- [ ] Add Content-Security-Policy nonce support (for inline `<script>` tags in SSR output)
 - [x] Add metrics/instrumentation (`ActiveSupport::Notifications`)
-- [ ] Document deployment considerations (V8 binary size, memory)
+- [ ] Add Content-Security-Policy nonce support — extracted to [`plans/csp-nonce-support.md`](csp-nonce-support.md)
+- [ ] Document deployment considerations — extracted to [`plans/deployment-considerations.md`](deployment-considerations.md)
 
 ### 12. Instrumentation — `ActiveSupport::Notifications`
 
