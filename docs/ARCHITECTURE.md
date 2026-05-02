@@ -173,55 +173,55 @@ sequenceDiagram
 ## Source Files (Quick Reference)
 
 ```
-ext/ssr_deno/                         # Rust native extension
-├── Cargo.toml                         # deno_runtime, magnus dependencies
-├── crates/ssr_deno_core/              # Pure-Rust types (no V8 dep)
-│   └── src/lib.rs                     # Config, DenoError, validators
+ext/ssr_deno/                                         # Rust native extension
+├── Cargo.toml                                        # deno_runtime, magnus dependencies
+├── crates/ssr_deno_core/                             # Pure-Rust types (no V8 dep)
+│   └── src/lib.rs                                    # Config, DenoError, validators
 └── src/
-    ├── lib.rs                         # magnus init, CONFIG, POOL
+    ├── lib.rs                                        # magnus init, CONFIG, POOL
     ├── deno_runtime_wrapper/
-    │   ├── mod.rs                     # IsolatePool, IsolateHandle, build_worker
-    │   └── call_render.rs             # call_render, heap_stats
-    ├── sys.rs                         # Sys type for Deno traits
-    ├── nop_types.rs                   # NOP implementations
-    ├── node_builtin_loader.rs         # ModuleLoader for node: scheme
-    └── require_loader.rs              # NodeRequireLoader for builtins
+    │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
+    │   └── call_render.rs                            # call_render, heap_stats
+    ├── sys.rs                                        # Sys type for Deno traits
+    ├── nop_types.rs                                  # NOP implementations
+    ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme
+    └── require_loader.rs                             # NodeRequireLoader for builtins
 
-lib/ssr/deno/                          # Ruby module
-├── deno.rb                            # Core entry point, config setters
-├── version.rb                         # VERSION
-├── bundle.rb                          # Bundle class
-├── bundle/registry.rb                 # Thread-safe bundle storage
-├── instrumenter.rb                    # Notifications wrapper
-├── rails.rb                           # Rails integration entry point
-└── rails/                             # Railtie, helper, generator
+lib/ssr/deno/                                         # Ruby module
+├── deno.rb                                           # Core entry point, config setters
+├── version.rb                                        # VERSION
+├── bundle.rb                                         # Bundle class
+├── bundle/registry.rb                                # Thread-safe bundle storage
+├── instrumenter.rb                                   # Notifications wrapper
+├── rails.rb                                          # Rails integration entry point
+└── rails/                                            # Railtie, helper, generator
 
-sig/ssr/deno.rbs                       # RBS type signatures
+sig/ssr/deno.rbs                                      # RBS type signatures
 
 test/
-├── test_helper.rb                     # SimpleCov, pool config
-├── ssr/test_deno*.rb                  # Unit tests (Bundle, errors, etc.)
-├── ssr/test_integration_samples.rb    # Integration tests (all samples)
-└── ssr/test_integration_node_builtins.rb  # node_builtins integration test
+├── test_helper.rb                                    # SimpleCov, pool config
+├── ssr/test_deno*.rb                                 # Unit tests (Bundle, errors, etc.)
+├── ssr/test_integration_samples.rb                   # Integration tests (all samples)
+└── ssr/test_integration_node_builtins.rb             # node_builtins integration test
 
 rakelib/
-├── cargo.rake                         # cargo:test
-├── samples.rake                       # samples:build
-└── test.rake                          # test:main, test:node_builtins
+├── cargo.rake                                        # cargo:test
+├── samples.rake                                      # samples:build
+└── test.rake                                         # test:main, test:node_builtins
 
 samples/
-├── barebone-ssr-app/                       # Plain JS, zero deps
-├── deno-native-ssr-app/                    # Deno.serve() + template strings, no build
-├── deno-native-react-ssr-app/              # Deno.serve() + React 19, no build
-├── vite-ssr-app/                           # Plain TS + Vite
-├── vite-react-ssr-app/                     # React 19 + Vite
-├── vite-react-mui-ssr-app/                 # React 19 + MUI v9 + Vite
-├── vite-react-mui-emotion-ssr-app/         # React 19 + MUI v9 + Emotion CSS + Vite
-├── vite-react-emotion-mui-dashboard-ssr-app/  # Full dashboard + Vite
-├── vite-vue-ssr-app/                       # Vue 3 + Vite
-├── vite-svelte-ssr-app/                    # Svelte 5 + Vite
-├── vite-preact-ssr-app/                    # Preact + Vite
-├── webpack-ssr-app/                        # Plain TS + Webpack 5
-├── webpack-react-ssr-app/                  # React 19 + Webpack 5
-└── node-ssr-app/                           # Plain TS + esbuild (Node.js)
+├── barebone-ssr-app/                                 # Plain JS, zero deps
+├── deno-native-ssr-app/                              # Deno.serve() + template strings, no build
+├── deno-native-react-ssr-app/                        # Deno.serve() + React 19, no build
+├── vite-ssr-app/                                     # Plain TS + Vite
+├── vite-react-ssr-app/                               # React 19 + Vite
+├── vite-react-mui-ssr-app/                           # React 19 + MUI v9 + Vite
+├── vite-react-mui-emotion-ssr-app/                   # React 19 + MUI v9 + Emotion CSS + Vite
+├── vite-react-emotion-mui-dashboard-ssr-app/         # Full dashboard + Vite
+├── vite-vue-ssr-app/                                 # Vue 3 + Vite
+├── vite-svelte-ssr-app/                              # Svelte 5 + Vite
+├── vite-preact-ssr-app/                              # Preact + Vite
+├── webpack-ssr-app/                                  # Plain TS + Webpack 5
+├── webpack-react-ssr-app/                            # React 19 + Webpack 5
+└── node-ssr-app/                                     # Plain TS + esbuild (Node.js)
 ```
