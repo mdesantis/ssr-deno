@@ -94,49 +94,50 @@ Swap `react-mui-emotion-ssr-app/src/entry-server.ts` back to using
 
 The embedded `MainWorker` also needs `createRequire` available.
 
-### Investigation needed
+### Phase 1 result ✅
 
-1. Is `node:module` loaded in the sandboxed
-   `Permissions::none_without_prompt()` worker?
-2. Can we `import { createRequire } from 'node:module'` inside a script
-   evaluated via `MainWorker::execute_script`?
-3. If not, can we pre-load `createRequire` in Rust code and inject it
-   into the V8 global scope before evaluating the bundle?
+- `serve.deno.ts` works with `createRequire` from `node:module`
+- Vite config (`ssr.resolve.builtins`) preserves `require("stream")` calls
+- `@emotion/server` extracts CSS correctly via `serve.deno.ts`
+- Native extension test (`bundle exec rake`) passes with manual extraction
 
-### Approach candidates
+### Phase 2 blocked — `NoopModuleLoader`
 
-**A — Inject via bundle code (if `node:module` is available)**
-Add the `require` setup directly in `entry-server.ts`:
-```ts
-import { createRequire } from 'node:module'
-const require = createRequire(import.meta.url)
-globalThis.require = require
+The Rust extension's `build_worker` uses:
+```rust
+module_loader: std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader),
 ```
-This runs before any CJS code tries to call `require()`.
 
-**B — Inject via Rust (if `node:module` unavailable)**
-In the Rust extension, load the needed Node.js modules via Deno's
-module system and register them as V8 global values before evaluating
-the bundle.
+`NoopModuleLoader` rejects ALL ES module imports (including
+`import('node:module')`), causing an abort when `setup_require`
+tries to load the module.
 
-### Risk: Security
+Attempted approach: evaluate an async script that calls
+`await import('node:module')` and poll microtasks. This fails because
+the module loader doesn't handle `node:` scheme URLs.
 
-`createRequire` creates a `require` that can read arbitrary files.
-In the Rust extension's `Permissions::none_without_prompt()` sandbox,
-this might violate the no-permissions policy.
+### Phase 2 alternatives
 
-Mitigation: wrap `createRequire` to only allow accessing Node.js
-built-in modules, not filesystem paths:
+**A — Custom module loader**  
+Create a module loader that allows `node:` scheme (built-in modules)
+while rejecting everything else. This requires implementing Deno's
+`ModuleLoader` trait.
 
-```ts
-const require = new Proxy(origRequire, {
-  apply(target, thisArg, args) {
-    const id = args[0]
-    const nodeBuiltins = ['stream', 'buffer', 'events', ...]
-    if (nodeBuiltins.includes(id) || id.startsWith('node:')) {
-      return Reflect.apply(target, thisArg, args)
-    }
-    throw new Error(`require("${id}") denied — not a Node.js built-in`)
-  }
-})
-```
+**B — Provide `require` from Rust side**  
+Use V8's `Function::New` to create a `require` function in Rust.
+For each requested module:
+- If it's a Node.js builtin, use Deno's internal APIs to return the
+  module from Rust
+- If it's a file/npm module, reject it (security)
+
+This avoids the module loader entirely.
+
+**C — Extend `NoopModuleLoader`**  
+Subclass or wrap `NoopModuleLoader` to allow `node:` and `node:`
+prefixed URLs while rejecting all others.
+
+**D — Accept manual CSS extraction**  
+Since `@emotion/server` is the only package needing this, and manual
+CSS extraction from `cache.inserted` works correctly, keep the current
+approach. `serve.deno.ts` already has `createRequire` support for
+manual testing.
