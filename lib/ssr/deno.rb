@@ -57,19 +57,19 @@ module SSR
       # Runtime must be initialized (call Bundle.new first).
       #
       # Exposed counters (all Integer):
-      #   total_heap_size           – total V8 heap usage (bytes)
-      #   total_heap_size_executable – executable memory (bytes)
-      #   total_physical_size       – resident set size within V8 (bytes)
-      #   total_available_size      – remaining heap before limit (bytes)
-      #   used_heap_size            – live JS objects (bytes)
-      #   heap_size_limit           – max heap size (configurable via max_heap_size_mb=)
-      #   malloced_memory           – C++ memory allocated by V8 (bytes)
-      #   external_memory           – memory held by V8 external references (bytes)
-      #   peak_malloced_memory      – peak C++ allocation (bytes)
-      #   number_of_native_contexts – active V8 contexts
+      #   total_heap_size             – total V8 heap usage (bytes)
+      #   total_heap_size_executable  – executable memory (bytes)
+      #   total_physical_size         – resident set size within V8 (bytes)
+      #   total_available_size        – remaining heap before limit (bytes)
+      #   used_heap_size              – live JS objects (bytes)
+      #   heap_size_limit             – max heap size (configurable via max_heap_size_mb=)
+      #   malloced_memory             – C++ memory allocated by V8 (bytes)
+      #   external_memory             – memory held by V8 external references (bytes)
+      #   peak_malloced_memory        – peak C++ allocation (bytes)
+      #   number_of_native_contexts   – active V8 contexts
       #   number_of_detached_contexts – orphaned contexts
-      #   total_global_handles_size  – persistent handle storage (bytes)
-      #   used_global_handles_size   – live persistent handles (bytes)
+      #   total_global_handles_size   – persistent handle storage (bytes)
+      #   used_global_handles_size    – live persistent handles (bytes)
       #
       # @return [Hash<String, Integer>]
       # @raise [JsRuntimeNotInitializedError] if pool not initialized
