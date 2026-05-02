@@ -19,6 +19,8 @@
     "@types/deno": "npm:@types/deno@^2.0.0"
   },
   "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "types": [
       "npm:@types/deno"
     ]

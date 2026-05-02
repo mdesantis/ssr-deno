@@ -4,7 +4,6 @@
     "npm:@types/deno@2": "2.5.0",
     "npm:preact-render-to-string@^6.6.0": "6.6.7_preact@10.29.1",
     "npm:preact@^10.29.0": "10.29.1",
-    "npm:rolldown@1.0.0-rc.17": "1.0.0-rc.17",
     "npm:vite@*": "8.0.10",
     "npm:vite@^8.0.10": "8.0.10"
   },

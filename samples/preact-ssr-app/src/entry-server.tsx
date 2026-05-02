@@ -1,10 +1,9 @@
-import { renderToString } from 'preact-render-to-string'
-import { h } from 'preact'
+import { renderToString } from 'react-dom/server'
 import { App } from './App.tsx'
 
 function render(argsJson: string): string {
   const { data } = JSON.parse(argsJson)
-  return renderToString(h(App, { data }))
+  return renderToString(<App data={data} />)
 }
 
 // @ts-ignore: globalThis augmentation
