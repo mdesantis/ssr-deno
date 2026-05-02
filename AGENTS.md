@@ -1,8 +1,16 @@
 # ssr-deno project preferences
 
+## Architecture
+
+Ruby gem embedding Deno V8 runtime via Rust native extension (`ext/ssr_deno/`).
+No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates.
+
+**Key boundary:** `lib/ssr/deno/` (Ruby API) ↔ `ext/ssr_deno/src/` (Rust/magnus) ↔ `vendor/rusty_v8/` (git submodule).
+**Pure-Rust types:** `ext/ssr_deno/crates/ssr_deno_core/` — no V8 dep, fast compile.
+
 ## Conventions
 
-- **`SSR` is always fully uppercased.** `SSR` is the acronym of "Server-Side Rendering". Never use `Ssr` — even in class names like `TestIntegrationReactSSR`, not `TestIntegrationReactSsr`.
+- **`SSR` is always fully uppercased.** Never use `Ssr` — even in class names like `TestIntegrationReactSSR`, not `TestIntegrationReactSsr`.
 - **Diagrams must be Mermaid.** All diagrams in plans, docs, and comments must use ```mermaid blocks. Never use hand-crafted ASCII art with Unicode box-drawing characters. Directory listings (file trees with `├──`, `└──`, `│`) are not diagrams — they can stay as plain text.
 - **Every change must be accompanied by a documentation audit.** Before writing any code, first identify which docs, comments, README sections, RBS signatures, or plan files could become stale as a result of the change. Update them in lockstep with the code — not after. This applies to: setting accessor comments, public API docs, source-level inline comments, README usage sections, RBS type signatures, and plan files that reference the modified area. Do not leave documentation drift for a later cleanup pass.
 
@@ -11,7 +19,7 @@
 ## Workflow
 
 - **Always run `bundle exec rake` (full pipeline) after any changeset.** Never run `bundle exec rake test` or other subset — only the full `bundle exec rake` counts. This runs: compilation (Rust native extension), Rust unit tests (`cargo test -p ssr_deno_core`), Vite SSR sample build, Ruby tests, RuboCop linting, SimpleCov coverage check (must be 100% line + 100% branch), and RBS signature validation. Do not consider a changeset complete until `bundle exec rake` exits 0.
-- **Before running `bundle exec rake`, verify every changed file complies with the assignment-blank-line rule** (see Code style section below). Read each modified file and check every assignment line has a blank line before the next non-assignment line. Fix violations before running the pipeline.
+- **Before running `bundle exec rake`, verify every changed file complies with the assignment-blank-line rule** (see Code style section below). Read each modified Ruby file and check every assignment line has a blank line before the next non-assignment line. Fix violations before running the pipeline.
 - **Never auto-commit.** Only commit when explicitly asked with "commit please" or similar. Before committing, always show the staged changes (`git diff --cached`) and ask for confirmation — the user must review before the commit goes through.
 - **Use `caveman-commit` skill for commit messages.** When committing is requested, invoke the `caveman-commit` skill (if available) to generate ultra-compressed Conventional Commits format messages. Subject ≤50 chars, body only for non-obvious why.
 - **Compile with `bundle exec rake compile`, never raw `cargo build`.** Rake wires the correct linker flags and installs the `.so` into `lib/ssr/deno/` where Ruby can load it. Plain `cargo build` skips that and produces an artifact Ruby cannot load.
@@ -31,6 +39,26 @@
 - **When implementing a plan step, mark it completed in the plan file immediately.** After each implementation step passes verification (`bundle exec rake` succeeds, tests pass, coverage meets threshold), update the plan's implementation checklist — change `[ ]` to `[x]` for that step. The plan file is the authoritative source of progress. Do not leave unmarked steps behind.
 
 - **Periodically check `rusty_v8` PR #1970 merge status.** The [`v8-tls-issue.md`](plans/v8-tls-issue.md) plan documents this. Once [`rusty_v8` PR #1970](https://github.com/denoland/rusty_v8/pull/1970) is merged, `V8_FROM_SOURCE=true` and custom `GN_ARGS` will no longer be needed for the build pipeline. This simplifies both the CI config and the local build setup.
+
+## Setup prerequisites
+
+- **`.env` file required.** Run `cp .env.example .env` before any build. Defaults include `V8_FROM_SOURCE=true`, `GN_ARGS` for TLS fix, `LIBCLANG_PATH=/usr/lib/llvm-21/lib`, `RB_SYS_CARGO_PROFILE=dev`. See `.env.example` and `plans/v8-tls-issue.md`.
+- **Git submodules must be initialized.** `vendor/rusty_v8/` is a submodule. Run `git submodule update --init --recursive` after clone.
+- **Prerequisites:** Ruby 3.3+, Rust toolchain, LLVM/Clang 21 (for V8 build), Bundler, Deno 2.x (for samples).
+- **Full setup:** `bin/setup` (installs deps, compiles native extension).
+- **Interactive console:** `bin/console`.
+
+## Test architecture
+
+Tests run in **two separate Ruby processes** to avoid pool re-initialization:
+
+| Suite | File | `node_builtins` | Coverage key |
+|-------|------|-----------------|--------------|
+| `test:main` | `tmp/test_runner_main.rb` | `false` (default) | `test:main` |
+| `test:node_builtins` | `tmp/test_runner_node.rb` | `true` | `test:node_builtins` |
+
+Each suite sets `SIMPLECOV_COMMAND_NAME` env var for distinct `.resultset.json` keys.
+`test:node_builtins` merges coverage and enforces 100% line + 100% branch.
 
 ## Code style
 
@@ -91,12 +119,12 @@
 
 ## Pre-completion gate
 
-Before calling `attempt_completion`, you **must** re-read this file from the top and execute every applicable item in the Workflow section. This is not optional. The checklist items that apply to every changeset are:
+Before calling `attempt_completion`, you **must** re-read this file from the top and execute every applicable item. This is not optional:
 
 1. **Assignment-blank-line rule** — read every modified Ruby file and verify compliance
-2. **`bundle exec rake`** (full pipeline, now includes `cargo:test`) — must exit 0
+2. **`bundle exec rake`** (full pipeline, includes `cargo:test`) — must exit 0
 3. **`sig/ssr/deno.rbs`** — verify it's in sync with any signature/type changes
-4. **Stale docs/plans/comments audit** — check all modified areas per the list above
+4. **Stale docs/plans/comments audit** — check all modified areas per the list in Workflow
 5. **`CHANGELOG.md`** — if the change is user-facing, add an entry
 
 Do not skip any step. Do not assume a step passes without verifying.
