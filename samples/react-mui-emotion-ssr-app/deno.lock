@@ -9,11 +9,12 @@
     "npm:@mui/icons-material@9": "9.0.0_@mui+material@9.0.0__@emotion+react@11.14.0___react@19.2.5__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.5___react@19.2.5__@types+react@19.2.14__react@19.2.5__react-dom@19.2.5___react@19.2.5_@types+react@19.2.14_react@19.2.5_@emotion+react@11.14.0__react@19.2.5_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@19.2.5__react@19.2.5_react-dom@19.2.5__react@19.2.5",
     "npm:@mui/material@9": "9.0.0_@emotion+react@11.14.0__react@19.2.5_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@19.2.5__react@19.2.5_@types+react@19.2.14_react@19.2.5_react-dom@19.2.5__react@19.2.5",
     "npm:@types/deno@2": "2.5.0",
-    "npm:@vitejs/plugin-react@^6.0.1": "6.0.1_vite@8.0.10",
+    "npm:@types/node@22": "22.19.17",
+    "npm:@vitejs/plugin-react@^6.0.1": "6.0.1_vite@8.0.10__@types+node@22.19.17_@types+node@22.19.17",
     "npm:react-dom@^19.2.5": "19.2.5_react@19.2.5",
     "npm:react@^19.2.5": "19.2.5",
-    "npm:vite@*": "8.0.10",
-    "npm:vite@^8.0.10": "8.0.10"
+    "npm:vite@*": "8.0.10_@types+node@22.19.17",
+    "npm:vite@^8.0.10": "8.0.10_@types+node@22.19.17"
   },
   "npm": {
     "@babel/code-frame@7.29.0": {
@@ -471,6 +472,12 @@
     "@types/deno@2.5.0": {
       "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
     },
+    "@types/node@22.19.17": {
+      "integrity": "sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==",
+      "dependencies": [
+        "undici-types"
+      ]
+    },
     "@types/parse-json@4.0.2": {
       "integrity": "sha512-dISoDXWWQwUquiKsyZ4Ng+HX2KsPL7LyHKHQwgGFEA3IaKac4Obd+h2a/a6waisAoepJlBcx9paWqjA8/HVjCw=="
     },
@@ -489,7 +496,7 @@
         "csstype"
       ]
     },
-    "@vitejs/plugin-react@6.0.1_vite@8.0.10": {
+    "@vitejs/plugin-react@6.0.1_vite@8.0.10__@types+node@22.19.17_@types+node@22.19.17": {
       "integrity": "sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==",
       "dependencies": [
         "@rolldown/pluginutils@1.0.0-rc.7",
@@ -930,12 +937,16 @@
     "tslib@2.8.1": {
       "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="
     },
+    "undici-types@6.21.0": {
+      "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="
+    },
     "util-deprecate@1.0.2": {
       "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="
     },
-    "vite@8.0.10": {
+    "vite@8.0.10_@types+node@22.19.17": {
       "integrity": "sha512-rZuUu9j6J5uotLDs+cAA4O5H4K1SfPliUlQwqa6YEwSrWDZzP4rhm00oJR5snMewjxF5V/K3D4kctsUTsIU9Mw==",
       "dependencies": [
+        "@types/node",
         "lightningcss",
         "picomatch",
         "postcss",
@@ -944,6 +955,9 @@
       ],
       "optionalDependencies": [
         "fsevents"
+      ],
+      "optionalPeers": [
+        "@types/node"
       ],
       "bin": true
     },
@@ -968,6 +982,7 @@
       "npm:@mui/material@9",
       "npm:@types/deno@*",
       "npm:@types/deno@2",
+      "npm:@types/node@22",
       "npm:@types/react-dom@^19.2.3",
       "npm:@types/react@^19.2.14",
       "npm:@vitejs/plugin-react@^6.0.1",
