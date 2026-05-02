@@ -6,11 +6,39 @@ Hacks that need proper resolution before this sample is production-grade.
 
 ## 1. Global `document` stub for Emotion `createCache`
 
-`@emotion/cache`'s `createCache({ key })` references `document.head` at call time.
-In Deno's V8 SSR context (`new Function()` evaluation), there is no DOM — `document` is
-undefined.
+`@emotion/cache`'s `createCache({ key })` accesses `document.head` at call time.
+In Deno's V8 SSR context (`new Function()` evaluation), there is no DOM — `document`
+is undefined.
 
-**Workaround:** Inline a minimal `document` mock in `entry-server.ts`:
+### Root cause
+
+`@emotion/cache` ships three builds:
+
+| Build | File | Has `isBrowser` guard? |
+|-------|------|------------------------|
+| Universal | `dist/emotion-cache.esm.js` | ✅ `var isBrowser = typeof document !== 'undefined'` |
+| Browser | `dist/emotion-cache.browser.esm.js` | ❌ hardcodes browser behavior, no guard |
+| Edge-light | `dist/emotion-cache.edge-light.esm.js` | ✅ similar guard |
+
+The package's `exports` map resolves differently depending on Vite's resolve
+conditions. Our Vite config sets `ssr.target: 'webworker'` — this causes Vite
+to resolve `@emotion/cache` to the **browser build** (`emotion-cache.browser.esm.js`),
+which has **no `isBrowser` guard** and assumes `document` exists unconditionally.
+
+Proof: the bundled output contains `var isBrowser = true;` — the browser build
+is hardcoded to `true` because `@emotion/cache`'s browser variant skips the
+runtime check entirely.
+
+**Why the `rails_demo` project doesn't need this stub:**
+rails_demo runs SSR via a Node.js Express server using Vite's dev server
+(`vite.ssrLoadModule`). It does NOT set `ssr.target: 'webworker'`. Vite resolves
+`@emotion/cache` to the **universal build** (`emotion-cache.esm.js`), which has
+`var isBrowser = typeof document !== 'undefined'`. In Node.js, `document` is
+undefined, so `isBrowser` is `false` and the DOM-accessing code is skipped.
+
+### Workaround
+
+Inline a minimal `document` mock in `entry-server.ts`:
 
 ```ts
 const doc = globalThis as Record<string, unknown>
@@ -28,9 +56,15 @@ if (typeof doc.document === 'undefined') {
 }
 ```
 
-**Fix needed:** Provide a proper no-DOM emotion cache, or upstream a
-`createCache` variant that accepts an explicit container or skips DOM
-access when `document` is absent.
+### Fix options
+
+1. **Change `ssr.target`** — drop `'webworker'` so Vite resolves universal
+   builds. This may affect other dependencies that expect a web worker target.
+2. **Custom resolve conditions** — configure Vite to prefer the universal
+   build even with `webworker` target.
+3. **Remove the need** — determine if MUI/Emotion CSS extraction can be done
+   without calling `createCache` during SSR (like rails_demo's approach:
+   `createEmotionCache` is only called client-side, SSR returns plain HTML).
 
 ---
 
