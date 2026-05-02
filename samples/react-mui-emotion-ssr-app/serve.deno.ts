@@ -1,5 +1,4 @@
 /// <reference types="@types/deno" />
-/// <reference types="node" />
 import { createRequire } from 'node:module'
 
 const PORT = parseInt(Deno.env.get("PORT") || "3105", 10);
