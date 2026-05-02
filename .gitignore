@@ -1,20 +1,17 @@
-/.bundle/
-/.yardoc
 /_yardoc/
+/.bundle/
+/.claude/settings.local.json
+/.env
+/.yardoc
 /coverage/
 /doc/
-/pkg/
-/spec/reports/
-/tmp/
 /ext/ssr_deno/target/
-/lib/ssr/deno/*.so
 /lib/ssr/deno/*.bundle
 /lib/ssr/deno/*.dll
-/.claude/settings.local.json
-
-# Local environment configuration (copy .env.example to .env and customize)
-/.env
-
-# Rails dummy app for integration tests
+/lib/ssr/deno/*.so
+/node_modules/
+/pkg/
+/spec/reports/
 /test/dummy/
-
+/tmp/
+/.opencode/index/
