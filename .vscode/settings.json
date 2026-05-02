@@ -4,6 +4,7 @@
     "samples/react-ssr-app",
     "samples/react-mui-ssr-app",
     "samples/react-mui-emotion-ssr-app",
+    "samples/react-emotion-mui-dashboard-ssr-app",
     "samples/vanilla-ssr-app",
     "samples/vue-ssr-app",
     "samples/svelte-ssr-app"
