@@ -214,33 +214,12 @@ under `ssr.target: 'webworker'`. See [`plans/archived/edge-light-resolution.md`]
 
 ---
 
-## Sample 5: React + Emotion Cache + MUI Dashboard (`samples/react-emotion-mui-dashboard-ssr-app/`)
+## Sample 5: React + Emotion + MUI Dashboard (`samples/react-emotion-mui-dashboard-ssr-app/`)
 
-**Purpose:** Complex real-world dashboard layout with MUI + Emotion SSR.
+Port MUI v9.0.0 official dashboard template. Complex real-world layout with
+AppBar, Drawer, DataGrid, charts, date pickers, tree view, and stat cards.
 
-**Components:**
-- AppBar with toolbar, menu icon, title
-- Drawer with navigation links (Dashboard, Users, Analytics, Settings)
-- DataGrid (MUI X) for data tables
-- Cards for summary stats
-- Emotion CacheProvider for SSR CSS extraction
-
-**Deps:** Same as Sample 4 + `@mui/x-data-grid` (DataGrid component).
-
-**Key entry:** Same pattern as Sample 4 (emotion cache + extract CSS). Returns `{html, css}` JSON.
-
-**Files to create:**
-
-| File | Content |
-|------|---------|
-| [`samples/react-emotion-mui-dashboard-ssr-app/deno.json`](../samples/react-emotion-mui-dashboard-ssr-app/deno.json) | same deps + @mui/x-data-grid |
-| [`samples/react-emotion-mui-dashboard-ssr-app/vite.config.ts`](../samples/react-emotion-mui-dashboard-ssr-app/vite.config.ts) | plugin: react() |
-| [`samples/react-emotion-mui-dashboard-ssr-app/tsconfig.json`](../samples/react-emotion-mui-dashboard-ssr-app/tsconfig.json) | same |
-| [`samples/react-emotion-mui-dashboard-ssr-app/serve.deno.ts`](../samples/react-emotion-mui-dashboard-ssr-app/serve.deno.ts) | parse JSON result, render full HTML |
-| [`samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts`](../samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts) | emotion cache + renderToString + CSS extract |
-| [`samples/react-emotion-mui-dashboard-ssr-app/src/App.tsx`](../samples/react-emotion-mui-dashboard-ssr-app/src/App.tsx) | dashboard layout |
-| [`samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts`](../samples/react-emotion-mui-dashboard-ssr-app/src/entry-server.ts) | emotion cache + renderToString + CSS extract |
-| [`samples/react-emotion-mui-dashboard-ssr-app/src/components/`](../samples/react-emotion-mui-dashboard-ssr-app/src/components/) | Dashboard, Sidebar, DataTable, StatCard |
+See separate plan: [`plans/react-emotion-mui-dashboard-ssr-app.md`](../plans/react-emotion-mui-dashboard-ssr-app.md)
 
 ---
 
@@ -301,7 +280,7 @@ end
 | 3 | ✅ Svelte SSR sample | — |
 | 4 | ✅ Vue SSR sample | Step 1 (async) |
 | 5 | ✅ React + MUI SSR sample | — |
-| 6 | React + Emotion + MUI Dashboard sample | — |
+| 6 | React + Emotion + MUI Dashboard sample | See [`plans/react-emotion-mui-dashboard-ssr-app.md`](react-emotion-mui-dashboard-ssr-app.md) |
 | 7 | ◐ Update Rakefile samples:build (partial — excludes dashboard) | Steps 2-6 |
 | 8 | ◐ Update integration tests (partial — excludes dashboard) | Steps 2-6 |
 | 9 | ✅ `bundle exec rake` — full pipeline verify | Steps 1-8 |
