@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.1.0-alpha.3] - 2026-05-02
 
 ### Added
 - V8 heap metrics via `SSR::Deno.heap_stats` — returns `total_heap_size`, `used_heap_size`, `heap_size_limit`, and 10 other V8 memory counters as a Hash. Rails subscriber emits `heap_stats.ssr_deno` every N renders (configurable via `config.ssr_deno.heap_stats_sample_rate`, default 100).
@@ -16,6 +16,9 @@
 - Renamed `test_integration_vite_ssr.rb` to `test_integration_samples.rb`.
 - Split test suite: `test:main` (52 tests, no node_builtins) and `test:node_builtins` (1 test, node_builtins enabled). Merged coverage validated at 100%.
 - `/.opencode/` added to `.gitignore`.
+
+### Changed
+- Rails config: `node_builtins_enabled` option added to generator template.
 
 ## [0.1.0-alpha.2] - 2026-05-02
 
