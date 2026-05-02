@@ -6,11 +6,11 @@ import { alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
-import AppNavbar from './components/AppNavbar';
-import Header from './components/Header';
-import MainGrid from './components/MainGrid';
-import SideMenu from './components/SideMenu';
-import AppTheme from './shared-theme/AppTheme';
+import AppNavbar from './components/AppNavbar.tsx';
+import Header from './components/Header.tsx';
+import MainGrid from './components/MainGrid.tsx';
+import SideMenu from './components/SideMenu.tsx';
+import AppTheme from './shared-theme/AppTheme.tsx';
 import {
   chartsCustomizations,
   dataGridCustomizations,

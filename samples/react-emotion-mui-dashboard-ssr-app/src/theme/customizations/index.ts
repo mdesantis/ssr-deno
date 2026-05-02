@@ -1,4 +1,4 @@
-export { chartsCustomizations } from './charts';
-export { dataGridCustomizations } from './dataGrid';
-export { datePickersCustomizations } from './datePickers';
-export { treeViewCustomizations } from './treeView';
+export { chartsCustomizations } from './charts.ts';
+export { dataGridCustomizations } from './dataGrid.ts';
+export { datePickersCustomizations } from './datePickers.ts';
+export { treeViewCustomizations } from './treeView.ts';

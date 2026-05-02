@@ -1,5 +1,5 @@
 import { Theme, alpha, Components } from '@mui/material/styles';
-import { gray, orange } from '../themePrimitives';
+import { gray, orange } from '../themePrimitives.ts';
 
 export const feedbackCustomizations: Components<Theme> = {
   MuiAlert: {

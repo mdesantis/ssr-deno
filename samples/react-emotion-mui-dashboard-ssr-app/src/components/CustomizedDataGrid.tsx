@@ -1,5 +1,5 @@
 import { DataGrid } from '@mui/x-data-grid';
-import { columns, rows } from '../internals/data/gridData';
+import { columns, rows } from '../internals/data/gridData.tsx';
 
 export default function CustomizedDataGrid() {
   return (
