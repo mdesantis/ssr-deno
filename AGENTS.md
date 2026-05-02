@@ -25,6 +25,7 @@
   - `.github/workflows/ci.yml` — steps that may be missing or out of sync with `Rakefile`
   - Test files — stale run instructions, wrong file paths in comments
   - Sample files — comments referencing old crate names or APIs
+  - Sample directories — when adding/renaming/deleting samples, walk the non-vendor, non-generated parts of the repo with `rg` to catch every stale path reference: `README.md`, `docs/ARCHITECTURE.md`, `CHANGELOG.md`, `rakelib/samples.rake`, `test/ssr/test_*.rb`, `.vscode/settings.json`, `plans/*.md`, and any other file referencing a sample directory by name
   Do not consider the changeset complete until this audit passes.
 
 - **When implementing a plan step, mark it completed in the plan file immediately.** After each implementation step passes verification (`bundle exec rake` succeeds, tests pass, coverage meets threshold), update the plan's implementation checklist — change `[ ]` to `[x]` for that step. The plan file is the authoritative source of progress. Do not leave unmarked steps behind.

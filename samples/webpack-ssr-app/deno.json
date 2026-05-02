@@ -1,0 +1,22 @@
+{
+  "name": "@ssr-deno/webpack-ssr-app",
+  "version": "1.0.0",
+  "exports": "./serve.deno.ts",
+  "lock": "deno.lock",
+  "nodeModulesDir": "auto",
+  "exclude": ["dist/", "node_modules/"],
+  "tasks": {
+    "build": "deno run --unstable-bare-node-builtins -A npm:webpack-cli",
+    "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
+  },
+  "imports": {
+    "webpack": "npm:webpack@^5.98.0",
+    "webpack-cli": "npm:webpack-cli@^6.0.0",
+    "ts-loader": "npm:ts-loader@^9.5.0",
+    "typescript": "npm:typescript@^5.9.0",
+    "@types/deno": "npm:@types/deno@^2.0.0"
+  },
+  "compilerOptions": {
+    "types": ["npm:@types/deno"]
+  }
+}

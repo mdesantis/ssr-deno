@@ -9,6 +9,7 @@
     "samples/vite-ssr-app",
     "samples/vite-vue-ssr-app",
     "samples/vite-svelte-ssr-app",
+    "samples/webpack-ssr-app",
   ],
   // Use the Deno language server for .ts files in the samples directory
   "deno.codeLens.test": true,

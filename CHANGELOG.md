@@ -2,6 +2,7 @@
 
 ### Added
 - New sample: `samples/vite-preact-ssr-app` — Preact SSR with Vite, uses `resolve.alias` for React compat.
+- New sample: `samples/webpack-ssr-app` — vanilla TypeScript SSR with Webpack 5, no framework.
 - `SSR::Deno.heap_stats!` — raises `JsRuntimeNotInitializedError` / `JsRuntimeWorkerError` instead of returning empty Hash.
 
 ### Changed

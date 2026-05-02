@@ -220,5 +220,6 @@ samples/
 ├── vite-react-emotion-mui-dashboard-ssr-app/  # Full dashboard + Vite
 ├── vite-vue-ssr-app/                       # Vue 3 + Vite
 ├── vite-svelte-ssr-app/                    # Svelte 5 + Vite
-└── vite-preact-ssr-app/                    # Preact + Vite
+├── vite-preact-ssr-app/                    # Preact + Vite
+└── webpack-ssr-app/                        # Plain TS + Webpack 5
 ```
