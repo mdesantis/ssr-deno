@@ -95,10 +95,10 @@ Goal: Rails app does `gem 'ssr_deno', require: 'ssr/deno/rails'` in Gemfile + `r
 ## Data Flow
 
 ```
-  ┌──────────┐   ┌──────────┐   ┌──────────────────┐   ┌───────────────┐   ┌────────────┐   ┌──────────────┐
-  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │   │ Vite Bundle  │
-  │          │   │          │   │ .registry        │   │ :application  │   │            │   │              │
-  └────┬─────┘   └────┬─────┘   └────────┬─────────┘   └──────┬────────┘   └─────┬──────┘   └──────┬───────┘
+  ┌──────────┐   ┌──────────┐   ┌──────────────────┐   ┌───────────────┐   ┌────────────┐    ┌──────────────┐
+  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │    │ Vite Bundle  │
+  │          │   │          │   │ .registry        │   │ :application  │   │            │    │              │
+  └────┬─────┘   └────┬─────┘   └────────┬─────────┘   └──────┬────────┘   └─────┬──────┘    └──────┬───────┘
        │              │                  │                    │                  │                  │
        │ ssr_render   │                  │                    │                  │                  │
        │ {page:"home"}│                  │                    │                  │                  │
@@ -148,10 +148,10 @@ Goal: Rails app does `gem 'ssr_deno', require: 'ssr/deno/rails'` in Gemfile + `r
        │──┐           │                  │                    │                  │                  │
        │  │           │                  │                    │                  │                  │
        │<─┘           │                  │                    │                  │                  │
-  ┌────┴─────┐   ┌────┴─────┐   ┌────────┴─────────┐   ┌──────┴────────┐   ┌─────┴──────┐   ┌──────┴───────┐
-  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │   │ Vite Bundle  │
-  │          │   │          │   │ .registry        │   │ :application  │   │            │   │              │
-  └──────────┘   └──────────┘   └──────────────────┘   └───────────────┘   └────────────┘   └──────────────┘
+  ┌────┴─────┐   ┌────┴─────┐   ┌────────┴─────────┐   ┌──────┴────────┐   ┌─────┴──────┐    ┌──────┴───────┐
+  │Controller│   │  Helper  │   │ SSR::Deno::Bundle│   │ Bundle        │   │Deno Worker │    │ Vite Bundle  │
+  │          │   │          │   │ .registry        │   │ :application  │   │            │    │              │
+  └──────────┘   └──────────┘   └──────────────────┘   └───────────────┘   └────────────┘    └──────────────┘
 ```
 
 ---
