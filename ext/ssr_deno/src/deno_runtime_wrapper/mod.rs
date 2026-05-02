@@ -70,13 +70,14 @@ impl IsolateHandle {
         index: usize,
         max_heap_size_mb: usize,
         render_timeout_ms: u64,
+        node_builtins: bool,
     ) -> Result<Self, DenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         std::thread::Builder::new()
             .name(format!("deno-worker-{index}"))
-            .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb))
+            .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb, node_builtins))
             .map_err(|e| {
                 DenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}"))
             })?;
@@ -162,12 +163,14 @@ impl IsolatePool {
         size: usize,
         max_heap_size_mb: usize,
         render_timeout_ms: u64,
+        node_builtins: bool,
     ) -> Result<Self, DenoError> {
         validate_pool_size(size)?;
 
         let mut handles = Vec::with_capacity(size);
         for i in 0..size {
-            let handle = IsolateHandle::spawn(i, max_heap_size_mb, render_timeout_ms)?;
+            let handle =
+                IsolateHandle::spawn(i, max_heap_size_mb, render_timeout_ms, node_builtins)?;
             handles.push(handle);
         }
 
@@ -269,6 +272,7 @@ fn worker_thread_main(
     mut rx: tokio::sync::mpsc::Receiver<WorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
     max_heap_size_mb: usize,
+    node_builtins: bool,
 ) {
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -294,7 +298,7 @@ fn worker_thread_main(
             }
         };
 
-        let mut worker = match build_worker(&main_module_url, max_heap_size_mb) {
+        let mut worker = match build_worker(&main_module_url, max_heap_size_mb, node_builtins) {
             Ok(w) => w,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
@@ -312,8 +316,13 @@ fn worker_thread_main(
                     script_name,
                     reply,
                 } => {
-                    let result =
-                        load_bundle_in_worker(&mut worker, &bundle_id, bundle_code, script_name);
+                    let result = load_bundle_in_worker(
+                        &mut worker,
+                        &bundle_id,
+                        bundle_code,
+                        script_name,
+                        node_builtins,
+                    );
                     let _ = reply.send(result);
                 }
                 WorkerMsg::Render {
@@ -369,11 +378,14 @@ fn load_bundle_in_worker(
     bundle_id: &str,
     bundle_code: String,
     script_name: &'static str,
+    node_builtins: bool,
 ) -> Result<(), String> {
     // Provide globalThis.require for bundles that use Node.js built-in modules.
-    // Uses Deno's module system to load `createRequire` from node:module.
-    if let Err(e) = setup_require(worker) {
-        return Err(format!("Failed to set up require: {e}"));
+    // Only needed when node_builtins is enabled.
+    if node_builtins {
+        if let Err(e) = setup_require(worker) {
+            return Err(format!("Failed to set up require: {e}"));
+        }
     }
 
     if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
@@ -402,8 +414,12 @@ fn load_bundle_in_worker(
         .map_err(|e| format!("Failed to namespace bundle '{bundle_id}': {e}"))
 }
 
-fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker, String> {
-    let node_services = {
+fn build_worker(
+    main_module: &Url,
+    max_heap_size_mb: usize,
+    node_builtins: bool,
+) -> Result<MainWorker, String> {
+    let node_services = if node_builtins {
         use std::borrow::Cow;
         use node_resolver::{
             DenoIsBuiltInNodeModuleChecker,
@@ -449,6 +465,14 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
             pkg_json_resolver,
             sys: Sys,
         })
+    } else {
+        None
+    };
+
+    let module_loader: std::rc::Rc<dyn deno_runtime::deno_core::ModuleLoader> = if node_builtins {
+        std::rc::Rc::new(NodeBuiltinOnlyModuleLoader)
+    } else {
+        std::rc::Rc::new(deno_runtime::deno_core::NoopModuleLoader)
     };
 
     let services = WorkerServiceOptions {
@@ -457,7 +481,7 @@ fn build_worker(main_module: &Url, max_heap_size_mb: usize) -> Result<MainWorker
         deno_rt_native_addon_loader: None,
         feature_checker: Arc::new(FeatureChecker::default()),
         fs: Arc::new(deno_runtime::deno_fs::RealFs),
-        module_loader: std::rc::Rc::new(NodeBuiltinOnlyModuleLoader),
+        module_loader,
         node_services,
         npm_process_state_provider: None,
         permissions: PermissionsContainer::new(

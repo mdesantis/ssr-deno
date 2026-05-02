@@ -29,6 +29,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'ssr/deno'
 
 SSR::Deno.isolate_pool_size = 1
+SSR::Deno.node_builtins_enabled = true
 
 # ---------------------------------------------------------------------------
 # Test framework

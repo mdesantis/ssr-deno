@@ -104,6 +104,7 @@ module SSR
     def self.native_set_max_heap_size_mb: (Integer mb) -> nil
     def self.native_set_isolate_pool_size: (Integer size) -> nil
     def self.native_set_render_timeout_ms: (Integer ms) -> nil
+    def self.native_set_node_builtins_enabled: (bool enabled) -> nil
     def self.native_heap_stats: () -> String
 
     def self.heap_stats: () -> Hash[String, Integer]
@@ -111,5 +112,6 @@ module SSR
     def self.max_heap_size_mb=: (Integer mb) -> void
     def self.isolate_pool_size=: (Integer size) -> void
     def self.render_timeout_ms=: (Integer milliseconds) -> void
+    def self.node_builtins_enabled=: (bool enabled) -> void
   end
 end

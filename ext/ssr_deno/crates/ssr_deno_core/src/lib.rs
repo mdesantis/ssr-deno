@@ -58,16 +58,22 @@ pub struct Config {
     /// 0 = auto-detect from CPU count
     pub isolate_pool_size: usize,
     pub render_timeout_ms: u64,
+    /// Enable Node.js built-in module support (stream, buffer, events, etc.).
+    /// Required for packages like @emotion/server that depend on Node.js
+    /// built-in modules via require(). Disabled by default since most SSR
+    /// bundles don't need it and it adds worker init overhead.
+    pub node_builtins: bool,
 }
 
 impl Config {
     /// Returns the default configuration: 64 MB heap, auto-detect pool size,
-    /// 500ms render timeout.
+    /// 500ms render timeout, no Node.js builtins.
     pub const fn default() -> Self {
         Self {
             max_heap_size_mb: 64,
             isolate_pool_size: 0,
             render_timeout_ms: 500,
+            node_builtins: false,
         }
     }
 }
@@ -292,46 +298,35 @@ mod tests {
     // resolve_pool_size
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn resolve_pool_size_uses_explicit_value() {
-        let cfg = Config {
-            isolate_pool_size: 4,
+    fn make_cfg(pool_size: usize) -> Config {
+        Config {
+            isolate_pool_size: pool_size,
             max_heap_size_mb: 64,
             render_timeout_ms: 500,
-        };
-        assert_eq!(resolve_pool_size(cfg), 4);
+            node_builtins: false,
+        }
+    }
+
+    #[test]
+    fn resolve_pool_size_uses_explicit_value() {
+        assert_eq!(resolve_pool_size(make_cfg(4)), 4);
     }
 
     #[test]
     fn resolve_pool_size_clamps_to_max() {
-        let cfg = Config {
-            isolate_pool_size: 99,
-            max_heap_size_mb: 64,
-            render_timeout_ms: 500,
-        };
-        assert_eq!(resolve_pool_size(cfg), MAX_ISOLATES);
+        assert_eq!(resolve_pool_size(make_cfg(99)), MAX_ISOLATES);
     }
 
     #[test]
     fn resolve_pool_size_minimum_is_one() {
-        let cfg = Config {
-            isolate_pool_size: 0,
-            max_heap_size_mb: 64,
-            render_timeout_ms: 500,
-        };
-        let size = resolve_pool_size(cfg);
+        let size = resolve_pool_size(make_cfg(0));
         assert!(size >= 1, "pool size {size} should be >= 1");
         assert!(size <= MAX_ISOLATES, "pool size {size} should be <= {MAX_ISOLATES}");
     }
 
     #[test]
     fn resolve_pool_size_auto_detect_is_sensible() {
-        let cfg = Config {
-            isolate_pool_size: 0,
-            max_heap_size_mb: 64,
-            render_timeout_ms: 500,
-        };
-        let size = resolve_pool_size(cfg);
+        let size = resolve_pool_size(make_cfg(0));
         assert!(size >= 1);
         assert!(size <= MAX_ISOLATES);
     }

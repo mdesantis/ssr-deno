@@ -10,6 +10,7 @@
 - README: add SSR bundle creation guide (bundle contract, vanilla/Vue/Svelte/React patterns).
 - Consistent serve ports across samples (vanilla=3100, react=3101, vue=3102, svelte=3103).
 - Vite edge-light resolve conditions — `@emotion/cache` no longer resolves to browser build under `ssr.target: 'webworker'`. Eliminates the need for a `document` stub in MUI SSR samples.
+- `SSR::Deno.node_builtins_enabled=` config option (default: `false`) — enables Node.js built-in module support for bundles that call `require()` for `stream`, `buffer`, `events`, etc. Required for `@emotion/server` and similar packages. Adds ~50ms to worker init. Disabled by default.
 
 ## [0.1.0-alpha.2] - 2026-05-02
 

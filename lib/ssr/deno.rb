@@ -53,6 +53,21 @@ module SSR
         native_set_render_timeout_ms(milliseconds.to_i)
       end
 
+      # Enable Node.js built-in module support (stream, buffer, events, etc.).
+      # Required for packages like @emotion/server that call require() for
+      # Node.js built-in modules. Default: false.
+      #
+      # When enabled, the Rust extension initializes a custom module loader
+      # and injects a globalThis.require function via createRequire from
+      # node:module. This adds ~50ms to worker initialization time.
+      #
+      # Must be called before any Bundle.new call (triggers pool init).
+      #
+      # @param enabled [Boolean]
+      def node_builtins_enabled=(enabled)
+        native_set_node_builtins_enabled(enabled)
+      end
+
       # Returns V8 heap statistics from the isolate pool as a Hash.
       # Runtime must be initialized (call Bundle.new first).
       #

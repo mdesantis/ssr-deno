@@ -80,6 +80,12 @@ fn map_render_error(e: DenoError) -> Error {
 /// Validates that the value doesn't overflow when converted to bytes.
 /// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
 /// which is far beyond any practical V8 heap limit.
+fn native_set_node_builtins_enabled(enabled: bool) -> Result<(), Error> {
+    check_not_initialized()?;
+    CONFIG.lock().unwrap().node_builtins = enabled;
+    Ok(())
+}
+
 fn native_set_max_heap_size_mb(mb: usize) -> Result<(), Error> {
     // Validate overflow before touching any state.
     if let Err(msg) = max_heap_size_mb_checked(mb) {
@@ -144,9 +150,11 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     // the per-isolate limit explicitly.
     let max_heap_size_mb = config.max_heap_size_mb;
     let render_timeout_ms = config.render_timeout_ms;
+    let node_builtins = config.node_builtins;
 
-    let pool = IsolatePool::new(pool_size, max_heap_size_mb, render_timeout_ms)
-        .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
+    let pool =
+        IsolatePool::new(pool_size, max_heap_size_mb, render_timeout_ms, node_builtins)
+            .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
     let _ = POOL.set(pool);
     let _ = INITIALIZED.set(());
     Ok(POOL.get().unwrap())
@@ -236,6 +244,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_heap_stats",
         function!(native_heap_stats, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_set_node_builtins_enabled",
+        function!(native_set_node_builtins_enabled, 1),
     )?;
     Ok(())
 }
