@@ -3,7 +3,7 @@
 require 'test_helper'
 
 module SSR
-  class TestIntegrationReactSsr < Minitest::Test
+  class TestIntegrationReactSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
@@ -20,7 +20,7 @@ module SSR
     end
   end
 
-  class TestIntegrationVanillaSsr < Minitest::Test
+  class TestIntegrationVanillaSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vanilla-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
@@ -37,7 +37,7 @@ module SSR
     end
   end
 
-  class TestIntegrationSvelteSsr < Minitest::Test
+  class TestIntegrationSvelteSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/svelte-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
@@ -54,7 +54,7 @@ module SSR
     end
   end
 
-  class TestIntegrationVueSsr < Minitest::Test
+  class TestIntegrationVueSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vue-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
