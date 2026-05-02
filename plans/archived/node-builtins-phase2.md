@@ -95,16 +95,37 @@ declarations and `use` statements accordingly.
 
 ---
 
-## Investigation needed before implementation
+## Investigation needed before implementation — answers
 
-1. What extensions does `deno_runtime` register by default in
-   `bootstrap_from_options`?
-2. Is there a `deno_node` extension available in `deno_runtime` v0.255.0?
-3. Can we add extensions via `WorkerOptions::extensions`?
-4. What does `node_services: None` mean — is there a valid non-None
-   configuration that enables Node.js builtins?
-5. If the above don't work, can we access Node.js builtins through
-   `deno_core`'s internal ops directly?
+1. **What extensions does `deno_runtime` register by default?**
+   `bootstrap_from_options` registers standard Web + Deno runtime extensions
+   (deno_web, deno_console, etc.) via its internal default set. `deno_node`
+   is NOT registered automatically — it activates only when `node_services`
+   is `Some(...)`.
+
+2. **Is there a `deno_node` extension available in `deno_runtime` v0.255.0?**
+   Yes. `deno_runtime::deno_node` exports `NodeResolver`, `NodeExtInitServices`,
+   `NodeRequireLoaderRc`, etc. The extension's polyfills (e.g.
+   `01_require.js` for `node:module`) are available via `Extension::esm`.
+
+3. **Can we add extensions via `WorkerOptions::extensions`?**
+   Technically yes, but unnecessary for `deno_node`. The extension is bundled
+   inside `deno_runtime` and activated via `node_services` in
+   `WorkerServiceOptions`, not via `extensions: vec![]`. Providing
+   `Some(NodeExtInitServices { ... })` triggers the deno_node extension
+   internally.
+
+4. **What does `node_services: None` mean?**
+   `None` = no Node.js services initialized → no `node:` builtins available.
+   `Some(NodeExtInitServices { node_require_loader, node_resolver,
+   pkg_json_resolver, sys })` activates the deno_node extension and makes
+   `node:module` polyfills resolvable.
+
+5. **Can we access Node.js builtins through `deno_core` internal ops?**
+   Not needed. The `deno_node` extension registers polyfills via
+   `Extension::esm`, which serves source directly — the module loader's
+   `load()` is never called for `node:` specifiers. The loader only needs
+   to `resolve()` them to pass through; the extension handles the rest.
 
 ---
 
