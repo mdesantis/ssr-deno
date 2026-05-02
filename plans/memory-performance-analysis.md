@@ -323,13 +323,13 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.1 Immediate (Low Effort)
 
-1. **Add a render timeout** (default 500ms, configurable) — implemented via `SSR::Deno.render_timeout_ms=`.
+1. ✅ **Add a render timeout** (default 500ms, configurable) — implemented via `SSR::Deno.render_timeout_ms=`.
 
-2. **Document the threading model** in README — see the [Configuration section](../README.md#configuration).
+2. ✅ **Document the threading model** in README — see the [Configuration section](../README.md#configuration).
 
 3. **Add V8 heap metrics** to `ActiveSupport::Notifications` — see [`plans/v8-heap-metrics.md`](v8-heap-metrics.md).
 
-4. **Add a V8 heap size limit** — implemented via `SSR::Deno.max_heap_size_mb=` (default 64 MB). Passes `max_old_generation_size_in_bytes` via the Ruby → Rust bridge, capping V8 heap growth and preventing runaway memory from leaky components.
+4. ✅ **Add a V8 heap size limit** — implemented via `SSR::Deno.max_heap_size_mb=` (default 64 MB). Passes `max_old_generation_size_in_bytes` via the Ruby → Rust bridge, capping V8 heap growth and preventing runaway memory from leaky components.
 
 ### 6.2 Medium Term
 
