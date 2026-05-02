@@ -4,6 +4,9 @@ export default defineConfig({
   ssr: {
     target: 'webworker',
     noExternal: true,
+    resolve: {
+      conditions: ['edge-light', 'module', 'browser', 'development'],
+    },
   },
   build: {
     ssr: true,
