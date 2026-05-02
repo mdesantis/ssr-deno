@@ -280,7 +280,7 @@ end
 
 ## Integration Test Updates
 
-[`test/ssr/test_integration_vite_ssr.rb`](../test/ssr/test_integration_vite_ssr.rb) — add test for each new sample:
+[`test/ssr/test_integration_samples.rb`](../test/ssr/test_integration_samples.rb) — add test for each new sample:
 
 ```ruby
 def test_render_vanilla_ssr
