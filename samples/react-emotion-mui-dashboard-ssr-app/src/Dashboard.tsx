@@ -16,7 +16,7 @@ import {
   dataGridCustomizations,
   datePickersCustomizations,
   treeViewCustomizations,
-} from './theme/customizations';
+} from './theme/customizations/index.ts';
 
 const xThemeComponents = {
   ...chartsCustomizations,
