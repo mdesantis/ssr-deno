@@ -333,7 +333,7 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 ### 6.2 Medium Term
 
-5. **Consider a dedicated SSR process pool** — a separate pool of Ruby processes (or a sidecar) that handle only SSR, fronted by a load balancer. This isolates SSR failures from the main Rails app. See [`plans/ssr-process-pool.md`](ssr-process-pool.md).
+5. **Consider a dedicated SSR process pool** — a separate pool of Ruby processes (or a sidecar) that handle only SSR, fronted by a load balancer. This isolates SSR failures from the main Rails app. See [`plans/archived/ssr-process-pool.md`](ssr-process-pool.md).
 
 6. **Evaluate streaming SSR** (React 19's `renderToPipeableStream`) — reduces TTFB by sending HTML in chunks. Requires `ActionController::Live` integration. See [`plans/streaming-ssr.md`](streaming-ssr.md).
 

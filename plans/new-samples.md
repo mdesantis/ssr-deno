@@ -29,7 +29,7 @@ samples/{name}/
 
 ## Prerequisite: Async Render Support in Rust
 
-See separate plan: [`plans/async-render-support.md`](async-render-support.md)
+See separate plan: [`plans/archived/async-render-support.md`](archived/async-render-support.md)
 
 Vue SSR `renderToString` returns a `Promise`. Current [`call_render`](../ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs) only handles sync functions.
 
@@ -179,7 +179,7 @@ globalThis.render = render
 
 **Notes:** All samples use `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']`
 in their Vite config to prevent packages like `@emotion/cache` from resolving to their browser build
-under `ssr.target: 'webworker'`. See [`plans/edge-light-resolution.md`](edge-light-resolution.md).
+under `ssr.target: 'webworker'`. See [`plans/archived/edge-light-resolution.md`](archived/edge-light-resolution.md).
 
 **Files to create:**
 

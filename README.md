@@ -202,7 +202,7 @@ export default defineConfig({
 All samples also add `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']`
 to prevent bundler from resolving packages (like `@emotion/cache`) to their browser-specific builds
 when `ssr.target: 'webworker'` is set. See
-[`plans/edge-light-resolution.md`](plans/edge-light-resolution.md) for details.
+[`plans/archived/edge-light-resolution.md`](plans/archived/edge-light-resolution.md) for details.
 
 ### Building and running
 
