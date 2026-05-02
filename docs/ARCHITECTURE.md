@@ -6,38 +6,21 @@ Server-side rendering for Ruby using an embedded Deno V8 runtime.
 
 ## Overview
 
-```
-              ┌─────────────────────────────────────────────────────┐
-              │                      Build Time                      │
-              │  Vite + React/Vue/Svelte  ──►  dist/server/entry-    │
-              │                              server.js               │
-              └────────────────────────────┬─────────────────────────┘
-                                           │ loaded by
-              ┌────────────────────────────▼─────────────────────────┐
-              │                      Ruby Process                     │
-              │                                                       │
-              │  Ruby App  ──►  Bundle.new(path).render(data)         │
-              │                         │                             │
-              │                         ▼                             │
-              │              Ruby Native Extension (magnus)            │
-              │                         │                             │
-              │                    JSON bridge                        │
-              │                         │                             │
-              │              ┌──────────▼──────────┐                   │
-              │              │  IsolatePool         │                   │
-              │              │  (up to 8 isolates)  │                   │
-              │              │  round-robin dispatch │                   │
-              │              └──────────┬──────────┘                   │
-              │                         │                             │
-              │              ┌──────────▼──────────┐                   │
-              │              │  V8 Isolate          │                   │
-              │              │  deno_runtime::       │                   │
-              │              │  MainWorker           │                   │
-              │              │                      │                   │
-              │              │  globalThis.render()  │                   │
-              │              │  HTML string out      │                   │
-              │              └──────────────────────┘                   │
-              └────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph BuildTime["Build Time"]
+        Vite["Vite + React/Vue/Svelte"] --> Dist["dist/server/entry-server.js"]
+    end
+    Dist -->|loaded by| RubyProcess
+    subgraph RubyProcess["Ruby Process"]
+        RubyApp["Ruby App"] --> Bundle["Bundle.new(path).render(data)"]
+        Bundle --> NativeExt["Ruby Native Extension (magnus)"]
+        NativeExt -->|JSON bridge| Pool["IsolatePool<br/>(up to 8 isolates, round-robin)"]
+        Pool --> Isolate["V8 Isolate<br/>deno_runtime::MainWorker<br/>globalThis.render()<br/>HTML string out"]
+        Isolate --> NativeExt
+        NativeExt --> Bundle
+        Bundle --> RubyApp
+    end
 ```
 
 ---
