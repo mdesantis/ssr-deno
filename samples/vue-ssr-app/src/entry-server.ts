@@ -9,7 +9,7 @@ async function render(argsJson: string): Promise<string> {
   const body = await renderToString(app)
   return `<!DOCTYPE html>
 <html>
-  <head><title>Hello ${name}</title></head>
+  <head><meta charset="utf-8"><title>Hello ${name}</title></head>
   <body><div id="root">${body}</div></body>
 </html>`
 }

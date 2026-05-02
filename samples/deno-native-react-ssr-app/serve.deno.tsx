@@ -20,7 +20,7 @@ Deno.serve({ port: PORT }, (req: Request) => {
     const body = renderToString(<App name={name} />)
     const html = `<!DOCTYPE html>
 <html>
-  <head><title>Hello ${name}</title></head>
+  <head><meta charset="utf-8"><title>Hello ${name}</title></head>
   <body>${body}</body>
 </html>`
     return new Response(html, {

@@ -12,6 +12,7 @@ export default function App({ data }: AppProps) {
   return (
     <html>
       <head>
+        <meta charSet="utf-8" />
         <title>SSR with Deno</title>
       </head>
       <body>

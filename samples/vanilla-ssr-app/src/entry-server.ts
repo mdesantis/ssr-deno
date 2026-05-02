@@ -2,7 +2,7 @@ function render(argsJson: string): string {
   const { name } = JSON.parse(argsJson)
   return `<!DOCTYPE html>
 <html>
-  <head><title>Hello ${name}</title></head>
+  <head><meta charset="utf-8"><title>Hello ${name}</title></head>
   <body>
     <div id="root">
       <h1>Hello ${name}!</h1>

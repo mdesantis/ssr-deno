@@ -7,7 +7,7 @@ function render(argsJson: string): string {
   const result = renderSvelte(App, { props: { data } })
   return `<!DOCTYPE html>
 <html>
-  <head>${result.head}<title>Hello ${name}</title></head>
+  <head><meta charset="utf-8">${result.head}<title>Hello ${name}</title></head>
   <body><div id="root">${result.body}</div></body>
 </html>`
 }

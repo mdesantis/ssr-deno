@@ -29,7 +29,7 @@ Deno.serve({ port: PORT }, (_req: Request) => {
     const { html, css } = JSON.parse(result);
     const fullHtml = `<!DOCTYPE html>
 <html>
-  <head>${css}<title>React MUI Dashboard SSR</title></head>
+  <head><meta charset="utf-8">${css}<title>React MUI Dashboard SSR</title></head>
   <body><div id="root">${html}</div></body>
 </html>`;
     return new Response(fullHtml, {

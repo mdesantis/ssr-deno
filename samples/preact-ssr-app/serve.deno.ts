@@ -22,12 +22,7 @@ Deno.serve({ port: PORT }, (_req: Request) => {
 
   try {
     const html = renderFn(JSON.stringify({ data: { name } }));
-    const fullHtml = `<!DOCTYPE html>
-<html>
-  <head><title>Preact SSR</title></head>
-  <body><div id="root">${html}</div></body>
-</html>`;
-    return new Response(fullHtml, {
+    return new Response(html, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
