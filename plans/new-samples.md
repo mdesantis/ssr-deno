@@ -288,7 +288,7 @@ end
 | 2 | ✅ Vanilla SSR sample | — |
 | 3 | ✅ Svelte SSR sample | — |
 | 4 | ✅ Vue SSR sample | Step 1 (async) |
-| 5 | React + MUI SSR sample | — |
+| 5 | ✅ React + MUI SSR sample | — |
 | 6 | React + Emotion + MUI Dashboard sample | — |
 | 7 | ✅ Update Rakefile samples:build | Steps 2-6 |
 | 8 | ✅ Update integration tests | Steps 2-6 |
