@@ -18,10 +18,10 @@
  * Usage:
  *   deno run --allow-read --allow-net serve.deno.ts
  *
- * Then open http://localhost:3000?name=Maurizio
+ * Then open http://localhost:3101?name=Maurizio
  */
 
-const PORT = parseInt(Deno.env.get("PORT") || "3000", 10);
+const PORT = parseInt(Deno.env.get("PORT") || "3101", 10);
 const BUNDLE_PATH = new URL("./dist/server/entry-server.js", import.meta.url);
 
 // Load the built SSR bundle
