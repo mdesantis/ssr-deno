@@ -7,15 +7,6 @@ import App from './App.tsx'
 function render(argsJson: string): string {
   const { data } = JSON.parse(argsJson)
 
-  // Emotion's createCache references document.head at call time.
-  // Provide a minimal SSR-compatible document stub.
-  const doc = globalThis as Record<string, unknown>
-  if (typeof doc.document === 'undefined') {
-    const head: Record<string, unknown> = { appendChild: () => { } }
-    const el = () => ({ appendChild: () => { }, setAttribute: () => { }, style: {}, addEventListener: () => { }, removeEventListener: () => { } })
-    doc.document = { head, createElement: el, querySelectorAll: () => [], querySelector: () => null, createTextNode: () => ({}) }
-  }
-
   const cache = createCache({ key: 'ssr' })
 
   const html = renderToString(
