@@ -85,11 +85,30 @@ Deno's `web_worker.rs` also tracks whether the callback fired via an
 `oom_triggered: Arc<AtomicBool>` flag, so it can report a specific
 `ERR_WORKER_OUT_OF_MEMORY` error instead of the generic "execution terminated".
 
-**What this means for us:** We can adopt the same approach in `build_worker`
-(`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:432`). The `MainWorker` wraps a
-`JsRuntime`, which exposes `add_near_heap_limit_callback()` and
-`v8_isolate().thread_safe_handle()`. All the primitives are already available in
-our dependency chain — we just need to wire them up.
+### Important: Deno's `MainWorker` has zero default OOM protection
+
+Despite providing the API in `deno_core`, **Deno's libraries do NOT register a
+near-heap-limit callback by default.** Search results across all available
+crates:
+
+| Component | near-heap callback registered? | `oom_triggered` set? |
+|---|---|---|
+| `deno_core::JsRuntime::new` | No — API exists but never auto-registered | N/A |
+| `deno_runtime::MainWorker` (what we use) | No — no OOM protection at all | N/A |
+| `deno_runtime::WebWorker` | No — `oom_triggered` field exists but callback not registered by the library | `false` at init, never set in lib code |
+| `ssr-deno` (Step 1, done) | **Yes** — registered in `build_worker` | Not yet (Step 2 pending) |
+
+The `add_near_heap_limit_callback` is only called:
+
+- In `deno_core` tests (`misc.rs`)
+- Potentially by the Deno **CLI binary** (not a library — the source is not a
+  crate we depend on)
+
+**What this means:** Our Step 1 already puts us ahead of Deno's own
+`MainWorker` setup. If Deno's CLI hits the heap limit on the main isolate, it
+SIGTRAPs — same as we did before implementing the callback. Our `web_worker.rs`
+pattern (`oom_triggered: Arc<AtomicBool>`) mirrors what the Deno CLI likely
+does, but adapted for our blocking render model.
 
 ## Three levels of Rust-side defense
 
@@ -223,12 +242,188 @@ The `current_limit * 2` return value gives V8 one more GC cycle to try to
 free memory. If still over after GC, the termination flag is already set and
 `execute_script` returns the error.
 
-### [ ] Step 2: Improve error message (optional)
+### [ ] Step 2: Add `oom_triggered` flag and custom `JsRuntimeOutOfMemoryError`
 
-Optionally add an `oom_triggered: AtomicBool` flag to the worker or to
-`call_render` context, set it in the callback, and check it after `execute_script`
-returns the termination error. This lets us return `"JS heap out of memory"` instead
-of the generic `"Error: execution terminated"`.
+Currently the OOM termination error propagates as a generic `DenoError::Render`
+with message "`render` function threw an exception" — confusing for users who
+are not hitting a render bug. This step adds a dedicated `DenoError::OutOfMemory`
+variant and a custom Ruby exception `SSR::Deno::JsRuntimeOutOfMemoryError`.
+
+**Error hierarchy (after this step):**
+
+```
+SSR::Deno::Error
+├── JsRuntimeInitializationError
+├── JsRuntimeNotInitializedError
+├── JsRuntimeWorkerError
+├── BundleNotFoundError
+├── RenderError
+└── JsRuntimeOutOfMemoryError  ← NEW (sibling, not subclass)
+```
+
+`JsRuntimeOutOfMemoryError` is a sibling of `RenderError` (not a subclass),
+because OOM is V8 resource exhaustion, not a JS error. User code may want to
+handle it separately (e.g., reduce payload, flush caches) rather than treating
+it the same as a thrown exception.
+
+#### Step 2A: Add `DenoError::OutOfMemory` variant
+
+**File:** `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs`
+
+```rust
+pub enum DenoError {
+    BundleLoad(String),
+    WorkerInit(String),
+    WorkerDied(String),
+    BundleNotFound(String),
+    Render(String),
+    OutOfMemory(String),   // NEW
+}
+```
+
+Update `Display` impl and all match arms on `DenoError`.
+
+#### Step 2B: Wire `oom_triggered: Arc<AtomicBool>` through the call chain
+
+The flag must be:
+- Set by the near-heap-limit callback (runs on V8's GC thread within the isolate)
+- Read by `call_render` after `execute_script` returns the termination error
+
+**Approach:** Create `Arc<AtomicBool>` in `worker_thread_main`, pass clone to
+`build_worker` for the callback, pass reference to `call_render`.
+
+**File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
+
+In `worker_thread_main` (before `build_worker` call):
+```rust
+let oom_triggered = Arc::new(AtomicBool::new(false));
+let mut worker = match build_worker(
+    &main_module_url,
+    max_heap_size_mb,
+    node_builtins,
+    oom_triggered.clone(),  // clone for the callback
+) {
+    Ok(w) => w,
+    Err(e) => { ... }
+};
+```
+
+In `build_worker` signature (new param):
+```rust
+fn build_worker(
+    main_module: &Url,
+    max_heap_size_mb: usize,
+    node_builtins: bool,
+    oom_triggered: Arc<AtomicBool>,
+) -> Result<MainWorker, String> {
+```
+
+In the callback inside `build_worker`:
+```rust
+worker.js_runtime.add_near_heap_limit_callback(
+    move |current_limit, _initial_limit| {
+        oom_triggered.store(true, Ordering::SeqCst);  // mark OOM
+        let _ = isolate_handle.terminate_execution();
+        current_limit * 2
+    },
+);
+```
+
+In the message loop handler (pass to `call_render`):
+```rust
+WorkerMsg::Render { bundle_id, args_json, render_timeout_ms, reply } => {
+    let result = call_render(
+        &mut worker, &bundle_id, &args_json, render_timeout_ms, &oom_triggered,
+    );
+    let _ = reply.send(result);
+}
+```
+
+#### Step 2C: Check `oom_triggered` in `call_render`
+
+**File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
+
+Add new param `oom_triggered: &AtomicBool` to `call_render`.
+
+After the existing error detection (when `render_fn.call` returns `None` or
+promise polling fails), insert before the generic `DenoError::Render` return:
+
+```rust
+if oom_triggered.load(Ordering::SeqCst) {
+    return Err(DenoError::OutOfMemory(
+        "JS heap out of memory — the isolate reached its configured heap limit".into(),
+    ));
+}
+```
+
+This runs BEFORE the generic error return, so OOM takes priority over the
+generic "execution terminated" message.
+
+#### Step 2D: Map to custom Ruby exception
+
+**File:** `ext/ssr_deno/src/lib.rs`
+
+Add error helper:
+```rust
+fn js_runtime_out_of_memory_error(msg: impl Into<String>) -> Error {
+    Error::new(deno_exception_class("JsRuntimeOutOfMemoryError"), msg.into())
+}
+```
+
+Update `map_render_error`:
+```rust
+fn map_render_error(e: DenoError) -> Error {
+    match e {
+        DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
+        DenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
+        DenoError::Render(msg) => render_error(msg),
+        DenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(msg),
+        DenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
+        DenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
+    }
+}
+```
+
+Register in `init`:
+```rust
+deno_module.define_error("JsRuntimeOutOfMemoryError", base_error)?;
+```
+
+#### Step 2E: Update RBS
+
+**File:** `sig/ssr/deno.rbs`
+
+```rbs
+class JsRuntimeOutOfMemoryError < Error
+end
+```
+
+#### Step 2F: Update Rails helper
+
+**File:** `lib/ssr/deno/rails/helper.rb`
+
+Update the rescue clause (line 27) to also rescue `JsRuntimeOutOfMemoryError`:
+```ruby
+rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
+       SSR::Deno::JsRuntimeOutOfMemoryError => error
+```
+
+#### Step 2G: Update OOM test
+
+**File:** `test/ssr/test_deno_stability.rb`
+
+Change the OOM test to expect `JsRuntimeOutOfMemoryError` instead of `RenderError`.
+
+#### Step 2H: Update architecture docs
+
+**File:** `docs/architecture.md`
+
+Add `JsRuntimeOutOfMemoryError` to the error hierarchy description (if any).
+
+#### Step 2I: Verify
+
+`bundle exec rake` passes (compile, cargo test, sample builds, all Ruby suites,
+RuboCop, 100% coverage, RBS valid).
 
 ### [x] Step 3: Verify
 
@@ -241,24 +436,27 @@ Rerun `attachments/reproduce_v8_oom.rb` — verify it now produces a Ruby error
 ## Files Changed
 
 | File | Change |
-|---|---|---|
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Register `add_near_heap_limit_callback` in `build_worker` |
-| `test/ssr/test_deno_stability.rb` | OOM subprocess test `test_oom_produces_render_error` |
-| `test/fixtures/large-payload-bundle.js` | Fixture for large-payload test |
+|---|---|
+| `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | Add `OutOfMemory(String)` variant to `DenoError` |
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | `Arc<AtomicBool>` in `worker_thread_main`, `build_worker` param, callback stores `true`, pass to `call_render` |
+| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | New param `oom_triggered`, check before returning generic error |
+| `ext/ssr_deno/src/lib.rs` | New `js_runtime_out_of_memory_error`, `define_error("JsRuntimeOutOfMemoryError")` in init |
+| `sig/ssr/deno.rbs` | New `JsRuntimeOutOfMemoryError < Error` class |
+| `lib/ssr/deno/rails/helper.rb` | Rescue `JsRuntimeOutOfMemoryError` alongside `RenderError` |
+| `test/ssr/test_deno_stability.rb` | Expect `JsRuntimeOutOfMemoryError` instead of `RenderError` in OOM test |
+| `docs/architecture.md` | Update error hierarchy table |
 
 ## Files NOT Changed
 
 | File | Reason |
 |---|---|
-| `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | No new config needed — callback is always enabled |
-| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Termination error already propagates through existing error handling |
-| `lib/ssr/deno.rb` | No API changes |
-| `sig/ssr/deno.rbs` | No type changes |
+| `lib/ssr/deno.rb` | New error class is defined in Rust via magnus, not in Ruby |
 | `lib/ssr/deno/rails/railtie.rb` | No Rails config needed |
 | `README.md` / `CHANGELOG.md` | Deferred until feature lands |
 
 ## Verification
 
-- `bundle exec rake` exits 0
-- `attachments/reproduce_v8_oom.rb` produces `SSR::Deno::RenderError` instead of SIGTRAP
+- `bundle exec rake` exits 0 (compile, cargo test, sample builds, all Ruby suites, RuboCop, 100% coverage, RBS valid)
+- `attachments/reproduce_v8_oom.rb` produces `SSR::Deno::JsRuntimeOutOfMemoryError` instead of SIGTRAP
 - Existing tests continue to pass (termination callback only fires on near-OOM)
+- OOM test expects the new exception class
