@@ -6912,6 +6912,7 @@ checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
 name = "ssr_deno"
 version = "0.1.0-alpha.3"
 dependencies = [
+ "deno_core",
  "deno_error",
  "deno_runtime",
  "deno_semver",

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -27,6 +28,8 @@ pub use ssr_deno_core::{next_index, validate_pool_size};
 pub(crate) mod call_render;
 use self::call_render::{call_render, collect_heap_stats};
 
+pub(crate) mod render_stream;
+
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and each Deno worker thread
 // ---------------------------------------------------------------------------
@@ -45,6 +48,13 @@ enum WorkerMsg {
         reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
     },
     HeapStats {
+        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
+    },
+    RenderStream {
+        bundle_id: String,
+        args_json: String,
+        render_timeout_ms: u64,
+        chunk_tx: tokio::sync::mpsc::Sender<String>,
         reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
     },
 }
@@ -124,6 +134,32 @@ impl IsolateHandle {
         }
     }
 
+    /// Sends a streaming render request and returns the final result.
+    /// The worker thread runs the V8 event loop during the render.
+    pub fn block_on_render_stream(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<String, DenoError> {
+        let (reply_tx, reply_rx) =
+            tokio::sync::oneshot::channel::<Result<String, DenoError>>();
+        let (chunk_tx, _chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
+
+        self.tx
+            .blocking_send(WorkerMsg::RenderStream {
+                bundle_id: bundle_id.to_string(),
+                args_json: args_json.to_string(),
+                render_timeout_ms: self.render_timeout_ms,
+                chunk_tx,
+                reply: reply_tx,
+            })
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before reply".into()))?
+    }
+
     /// Queries V8 heap statistics from this isolate's thread.
     pub fn block_on_heap_stats(&self) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -200,6 +236,15 @@ impl IsolatePool {
     /// Blocks until the result arrives.
     pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         self.next_handle().block_on_render(bundle_id, args_json)
+    }
+
+    /// Dispatches a streaming render request to the next available isolate.
+    pub fn dispatch_render_stream(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<String, DenoError> {
+        self.next_handle().block_on_render_stream(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
@@ -344,6 +389,19 @@ fn worker_thread_main(
                 }
                 WorkerMsg::HeapStats { reply } => {
                     let result = collect_heap_stats(&mut worker);
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::RenderStream {
+                    bundle_id,
+                    args_json,
+                    render_timeout_ms,
+                    chunk_tx,
+                    reply,
+                } => {
+                    let result = render_stream::render_streaming(
+                        &mut worker, &bundle_id, &args_json,
+                        render_timeout_ms, chunk_tx, &oom_triggered,
+                    ).await;
                     let _ = reply.send(result);
                 }
             }
@@ -547,7 +605,13 @@ fn build_worker(
 
     let options = WorkerOptions {
         bootstrap: BootstrapOptions::default(),
-        extensions: vec![],
+        extensions: vec![
+            deno_runtime::deno_core::Extension {
+                name: "ssr_stream",
+                ops: Cow::Owned(vec![render_stream::op_ssr_push_chunk()]),
+                ..Default::default()
+            },
+        ],
         startup_snapshot: None,
         skip_op_registration: false,
         create_params,

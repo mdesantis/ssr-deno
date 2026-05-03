@@ -175,17 +175,17 @@ if drain_timeout_ms > 0 {
 
 ## Implementation phases
 
-### Phase 1: Streaming render prototype (6 files)
+### [x] Phase 1: Streaming render prototype (6 files)
 
 | File | Change |
 |---|---|
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Add `RenderStream` to `WorkerMsg`, handler |
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Add `RenderStream` to `WorkerMsg`, handler, Extension |
 | `ext/ssr_deno/src/deno_runtime_wrapper/render_stream.rs` | New: `render_streaming` + `op_ssr_push_chunk` |
 | `ext/ssr_deno/src/lib.rs` | Add `native_render_stream` Ruby method |
-| `lib/ssr/deno/bundle.rb` | Add `Bundle#render_stream` |
-| `lib/ssr/deno/rails/helper.rb` | Add `ssr_render_stream` helper |
+| `lib/ssr/deno/bundle.rb` | Add `Bundle#render_stream(raw_input:)` |
+| `test/ssr/test_deno_render_stream.rb` | New: streaming render test |
 
-### Phase 2: Rails integration (ActionController::Live)
+### [ ] Phase 2: Rails integration (ActionController::Live)
 
 ```ruby
 def show

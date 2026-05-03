@@ -226,6 +226,13 @@ fn native_heap_stats() -> Result<String, Error> {
         .map_err(|e| js_runtime_worker_error(e.to_string()))
 }
 
+/// Dispatches a streaming render to the next available isolate.
+fn native_render_stream(bundle_id: String, args_json: String) -> Result<String, Error> {
+    get_pool()?
+        .dispatch_render_stream(&bundle_id, &args_json)
+        .map_err(map_render_error)
+}
+
 /// The magnus init function — called when Ruby loads the native extension.
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
@@ -286,6 +293,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_get_render_timeout_ms",
         function!(native_get_render_timeout_ms, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_render_stream",
+        function!(native_render_stream, 2),
     )?;
     deno_module.define_singleton_method(
         "native_get_node_builtins_enabled",

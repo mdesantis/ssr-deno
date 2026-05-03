@@ -17,6 +17,7 @@ in an embedded V8 isolate.
 | Svelte 5 | `renderToString` | ✅ | Synchronous, fully supported |
 | SolidJS | `renderToString` | ✅ | Synchronous (returns string) |
 | Plain JS/TS | `globalThis.render()` | ✅ | Any function returning a string or Promise |
+| Any | `Bundle#render_stream` | ✅ | Runs the V8 event loop during render. Supports `setTimeout`, `MessagePort`, and macrotask-based APIs. |
 
 If your framework is not listed, it works if it:
 - Exposes a synchronous JS function that returns an HTML string, or
@@ -70,9 +71,9 @@ for the architectural details.
 
 | API | Supported | Notes |
 |---|---|---|
-| `setTimeout` / `clearTimeout` | ❌ | Macrotask — event loop never runs |
-| `setInterval` / `clearInterval` | ❌ | Macrotask — event loop never runs |
-| `fetch` | ❌ | I/O op requiring the event loop |
+| `setTimeout` / `clearTimeout` | ⚠️ | Macrotask — works with `Bundle#render_stream` (runs event loop), not with `Bundle#render` |
+| `setInterval` / `clearInterval` | ⚠️ | Macrotask — same limitation as `setTimeout` |
+| `fetch` | ❌ | I/O op requiring the event loop — not supported even with `render_stream` |
 | `MessagePort` / `postMessage` | ❌ | Macrotask — used by React 19 streaming |
 | `requestAnimationFrame` | ❌ | Macrotask — browser-only anyway |
 | `setImmediate` / `clearImmediate` | ❌ | Macrotask (Node.js, not available) |
@@ -144,13 +145,21 @@ The two module loaders:
 
 ### Macrotask starvation
 
-`setTimeout`, `setInterval`, `MessagePort`, and `fetch` callbacks never fire.
-Only microtasks (`Promise.then`, `queueMicrotask`, `async/await`) are dispatched.
-This affects React 19 streaming SSR and any component that relies on timers.
+`setTimeout`, `setInterval`, `MessagePort`, and `fetch` callbacks never fire
+in `Bundle#render` (which uses `execute_script` + `perform_microtask_checkpoint`
+only). Only microtasks (`Promise.then`, `queueMicrotask`, `async/await`) are
+dispatched.
 
-See [`docs/architecture.md`](architecture.md) for the task-type table and
-[`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for the full
-architectural analysis.
+**Partial fix:** `Bundle#render_stream` runs the V8 event loop during rendering,
+which dispatches macrotasks like `setTimeout`, `setInterval`, and `MessagePort`.
+Use `render_stream` when your SSR code depends on timers or async scheduling.
+`fetch` is still not supported (network permissions denied).
+
+React 19 streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
+requires the event loop and uses `MessagePort` internally. With `render_stream`,
+the event loop runs, but the JS-side streaming plumbing (Writable, pipe, chunk
+collection) must be set up in the bundle. See
+[`plans/event-loop-approach-c.md`](../plans/event-loop-approach-c.md).
 
 ### Bundle code footprint
 
