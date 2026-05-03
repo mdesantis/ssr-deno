@@ -40,7 +40,10 @@ pub async fn render_streaming(
     // that resolves with the final HTML when streaming completes.
     let script = format!(
         r#"
-        globalThis.__ssr_stream_result = null;
+        if (typeof globalThis.__SSR_STREAM_SENTINEL === 'undefined') {{
+            globalThis.__SSR_STREAM_SENTINEL = {{}};
+        }}
+        globalThis.__ssr_stream_result = globalThis.__SSR_STREAM_SENTINEL;
         var __bundle = globalThis.__ssr_bundles[{bundle_id_json:?}];
         if (!__bundle || typeof __bundle.render !== 'function') {{
             throw new Error('Bundle not found: {bundle_id_json:?}');
@@ -80,6 +83,12 @@ pub async fn render_streaming(
         let tick = std::cmp::min(remaining, Duration::from_millis(50));
         let _ = worker.run_up_to_duration(tick).await;
 
+        if oom_triggered.load(Ordering::SeqCst) {
+            return Err(DenoError::OutOfMemory(
+                "JS heap out of memory — the isolate reached its configured heap limit".into(),
+            ));
+        }
+
         // Check if the render has completed.
         if let Some(result) = read_stream_result(worker) {
             return Ok(result);
@@ -88,11 +97,19 @@ pub async fn render_streaming(
 }
 
 /// Checks `__ssr_stream_result` for the final rendered HTML.
+/// Uses a sentinel object (`__SSR_STREAM_SENTINEL`) to distinguish
+/// "not yet set" from a render that returned null/undefined.
 fn read_stream_result(worker: &mut MainWorker) -> Option<String> {
+    // Check sentinel: compare __ssr_stream_result against the unique sentinel
+    // by checking a boolean flag that's set when the stream completes.
     let global_val = worker
         .execute_script(
             "<ssr-deno:stream-check>",
-            "JSON.stringify(globalThis.__ssr_stream_result)".to_string().into(),
+            "globalThis.__ssr_stream_result === globalThis.__SSR_STREAM_SENTINEL \
+             ? 'null' \
+             : JSON.stringify(globalThis.__ssr_stream_result)"
+                .to_string()
+                .into(),
         )
         .ok()?;
 
@@ -106,7 +123,7 @@ fn read_stream_result(worker: &mut MainWorker) -> Option<String> {
     let local_val = v8::Local::new(&mut context_scope, &global_val);
     let result_str = local_val.to_rust_string_lossy(&mut context_scope);
 
-    if result_str == "null" || result_str == "undefined" {
+    if result_str == "null" {
         return None;
     }
     Some(result_str)

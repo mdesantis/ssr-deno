@@ -17,7 +17,7 @@ in an embedded V8 isolate.
 | Svelte 5 | `renderToString` | ✅ | Synchronous, fully supported |
 | SolidJS | `renderToString` | ✅ | Synchronous (returns string) |
 | Plain JS/TS | `globalThis.render()` | ✅ | Any function returning a string or Promise |
-| Any | `Bundle#render_stream` | ✅ | Runs the V8 event loop during render. Supports `setTimeout`, `MessagePort`, and macrotask-based APIs. |
+| Any | `Bundle#render(event_loop: true)` | ✅ | Runs the V8 event loop during render. Supports `setTimeout`, `MessagePort`, and macrotask-based APIs. Alias: `Bundle#render_stream`. |
 
 If your framework is not listed, it works if it:
 - Exposes a synchronous JS function that returns an HTML string, or
@@ -71,10 +71,10 @@ for the architectural details.
 
 | API | Supported | Notes |
 |---|---|---|
-| `setTimeout` / `clearTimeout` | ⚠️ | Macrotask — works with `Bundle#render_stream` (runs event loop), not with `Bundle#render` |
+| `setTimeout` / `clearTimeout` | ⚠️ | Macrotask — works with `render(event_loop: true)`, not with `render` (default) |
 | `setInterval` / `clearInterval` | ⚠️ | Macrotask — same limitation as `setTimeout` |
-| `fetch` | ❌ | I/O op requiring the event loop — not supported even with `render_stream` |
-| `MessagePort` / `postMessage` | ❌ | Macrotask — used by React 19 streaming |
+| `fetch` | ❌ | I/O op — network permissions denied regardless |
+| `MessagePort` / `postMessage` | ⚠️ | Macrotask — works with `render(event_loop: true)`. React 19 streaming uses this internally but also needs JS-side streaming setup. |
 | `requestAnimationFrame` | ❌ | Macrotask — browser-only anyway |
 | `setImmediate` / `clearImmediate` | ❌ | Macrotask (Node.js, not available) |
 | `process.nextTick` | ❌ | Not available in Web API context |
@@ -150,15 +150,16 @@ in `Bundle#render` (which uses `execute_script` + `perform_microtask_checkpoint`
 only). Only microtasks (`Promise.then`, `queueMicrotask`, `async/await`) are
 dispatched.
 
-**Partial fix:** `Bundle#render_stream` runs the V8 event loop during rendering,
-which dispatches macrotasks like `setTimeout`, `setInterval`, and `MessagePort`.
-Use `render_stream` when your SSR code depends on timers or async scheduling.
-`fetch` is still not supported (network permissions denied).
+**Partial fix:** `Bundle#render(event_loop: true)` runs the V8 event loop during
+rendering, which dispatches macrotasks like `setTimeout`, `setInterval`, and
+`MessagePort`. Use `render(event_loop: true)` (or its alias `render_stream`)
+when your SSR code depends on timers or async scheduling. `fetch` is still not
+supported (network permissions denied regardless of event loop).
 
 React 19 streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
-requires the event loop and uses `MessagePort` internally. With `render_stream`,
-the event loop runs, but the JS-side streaming plumbing (Writable, pipe, chunk
-collection) must be set up in the bundle. See
+requires the event loop and uses `MessagePort` internally. With
+`render(event_loop: true)`, the event loop runs, but the JS-side streaming
+plumbing (Writable, pipe, chunk collection) must be set up in the bundle. See
 [`plans/event-loop-approach-c.md`](../plans/event-loop-approach-c.md).
 
 ### Bundle code footprint

@@ -12,7 +12,7 @@ module SSR
 
       @registry = Registry.new
 
-      # @param bundle_path [String] Path to the Vite SSR bundle (entry-server.js)
+      # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
       def initialize(bundle_path)
         @bundle_path = bundle_path.to_s
         @bundle_id = object_id.to_s
