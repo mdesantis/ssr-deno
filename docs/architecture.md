@@ -119,7 +119,7 @@ requires `MessagePort` (a macrotask) and cannot work without the event loop.
 Vue 3 async SSR works because it uses only Promises (microtasks). See
 [`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for details.
 
-**Key Vite settings:**
+**Recommended bundler settings (Vite example):**
 - `ssr.noExternal: true` — bundles all dependencies into a single self-contained file.
 - `ssr.target: 'webworker'` — produces a bundle using only Web APIs (safe default; not a gem requirement).
 - `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']` — prevents packages like `@emotion/cache` from resolving to their browser-specific build.

@@ -6,9 +6,9 @@ use deno_runtime::deno_core::FastString;
 use deno_error::JsErrorBox;
 use node_resolver::errors::PackageJsonLoadError;
 
-/// Minimal [`NodeRequireLoader`] for use with `noExternal: true` bundles.
+/// Minimal [`NodeRequireLoader`] for use with self-contained SSR bundles.
 ///
-/// All npm dependencies are inlined by Vite, so `require()` is only
+/// All npm dependencies are inlined by the bundler, so `require()` is only
 /// called for Node.js built-in modules (`stream`, `buffer`, `events`, …).
 /// File-system-based loading is rejected — it should never be needed.
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ impl NodeRequireLoader for DenoNodeRequireLoader {
 
     fn load_text_file_lossy(&self, _path: &Path) -> Result<FastString, JsErrorBox> {
         Err(JsErrorBox::generic(
-            "File loading via require() is not supported — use noExternal: true",
+            "File loading via require() is not supported — use a bundler that inlines dependencies",
         ))
     }
 

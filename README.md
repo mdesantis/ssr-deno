@@ -85,6 +85,14 @@ Returns 13 V8 memory counters from the isolate pool. Returns an empty Hash
 with a warning if the runtime is not yet initialized. Use `heap_stats!` to
 raise on error instead.
 
+## Supported APIs
+
+See [`docs/compatibility.md`](docs/compatibility.md) for detailed tables of:
+
+- **Framework support** — which SSR frameworks and APIs work (React, Vue, Svelte, etc.)
+- **JS API compatibility** — which standard, Web, and Node.js builtins are available
+- **Known limitations** — macrotask starvation, bundle footprint, heap limits, OOM behavior
+
 ## Bundle contract
 
 Every SSR bundle must expose `globalThis.render(argsJson)`. It receives a JSON
