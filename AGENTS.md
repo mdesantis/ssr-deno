@@ -25,6 +25,7 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
 - **Use `caveman-commit` skill for commit messages.** When committing is requested, invoke the `caveman-commit` skill (if available) to generate ultra-compressed Conventional Commits format messages. Subject ≤50 chars, body only for non-obvious why.
 - **Compile with `bundle exec rake compile`, never raw `cargo build`.** Rake wires the correct linker flags and installs the `.so` into `lib/ssr/deno/` where Ruby can load it. Plain `cargo build` skips that and produces an artifact Ruby cannot load.
 - **Keep `sig/ssr/deno.rbs` in sync.** When changing method signatures, return types, or exception classes in `lib/ssr/deno.rb` or `ext/ssr_deno/src/lib.rs`, update `sig/ssr/deno.rbs` in the same step.
+- **When archiving a plan to `plans/archived/`, stage both the new file AND the deletion of the old path.** Use `git mv` or add the deletion explicitly. Git only detects the rename as a rename when both the old deletion and the new file are in the same commit.
 - **Check for stale docs, plans, and comments after every changeset.** Before marking any task complete, audit all modified areas for content that no longer matches the code. This includes:
   - `README.md` — usage examples, API references, setup instructions
   - `plans/*.md` — architecture docs, integration plans, security reviews
