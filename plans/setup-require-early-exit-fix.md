@@ -1,12 +1,29 @@
 # setup_require Early-Exit Fix
 
-> **Status:** Implemented — deadline reduced from 1s to 10ms. The full early-exit approach (capturing promise from `execute_script` return value and checking its state inside the loop) proved complex due to V8 handle lifetime issues in rusty_v8.
+> **Status:** Implemented — deadline reduced from 1s to 10ms. The full early-exit approach proved too complex to implement reliably.
 
-## Problem
+## Why the full early-exit approach failed
 
-Commit `358cf5c` added a deadline-based poll loop to `setup_require`, but the loop always runs the **full 1-second deadline** — even when the `createRequire` promise resolves in under 1ms on a warm isolate. There is no early-exit condition.
+The intended fix was to mirror `call_render`'s pattern:
+1. Modify `execute_script` to return the promise: `globalThis.__ssr_require_promise;`
+2. Inside the poll loop, open the `Global<Value>`, cast to `Local<Promise>`, check `state()`
 
-The intended fix was to mirror `call_render`'s pattern: capture the promise via `execute_script` return value, then check `promise.state()` inside the loop with early `break` on non-Pending. However, rusty_v8's handle system doesn't allow straightforward casting of `Global<Value>` to `Global<Promise>` without entering a scope chain and using unsafe conversions.
+Attempts to implement this failed with multiple Rust compiler errors:
+
+1. **TryFrom trait not implemented for references:**
+   ```rust
+   v8::Local::<v8::Promise>::try_from(val_ref)
+   // error: TryFrom<&Value> not satisfied
+   ```
+   The `try_from` only works with owned `Local`, not `&Value` references.
+
+2. **isPromise() and cast() methods don't exist on &Value:**
+   ```rust
+   promise.isPromise()  // error: no method named 'isPromise'
+   promise.cast()      // error: no method named 'cast'
+   ```
+
+3. **Scope chain complexity:** To get `Local<Promise>` we'd need to enter a V8 handle scope, obtain the promise from `globalThis.__ssr_require_promise`, create a `Global<Promise>`, then drop the scope. This requires unsafe pointer conversions similar to `call_render.rs:29` (`isolate_raw`) and adds fragile complexity for a bundle-load operation that runs once per isolate.
 
 **Simplified fix applied:** Reduce the deadline from 1 second to 10 milliseconds. The `createRequire` promise resolves in <1ms on a warm isolate — 10ms is 10x more than needed and eliminates the ~1s regression per bundle load. The post-loop verification still catches promise rejection failures.
 
