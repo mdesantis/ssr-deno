@@ -16,15 +16,23 @@ A secondary poll loop in `setup_require` (`mod.rs:367`) has the same hard-coded 
 
 Replace `MAX_POLLS: u32 = 10_000` with a wall-clock deadline derived from `render_timeout_ms`, which is already stored on `IsolateHandle` (`mod.rs:63`). Pass it to `call_render` as a fourth parameter.
 
-### 2. Remove outer `recv_timeout` — rely on inner deadline exclusively
+### 2. Keep outer `recv_timeout` as defense-in-depth (with buffer)
 
-Currently there are two nested timeouts:
-- Outer: `recv_timeout(render_timeout_ms)` in `block_on_render` (`mod.rs:103-122`)
-- Inner: `MAX_POLLS` loop in `call_render`
+Removing `recv_timeout` entirely was incorrect. If V8 is **stuck in a sync infinite JS loop**, `perform_microtask_checkpoint()` never returns, the inner deadline check is **unreachable**, and `recv()` blocks **forever** — Ruby thread hangs.
 
-With the deadline-based inner loop, the outer `recv_timeout` becomes redundant. Because message-passing overhead eats into the budget, the outer timeout would always fire first, making the inner deadline's error path unreachable and the worker thread's result silently dropped.
+**Fix:** Keep `recv_timeout` with a 100ms buffer above `render_timeout_ms`. The inner deadline fires first for async timeouts, while the outer timeout remains as safety net for V8-stuck scenarios:
 
-**Fix:** Replace `recv_timeout(timeout)` with `recv()` (no timeout). The deadline inside `call_render` is now the sole timeout — when it fires, the error flows back through the channel naturally.
+```rust
+// 100ms buffer for message-passing overhead + V8-stuck safety net
+let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
+match reply_rx.recv_timeout(hang_timeout) {
+    Ok(result) => result,
+    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(DenoError::Render(
+        "Render process hung after {}ms".into()
+    )),
+    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(...)),
+}
+```
 
 ### 3. Add sleep between polls
 
@@ -78,15 +86,19 @@ This is complex and may not be needed — most SSR render functions use `await f
 - Compute deadline: `Instant::now() + Duration::from_millis(render_timeout_ms)`
 - Replace `for poll in 0..MAX_POLLS` with `loop` + deadline check
 - Add `std::thread::sleep(Duration::from_micros(100))` at end of each iteration
-- Error message: `"Async render promise did not settle within {timeout_ms}ms timeout"`
+- Error message: `"Async render promise did not settle within {render_timeout_ms}ms timeout"`
+- Update stale error message at end of function (call_render.rs:164-168) — currently says "maximum number of event-loop polls", should match the new timeout format
 
-### [ ] Step 3: Remove outer recv_timeout in block_on_render
+### [ ] Step 3: Add 100ms buffer to outer recv_timeout
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
-- In `block_on_render` (`mod.rs:101-123`), replace `recv_timeout(timeout)` with `recv()`
-- Remove the `RecvTimeoutError::Timeout` match arm (no longer reachable)
-- Keep the `RecvTimeoutError::Disconnected` arm for worker crash detection
+- In `block_on_render` (`mod.rs:101-123`), keep `recv_timeout` but add 100ms buffer:
+  ```rust
+  let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
+  ```
+- Update timeout error message to indicate "hung" (inner deadline handles normal timeout)
+- Keep `RecvTimeoutError::Disconnected` arm for worker crash detection
 
 ### [ ] Step 4: Update setup_require poll loop (optional improvement)
 
@@ -94,16 +106,16 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 - The `setup_require` function (`mod.rs:367`) has its own `for _ in 0..10_000` loop for `createRequire` bootstrap
 - This runs at bundle-load time, not render time — lower priority
-- Apply the same deadline+sleep pattern for consistency, or defer to a follow-up
+- Apply a hard-coded deadline (e.g., 1 second) + sleep pattern for consistency, or defer to a follow-up
 
 ### [ ] Step 5: Add async integration test
 
 **File:** `test/ssr/test_integration_async.rb` (new)
 
 - **Sync render test:** `function render(args) { return JSON.stringify({ name: "sync" }); } globalThis.render = render;` — verify async path doesn't break sync renders
-- **Async render test:** `async function render(args) { await new Promise(r => setTimeout(r, 0)); return JSON.stringify({ name: "async" }); } globalThis.render = render;` — verify poll loop resolves
-- **Timeout test:** `async function render() { await new Promise(() => {}); return ""; } globalThis.render = render;` with short timeout — assert `RenderError` is raised
-- **Different timeout values:** Test with 100ms, 1000ms, 5000ms to verify behavior scales correctly
+- **Async render test (microtask):** `async function render(args) { await Promise.resolve(); return JSON.stringify({ name: "async" }); } globalThis.render = render;` — verify poll loop resolves. **Do NOT use `setTimeout`** — it's a macrotask and will never settle with microtask-only polling.
+- **Async render test (nested microtask):** `async function render(args) { await new Promise(r => Promise.resolve().then(r)); return JSON.stringify({ name: "nested" }); } globalThis.render = render;` — verify nested microtask chains resolve
+- **Timeout test:** `async function render() { await new Promise(() => {}); return ""; } globalThis.render = render;` with short timeout (100ms) — assert `RenderError` is raised
 - **Cleanup:** Ensure temp files are removed even on test failure (use `ensure` block)
 
 ### [ ] Step 6: Run full pipeline
@@ -119,7 +131,7 @@ Must pass: Rust compile, cargo:test, sample builds, Ruby tests (100% coverage), 
 Add entry under Unreleased → Changed:
 
 ```markdown
-- Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Removed redundant outer `recv_timeout` — single timeout now applies to entire render operation.
+- Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Outer recv_timeout now has 100ms buffer to serve as V8-stuck safety net while inner deadline handles normal async timeouts.
 ```
 
 ### [ ] Step 8: (Optional) Fix `setup_require` error handling
@@ -141,25 +153,39 @@ This is out of scope for the main PR but worth documenting.
 | File | Change |
 |------|--------|
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Replace MAX_POLLS with deadline loop + sleep, add render_timeout_ms param, update stale error message at end |
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, remove outer recv_timeout, update setup_require loop |
-| `test/ssr/test_integration_async.rb` | New async integration test (sync, async, timeout, different values) |
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, add 100ms buffer to recv_timeout, update setup_require loop (optional) |
+| `test/ssr/test_integration_async.rb` | New async integration test (sync, async microtask, nested microtask, timeout) |
 | `CHANGELOG.md` | Add entry under Unreleased → Changed |
+
+## Files NOT Changed
+
+| File | Reason |
+|------|--------|
+| `lib/ssr/deno.rb` | No API changes |
+| `sig/ssr/deno.rbs` | No signature changes |
+| `ext/ssr_deno/src/lib.rs` | No core type changes |
+| `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | No validation changes (render_timeout_ms range already 100-300000) |
 
 ## Tradeoffs
 
 - **Sleep duration (100µs)** — Tunable. Too high = slower resolution for fast promises. Too low = still burns CPU. 100µs is a reasonable default.
-- **Single timeout** — Removing the outer `recv_timeout` means the worker thread is the sole timeout authority. If the worker crashes without sending a reply, `recv()` returns `Disconnected` which maps to `WorkerDied`.
-- **Macrotasks not supported** — Documented as a known limitation. Most SSR bundles don't use setTimeout in their render path.
+- **Dual timeout with buffer** — Inner deadline fires first for normal async timeouts. Outer `recv_timeout` + 100ms buffer fires only if V8 is stuck in a sync loop. This preserves defense-in-depth without double-counting the timeout.
+- **Macrotasks not supported** — Documented as a known limitation. Most SSR bundles don't use setTimeout in their render path. Async tests must use `Promise.resolve()` or similar microtask-based deferral.
 - **No Ruby-level async** — The Ruby thread remains blocked during render. This is by design — the pool architecture is synchronous from Ruby's perspective. Making it truly async would require a major redesign (Fiber scheduler, non-blocking FFI).
-- **Zero timeout (0ms)** — If user sets `render_timeout_ms = 0`, deadline = `Instant::now()`. First `Instant::now() >= deadline` check is a race condition (same instant). Behavior: one microtask checkpoint then timeout. Add validation to reject 0 or treat as "no limit".
 
 ## Known Issues (Out of Scope)
 
 ### `setup_require` silent failure (mod.rs:367-371)
 The `setup_require` function doesn't check if the `createRequire` promise actually resolved. After the loop, it returns `Ok(())` regardless. If the import fails, `globalThis.require` is undefined and bundles fail later with confusing errors. Should add a promise state check similar to `call_render`'s final check.
 
-### Stale error message at end of `call_render` (call_render.rs:164-168)
-After the polling loop exits, the `v8::PromiseState::Pending` arm at the end of `call_render` has the old "maximum number of event-loop polls" message. Should be updated to match the new timeout message format.
-
 ### `was_pending` false case
-If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work.
+If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work (covered by Step 5 sync render test).
+
+## Post-Implementation Audit
+
+Per AGENTS.md convention, after code changes:
+
+1. **Stale docs audit** — Check `docs/ARCHITECTURE.md`, `README.md`, `plans/*.md` for any references to old poll-loop behavior (MAX_POLLS, iteration counts, event-loop polling)
+2. **Sample directories** — Verify no stale path references in non-vendor, non-generated parts
+3. **`.vscode/settings.json`** — If any samples were added/removed, update `deno.enablePaths`
+4. **Plan status** — Mark each step as `[x]` in this plan file as it completes
