@@ -28,9 +28,11 @@ let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
 match reply_rx.recv_timeout(hang_timeout) {
     Ok(result) => result,
     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(DenoError::Render(
-        "Render process hung after {}ms".into()
+        format!("Render process hung after {}ms", hang_timeout.as_millis())
     )),
-    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(...)),
+    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(
+        "Deno worker thread exited before sending a reply".into(),
+    )),
 }
 ```
 
