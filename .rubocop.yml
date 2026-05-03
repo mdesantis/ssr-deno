@@ -24,6 +24,7 @@ Metrics/BlockLength:
   Exclude:
     - 'Rakefile'
     - 'rakelib/**/*'
+    - 'ssr-deno.gemspec'
 
 Metrics/MethodLength:
   Max: 15

@@ -24,6 +24,14 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
+  spec.files = `git ls-files -z`.split("\x0").reject do |f|
+    f.match(%r{^(test|tmp|plans|coverage|docs|samples)/}) ||
+      f.match(/^\./) ||
+      f.start_with?('vendor/rusty_v8') ||
+      f.match(%r{^(AGENTS|Gemfile|Rakefile|opencode|package|bin/|rakelib/)}) ||
+      f.end_with?('.json')
+  end
+
   # Native extension
   spec.extensions = ['ext/ssr_deno/extconf.rb']
 
