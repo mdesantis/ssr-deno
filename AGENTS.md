@@ -37,6 +37,8 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
   - `.vscode/settings.json` — **not git-tracked**, must be updated manually when adding/removing samples. Add or remove sample paths in `deno.enablePaths`. Skip this for Node.js-only samples (no Deno).
   Do not consider the changeset complete until this audit passes.
 
+- **When fixing RuboCop offenses, try auto-correct first.** If a RuboCop offense is marked `[Correctable]`, run `bundle exec rubocop -a <file>` (safe auto-correct) or `bundle exec rubocop -A <file>` (all auto-correct) instead of manually editing. Only fix manually if auto-correct fails or is unavailable.
+
 - **When implementing a plan step, mark it completed in the plan file immediately.** After each implementation step passes verification (`bundle exec rake` succeeds, tests pass, coverage meets threshold), update the plan's implementation checklist — change `[ ]` to `[x]` for that step. The plan file is the authoritative source of progress. Do not leave unmarked steps behind.
 
 - **Periodically check `rusty_v8` PR #1970 merge status.** The [`v8-tls-issue.md`](plans/v8-tls-issue.md) plan documents this. Once [`rusty_v8` PR #1970](https://github.com/denoland/rusty_v8/pull/1970) is merged, `V8_FROM_SOURCE=true` and custom `GN_ARGS` will no longer be needed for the build pipeline. This simplifies both the CI config and the local build setup.
