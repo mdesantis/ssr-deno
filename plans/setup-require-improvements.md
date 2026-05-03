@@ -10,6 +10,8 @@ The `setup_require` function in `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` h
 
 > **Note on failure likelihood:** `import('node:module')` is a Deno built-in polyfill, so it should never fail in a correctly built worker. The check is defense-in-depth — guarding against future Deno version changes that might remove `node:module` or bugs in node service wiring.
 
+> **Post-commit fix:** The 1-second deadline introduced a regression where every bundle load added ~1s of unnecessary sleep. Fixed in `setup-require-early-exit-fix.md` — deadline reduced to 10ms.
+
 ---
 
 ## Design Decisions

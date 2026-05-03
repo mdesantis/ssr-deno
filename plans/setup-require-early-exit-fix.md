@@ -1,5 +1,7 @@
 # setup_require Early-Exit Fix
 
+> **Status:** Implemented with simplified approach — 10ms deadline instead of early-exit. The V8 promise-type-checking approach proved complex due to handle lifetime issues.
+
 ## Problem
 
 Commit `358cf5c` added a deadline-based poll loop to `setup_require`, but the loop always runs the **full 1-second deadline** — even when the `createRequire` promise resolves in under 1ms on a warm isolate. There is no early-exit condition.

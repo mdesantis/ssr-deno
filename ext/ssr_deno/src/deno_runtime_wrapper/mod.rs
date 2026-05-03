@@ -352,7 +352,7 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
     // system. When import('node:module') is called, the extension serves the
     // source code directly (not through the module loader). We use microtask
     // polling to let the async import resolve synchronously.
-    worker
+    let _require_promise_val = worker
         .execute_script(
             "<ssr-deno:require>",
             r#"
@@ -360,6 +360,7 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
                 const { createRequire } = await import('node:module');
                 globalThis.require = createRequire('file:///');
             })();
+            globalThis.__ssr_require_promise;
             "#
             .to_string()
             .into(),
@@ -367,7 +368,7 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
         .map_err(|e| format!("Failed to start require import: {e}"))?;
 
     let isolate = worker.js_runtime.v8_isolate();
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let deadline = Instant::now() + Duration::from_millis(10);
     while Instant::now() < deadline {
         isolate.perform_microtask_checkpoint();
         std::thread::sleep(Duration::from_micros(100));
