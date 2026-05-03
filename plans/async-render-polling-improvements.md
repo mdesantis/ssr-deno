@@ -8,7 +8,7 @@ The async render promise polling loop (`call_render.rs:112-135`) had three issue
 2. **Tight CPU spin** — no sleep or yield between poll iterations. Burns CPU for the entire poll duration.
 3. **Microtasks only** — `perform_microtask_checkpoint()` drains promises but not macrotasks (setTimeout, I/O). Renders that schedule macrotasks will never settle.
 
-A secondary poll loop in `setup_require` (`mod.rs:370`) has the same hard-coded 10,000 iteration problem, though it runs at bundle-load time rather than render time.
+A secondary poll loop in `setup_require` (`mod.rs:370`) has the same hard-coded 10,000 iteration problem, though it runs at bundle-load time rather than render time. Extracted to [`setup-require-improvements.md`](setup-require-improvements.md).
 
 ## Proposed Fix
 
@@ -143,13 +143,7 @@ This is complex and may not be needed — most SSR render functions use `await f
   ```
 - Keep `RecvTimeoutError::Disconnected` arm for worker crash detection
 
-### [ ] Step 4: Update setup_require poll loop (optional improvement)
-
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
-
-- The `setup_require` function (`mod.rs:370`) has its own `for _ in 0..10_000` loop for `createRequire` bootstrap
-- This runs at bundle-load time, not render time — lower priority
-- Apply a hard-coded deadline (e.g., 1 second) + sleep pattern for consistency, or defer to a follow-up
+### [ ] Step 4: Update setup_require poll loop — extracted to [`setup-require-improvements.md`](setup-require-improvements.md)
 
 ### [x] Step 5: Add async integration test (via `test_deno_async_render.rb`)
 
@@ -186,26 +180,14 @@ Add entry under Unreleased → Changed:
 - Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Outer recv_timeout now has 100ms buffer to serve as V8-stuck safety net while inner deadline handles normal async timeouts.
 ```
 
-### [ ] Step 8: (Optional) Fix `setup_require` error handling
-
-If time allows, add a promise state check in `setup_require` (mod.rs:370-372) similar to `call_render`'s final check:
-
-```rust
-// After the poll loop, check if the require import actually resolved
-for _ in 0..100 {
-    isolate.perform_microtask_checkpoint();
-}
-// Check if globalThis.require is defined
-```
-
-This is out of scope for the main PR but worth documenting.
+### [ ] Step 8: (Optional) Fix `setup_require` error handling — extracted to [`setup-require-improvements.md`](setup-require-improvements.md)
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Replace MAX_POLLS with deadline loop + sleep, add render_timeout_ms param, update stale error message at end |
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, add 100ms buffer to recv_timeout, update setup_require loop (optional) |
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, add 100ms buffer to recv_timeout |
 | `test/ssr/test_deno_async_render.rb` | Updated: added `render_timeout_ms = 100` at top, fixture-based async tests (sync, async microtask, nested microtask, timeout) |
 | `CHANGELOG.md` | Add entry under Unreleased → Changed |
 
@@ -228,7 +210,7 @@ This is out of scope for the main PR but worth documenting.
 ## Known Issues (Out of Scope)
 
 ### `setup_require` silent failure (mod.rs:370-372)
-The `setup_require` function doesn't check if the `createRequire` promise actually resolved. After the loop, it returns `Ok(())` regardless. If the import fails, `globalThis.require` is undefined and bundles fail later with confusing errors. Should add a promise state check similar to `call_render`'s final check.
+Extracted to [`setup-require-improvements.md`](setup-require-improvements.md).
 
 ### `was_pending` false case
 If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work (covered by Step 5 sync render test).
@@ -241,4 +223,4 @@ If render is synchronous and returns a resolved promise, the polling loop is ski
 
 ✅ **3. `.vscode/settings.json`** — No samples added/removed, no update needed.
 
-✅ **4. Plan status** — Steps 1–3, 5–7 marked `[x]`; Steps 4, 8 optional/skipped.
+✅ **4. Plan status** — Steps 1–3, 5–7 marked `[x]`; Steps 4, 8 extracted to `setup-require-improvements.md`
