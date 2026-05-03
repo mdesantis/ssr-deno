@@ -123,6 +123,54 @@ protection.
 The libraries (`deno_core`, `deno_runtime`) only expose the API — the
 embedder (Deno CLI or us) is responsible for wiring it up.
 
+### Deno's error handling: `JsErrorBox` with string class name
+
+When the OOM fires on a **Node worker** (`WorkerThreadType::Node`), Deno checks
+`oom_triggered` in `web_worker.rs:1175` and creates:
+
+```rust
+let oom_error: CoreError = CoreErrorKind::JsBox(
+    deno_error::JsErrorBox::new(
+        "ERR_WORKER_OUT_OF_MEMORY",           // class name (string)
+        "Worker terminated due to reaching memory limit: JS heap out of memory",
+    ),
+)
+.into_box();
+internal_handle
+    .post_event(WorkerControlEvent::TerminalError(oom_error, 1))
+    .expect("Failed to post message to host");
+```
+
+**Key points:**
+
+- **Node workers only** — Regular Web Workers (`.Module`, `.Classic`) bypass
+  this check and fall through to the generic "execution terminated" message.
+- **String-based class name** — `JsErrorBox::new("ERR_WORKER_OUT_OF_MEMORY", ...)`
+  is a type-erased box with a string label, not a proper Rust enum variant.
+  Compare to our planned `DenoError::OutOfMemory(String)` which is a typed
+  enum that the compiler can verify exhaustively in `match` arms.
+- **Async event, not sync error** — The error is posted to the parent via an
+  mpsc channel (`post_event`). In our synchronous blocking model, the error
+  propagates through `call_render → map_render_error → Ruby exception` directly.
+
+**Can we reuse `JsErrorBox`?** No — it's incompatible with our error chain:
+
+| | Deno's web worker | Our sync model |
+|---|---|---|
+| Error propagation | Async event (mpsc channel) | Sync return (Rust `Result`, then magnus `Error`) |
+| Error type | `CoreErrorKind::JsBox(JsErrorBox)` — type-erased string label | `DenoError::OutOfMemory(String)` — typed Rust enum variant |
+| Ruby exception | N/A (no Ruby layer) | Real `SSR::Deno::JsRuntimeOutOfMemoryError` class via `define_error` |
+
+`JsErrorBox` is designed for Deno's async Rust-to-Rust error pipeline where
+the error just needs a string label for serialization. Our architecture needs
+a real Ruby exception class that Ruby code can `rescue` by name. Our typed
+enum variant + magnus `define_error` approach is strictly appropriate for our
+sync Rust→Ruby bridge. No reuse possible, no reuse needed.
+
+The only thing to borrow: the error message tone: `"JS heap out of memory — the
+isolate reached its configured heap limit"` (our planned message) is consistent
+with Deno's `"Worker terminated due to reaching memory limit: JS heap out of memory"`.
+
 ## Three levels of Rust-side defense
 
 ### Level 1: Pre-render heap threshold (low effort, high value)
