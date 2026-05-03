@@ -93,13 +93,24 @@ pub fn call_render(
         };
 
         if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
-            let was_pending = promise.state() == v8::PromiseState::Pending;
-            // SAFETY: isolate_raw is valid (isolate lives for entire fn).
-            let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
-            Some(AsyncHandle {
-                global_promise,
-                was_pending,
-            })
+            match promise.state() {
+                v8::PromiseState::Fulfilled => {
+                    let resolved = promise.result(&try_catch);
+                    let json_str = v8::json::stringify(&try_catch, resolved)
+                        .ok_or_else(|| DenoError::Render(
+                            "Cannot serialize render result to JSON".to_string()
+                        ))?;
+                    return Ok(json_str.to_rust_string_lossy(&try_catch));
+                }
+                v8::PromiseState::Rejected => {
+                    let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
+                    Some(AsyncHandle { global_promise, was_pending: false })
+                }
+                v8::PromiseState::Pending => {
+                    let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
+                    Some(AsyncHandle { global_promise, was_pending: true })
+                }
+            }
         } else {
             let json_str = v8::json::stringify(&try_catch, result).ok_or_else(|| {
                 DenoError::Render("Cannot serialize render result to JSON".to_string())
@@ -135,6 +146,11 @@ pub fn call_render(
         // Timeout check before re-entering scope chain.
         let promise_ref = global_promise.open(isolate);
         if promise_ref.state() == v8::PromiseState::Pending {
+            if oom_triggered.load(Ordering::SeqCst) {
+                return Err(DenoError::OutOfMemory(
+                    "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                ));
+            }
             return Err(DenoError::Render(
                 format!("Async render promise did not settle within {render_timeout_ms}ms timeout"),
             ));
@@ -157,11 +173,22 @@ pub fn call_render(
                 let resolved = promise_ref.result(&context_scope);
                 let json_str =
                     v8::json::stringify(&mut context_scope, resolved).ok_or_else(|| {
-                        DenoError::Render("Cannot serialize render result to JSON".to_string())
+                        if oom_triggered.load(Ordering::SeqCst) {
+                            DenoError::OutOfMemory(
+                                "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                            )
+                        } else {
+                            DenoError::Render("Cannot serialize render result to JSON".to_string())
+                        }
                     })?;
                 Ok(json_str.to_rust_string_lossy(&mut context_scope))
             }
             v8::PromiseState::Rejected => {
+                if oom_triggered.load(Ordering::SeqCst) {
+                    return Err(DenoError::OutOfMemory(
+                        "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                    ));
+                }
                 let rejection = promise_ref.result(&context_scope);
                 let msg = if rejection.is_string() {
                     rejection.to_rust_string_lossy(&mut context_scope)

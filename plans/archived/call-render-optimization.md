@@ -79,71 +79,14 @@ skips the lossy fallback, saving a branch.
 
 ## Implementation steps
 
-### [ ] Step 1: Add OOM check to Phase 2 error exits
+### [x] Step 1: Add OOM check to Phase 2 error exits
 
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
+### [x] Step 2: Flatten resolved-Promise path in Phase 1
 
-Before each `DenoError::Render(...)` return in Phase 2 (lines 138, 160, 175),
-insert:
+### [x] Step 3: Not implemented — `to_rust_string` does not exist on `v8::Local<v8::String>`.
+The method is `to_rust_string_lossy`, which is already correct. No micro-opt available here.
 
-```rust
-if oom_triggered.load(Ordering::SeqCst) {
-    return Err(DenoError::OutOfMemory(
-        "JS heap out of memory — the isolate reached its configured heap limit".into(),
-    ));
-}
-```
-
-### [ ] Step 2: Flatten resolved-Promise path in Phase 1
-
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
-
-Replace the Phase 1 promise branch (lines 95-102) with:
-
-```rust
-if let Ok(promise) = v8::Local::<v8::Promise>::try_from(result) {
-    match promise.state() {
-        v8::PromiseState::Fulfilled => {
-            let resolved = promise.result(&context_scope);
-            let json_str = v8::json::stringify(&mut context_scope, resolved)
-                .ok_or_else(|| DenoError::Render(
-                    "Cannot serialize render result to JSON".to_string()
-                ))?;
-            return Ok(json_str.to_rust_string_lossy(&mut context_scope));
-        }
-        v8::PromiseState::Rejected => {
-            // Fall through to Phase 2 for consistent error extraction
-            let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
-            Some(AsyncHandle { global_promise, was_pending: false })
-        }
-        v8::PromiseState::Pending => {
-            let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
-            Some(AsyncHandle { global_promise, was_pending: true })
-        }
-    }
-}
-```
-
-The `Fulfilled` arm reads the result immediately and returns. The `Rejected` arm
-falls through to Phase 2 (it's an error path, not latency-sensitive). The
-`Pending` arm poll as before.
-
-### [ ] Step 3: Replace `to_rust_string_lossy` with `to_rust_string`
-
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
-
-At line 107:
-
-```rust
-return Ok(json_str.to_rust_string(&try_catch));
-```
-
-Also update Phase 2 line 162:
-```rust
-Ok(json_str.to_rust_string(&mut context_scope))
-```
-
-### [ ] Step 4: Verify
+### [x] Step 4: Verify
 
 `bundle exec rake` passes — compile, cargo test, sample builds, all Ruby suites,
 RuboCop, 100% coverage, RBS valid.
