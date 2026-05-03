@@ -74,9 +74,38 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 **Files:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`, `call_render.rs`
 
-- Add `render_timeout_ms: u64` parameter to `call_render`
-- Pass `self.render_timeout_ms` from `IsolateHandle` at the call site (mod.rs:333)
-- `block_on_render` already holds the value in `self.render_timeout_ms` — no new plumbing needed above `IsolateHandle`
+- Add `render_timeout_ms: u64` field to `WorkerMsg::Render` enum variant (mod.rs:41-45):
+  ```rust
+  Render {
+      bundle_id: String,
+      args_json: String,
+      render_timeout_ms: u64,
+      reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
+  },
+  ```
+- Pass `self.render_timeout_ms` when sending `WorkerMsg::Render` in `block_on_render` (mod.rs:105-110):
+  ```rust
+  self.tx
+      .blocking_send(WorkerMsg::Render {
+          bundle_id: bundle_id.to_string(),
+          args_json: args_json.to_string(),
+          render_timeout_ms: self.render_timeout_ms,
+          reply: reply_tx,
+      })
+  ```
+- Update the worker thread's message handler to pass `render_timeout_ms` to `call_render` (mod.rs:328-335):
+  ```rust
+  WorkerMsg::Render {
+      bundle_id,
+      args_json,
+      render_timeout_ms,
+      reply,
+  } => {
+      let result = call_render(&mut worker, &bundle_id, &args_json, render_timeout_ms);
+      let _ = reply.send(result);
+  }
+  ```
+- Add `render_timeout_ms: u64` parameter to `call_render` function signature (call_render.rs:15-19)
 
 ### [ ] Step 2: Replace MAX_POLLS with deadline-based loop + sleep
 
