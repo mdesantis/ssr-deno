@@ -25,7 +25,7 @@ Add support for environment-variable-based configuration of the 4 native `SSR::D
 
 - **`README.md`** — add "Environment variables" subsection under Configuration.
 - **`CHANGELOG.md`** — add entry under Unreleased.
-- **`docs/ARCHITECTURE.md`** — update the config row for `lib/ssr/deno.rb`.
+- **`docs/architecture.md`** — update the config row for `lib/ssr/deno.rb`.
 
 ## Precedence behavior
 

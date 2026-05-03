@@ -70,7 +70,7 @@ Note: `isolate` is obtained after `check_val` because `execute_script` borrows
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Unrelated |
 | `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | No type changes |
 | `lib/ssr/deno.rb` / `sig/ssr/deno.rbs` | No API changes |
-| `docs/ARCHITECTURE.md` | Implementation detail, not architectural |
+| `docs/architecture.md` | Implementation detail, not architectural |
 
 ## Verification
 

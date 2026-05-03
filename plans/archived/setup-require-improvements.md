@@ -97,9 +97,9 @@ load_bundle → DenoError::BundleLoad("Failed to set up require: ...")
 Ruby Bundle.new → SSR::Deno::JsRuntimeInitializationError (from BundleLoad mapping in lib.rs:72)
 ```
 
-### [x] Step 4: Update `docs/ARCHITECTURE.md`
+### [x] Step 4: Update `docs/architecture.md`
 
-**File:** `docs/ARCHITECTURE.md`, line 120
+**File:** `docs/architecture.md`, line 120
 
 Current: "polls the microtask queue until `globalThis.require` is available via `createRequire`."
 
@@ -112,7 +112,7 @@ Replace with: "polls the microtask queue with a 10ms deadline until `globalThis.
 | File | Change |
 |------|--------|
 | `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Add `Instant` import; replace `for 0..10_000` with deadline-based poll + sleep; add post-poll verification via `execute_script` |
-| `docs/ARCHITECTURE.md` | Update `setup_require` description to mention deadline and error behavior |
+| `docs/architecture.md` | Update `setup_require` description to mention deadline and error behavior |
 
 ## Files NOT Changed
 

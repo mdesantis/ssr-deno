@@ -247,7 +247,7 @@ validation. Coverage must stay at 100% line + 100% branch.
 
 ## Architecture
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the component design,
+See [`docs/architecture.md`](docs/architecture.md) for the component design,
 data flow, and design decisions.
 
 ## Contributing

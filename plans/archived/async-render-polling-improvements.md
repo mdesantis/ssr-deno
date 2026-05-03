@@ -215,7 +215,7 @@ If render is synchronous and returns a resolved promise, the polling loop is ski
 
 ## Post-Implementation Audit (Completed)
 
-✅ **1. Stale docs audit** — `docs/ARCHITECTURE.md`, `README.md`, `plans/*.md` searched: no references to old poll-loop behavior (MAX_POLLS, iteration counts, event-loop polling) remain in non-source files.
+✅ **1. Stale docs audit** — `docs/architecture.md`, `README.md`, `plans/*.md` searched: no references to old poll-loop behavior (MAX_POLLS, iteration counts, event-loop polling) remain in non-source files.
 
 ✅ **2. Sample directories** — No stale path references in non-vendor, non-generated parts (no new samples added, no paths changed).
 

@@ -143,7 +143,7 @@ idempotency guard plan.
 
 | File | Reason |
 |------|--------|
-| `docs/ARCHITECTURE.md` | Already updated in previous commit |
+| `docs/architecture.md` | Already updated in previous commit |
 | `CHANGELOG.md` | No new user-facing change (the deadline+verify behavior is the same; the fix is internal) |
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Unrelated |
 | `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | No type changes |
