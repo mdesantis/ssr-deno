@@ -541,8 +541,8 @@ lib/
 
 ### Phase 3: Production Hardening
 - [x] Add metrics/instrumentation (`ActiveSupport::Notifications`)
-- [ ] Add Content-Security-Policy nonce support — extracted to [`plans/csp-nonce-support.md`](csp-nonce-support.md)
-- [ ] Document deployment considerations — extracted to [`plans/deployment-considerations.md`](deployment-considerations.md)
+- Content-Security-Policy nonce support — extracted to [`plans/csp-nonce-support.md`](csp-nonce-support.md)
+- Deployment considerations — extracted to [`plans/deployment-considerations.md`](deployment-considerations.md)
 
 ### 12. Instrumentation — `ActiveSupport::Notifications`
 
