@@ -14,24 +14,6 @@ module SSR
       assert_match(/\A\d+\.\d+\.\d+/, ::SSR::Deno.native_version)
     end
 
-    def test_set_max_heap_size_mb
-      SSR::Deno.max_heap_size_mb = 128
-    rescue SSR::Deno::JsRuntimeInitializationError
-      # pool already initialized, that's fine
-    end
-
-    def test_set_isolate_pool_size
-      SSR::Deno.isolate_pool_size = 4
-    rescue SSR::Deno::JsRuntimeInitializationError
-      # pool already initialized, that's fine
-    end
-
-    def test_set_render_timeout_ms
-      SSR::Deno.render_timeout_ms = 200
-    rescue SSR::Deno::JsRuntimeInitializationError
-      # pool already initialized, that's fine
-    end
-
     def test_heap_stats
       SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
 

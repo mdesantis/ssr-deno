@@ -27,11 +27,11 @@ end
 # ---------------------------------------------------------------------------
 # Library under test
 # ---------------------------------------------------------------------------
-
+# Config defaults are set in each runner script (tmp/test_runner_*.rb)
+# to allow different suites to use different settings.
+# test:main runner sets isolate_pool_size=1 (default).
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'ssr/deno'
-
-SSR::Deno.isolate_pool_size = 1
 
 # ---------------------------------------------------------------------------
 # Test framework
