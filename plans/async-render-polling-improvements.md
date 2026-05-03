@@ -82,6 +82,11 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
 
+- Add imports at top of file:
+  ```rust
+  use std::thread;
+  use std::time::{Duration, Instant};
+  ```
 - Remove `const MAX_POLLS: u32 = 10_000`
 - Compute deadline: `Instant::now() + Duration::from_millis(render_timeout_ms)`
 - Replace `for poll in 0..MAX_POLLS` with `loop` + deadline check
@@ -93,11 +98,18 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
+- Rename existing `timeout` variable to `hang_timeout` for clarity
 - In `block_on_render` (`mod.rs:101-123`), keep `recv_timeout` but add 100ms buffer:
   ```rust
   let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
   ```
-- Update timeout error message to indicate "hung" (inner deadline handles normal timeout)
+- Update timeout error message to indicate "hung" (distinguish from inner deadline):
+  ```rust
+  Err(DenoError::Render(format!(
+      "Render process hung after {}ms",
+      hang_timeout.as_millis()
+  )))
+  ```
 - Keep `RecvTimeoutError::Disconnected` arm for worker crash detection
 
 ### [ ] Step 4: Update setup_require poll loop (optional improvement)
