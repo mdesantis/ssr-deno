@@ -1,37 +1,28 @@
 # CSP Nonce Support
 
-**Completed.** Documented in [`docs/csp-nonce.md`](docs/csp-nonce.md) — linked from README.
+Nonce passable via `ssr_render` data hash. No library code changes needed — nonce flows through render data to the JS bundle.
 
-No library code changes needed — nonce flows through `ssr_render` data hash to JS bundle.
+## Usage
 
-Original scope extracted from `rails-integration.md` Phase 3.
+Pass the nonce through the data hash in your Rails view:
 
----
-
-## Current capability
-
-Nonce already passable via JS `render` data hash. User controls propagation entirely from JS side:
-
-```ruby
-# Rails view — pass nonce through data hash
+```erb
 <%= ssr_render({ page: "home", nonce: content_security_policy_nonce }) %>
 ```
 
+In your JS entry-server, read the nonce from the parsed data:
+
 ```ts
-// entry-server.ts — JS side reads nonce from data
 function render(argsJson: string): string {
   const { data, nonce } = JSON.parse(argsJson)
   // use nonce for inline <script>/<style> tags
 }
+globalThis.render = render
 ```
 
-No gem-side changes required.
+## Emotion Example
 
----
-
-## Emotion nonce example
-
-Emotion's `createCache` accepts a `nonce` option. JS entry reads nonce from data:
+Emotion's `createCache` accepts a `nonce` option. The JS entry reads nonce from data:
 
 ```ts
 import { renderToString } from 'react-dom/server'
@@ -65,4 +56,6 @@ function render(argsJson: string): string {
 globalThis.render = render
 ```
 
-See `samples/vite-react-mui-emotion-ssr-app/` for working example.
+## Samples
+
+See `samples/vite-react-mui-emotion-ssr-app/` for a working Emotion + nonce setup.

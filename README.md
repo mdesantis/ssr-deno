@@ -146,10 +146,6 @@ bundle exec rake samples:build
 
 ## Rails integration
 
-```erb
-<%= ssr_render({ page: 'home', user: @user }) %>
-```
-
 Configure in `config/initializers/ssr_deno.rb`:
 
 ```ruby
@@ -159,6 +155,50 @@ SSR::Deno.configure do |config|
   config.render_timeout_ms = 1000
 end
 ```
+
+### Basic SSR Rendering
+
+Use `ssr_render` in your view templates. It passes the data hash to the JS render function — keys become the parsed `args` in `globalThis.render`:
+
+```erb
+<%= ssr_render({ page: 'home', user: @user }) %>
+```
+
+### Raw Input
+
+Pass a pre-serialized JSON string instead of a Ruby Hash — `ssr_render` skips `JSON.generate`:
+
+```erb
+<%= ssr_render('{"page":"home"}', raw_input: true) %>
+```
+
+### Raw Output
+
+Skip JSON parsing of the JS return value — get the raw string back:
+
+```erb
+<%= ssr_render({ page: "home" }, raw_output: true) %>
+```
+
+Useful when the bundle returns a structured response like `JSON.stringify({html, css})` — you parse it yourself to inject CSS into `<head>`.
+
+### Raw Input + Output
+
+Both directions — pass a pre-serialized JSON string and get a raw JSON string back:
+
+```erb
+<%= ssr_render('{"page":"home"}', raw_input: true, raw_output: true) %>
+```
+
+### CSP Nonce
+
+Pass nonce via `ssr_render` data hash:
+
+```erb
+<%= ssr_render({ page: "home", nonce: content_security_policy_nonce }) %>
+```
+
+See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
 
 ## Development
 
