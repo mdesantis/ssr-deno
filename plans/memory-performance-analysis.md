@@ -1,63 +1,93 @@
-# SSR Memory & Performance Analysis
+# SSR Memory & Performance Analysis (Multi-Isolate Pool)
 
 > Analysis of the [`ssr-deno`](../lib/ssr/deno.rb:1) gem's SSR architecture when integrated into a Rails application via [`lib/ssr/deno/rails.rb`](../lib/ssr/deno/rails.rb:1).
+> Replaces the [v1 analysis](archived/memory-performance-analysis-v1.md) which assumed a single V8 isolate.
 
 ---
 
 ## 1. Architecture Overview
 
-The SSR pipeline has three layers:
+The SSR pipeline uses an isolate pool with round-robin dispatch:
 
-```
-Ruby (Rails) ──blocking_send──> Rust (tokio channel) ──> Deno Worker Thread (V8 isolate)
+```mermaid
+flowchart LR
+    subgraph "Ruby Process"
+        PT1["Puma Thread 1"]
+        PT2["Puma Thread 2"]
+        PTn["Puma Thread N"]
+    end
+    PT1 --> Pool["IsolatePool\n(round-robin)"]
+    PT2 --> Pool
+    PTn --> Pool
+    Pool --> H0["IsolateHandle 0\nchannel(1)"]
+    Pool --> H1["IsolateHandle 1\nchannel(1)"]
+    Pool --> Hn["IsolateHandle N\nchannel(1)"]
+    H0 --> W0["deno-worker-0\n(tokio + LocalSet + V8)"]
+    H1 --> W1["deno-worker-1\n(tokio + LocalSet + V8)"]
+    Hn --> Wn["deno-worker-N\n(tokio + LocalSet + V8)"]
 ```
 
-- **Up to N V8 isolates** (default: CPU count, max 8) per Ruby process via `IsolatePool`, initialized lazily on first [`Bundle.new`](../lib/ssr/deno/bundle.rb:16)
-- **One background thread** (`deno-worker`) running a tokio runtime with a `LocalSet`
-- **Multiple bundles** coexist in the same V8 context under `globalThis.__ssr_bundles[bundle_id]`
-- **Serialized communication** via `tokio::sync::mpsc::channel(1)` — buffer depth of 1
-- **Ractor-safe** — the Rust extension declares `rb_ext_ractor_safe(true)`, and the tokio channel serializes concurrent requests
+- **IsolatePool** ([`mod.rs:154`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:154)): owns N `IsolateHandle`s, dispatches renders via round-robin (`next_handle`, [`mod.rs:194`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:194)). Initialized lazily on first [`Bundle.new`](../lib/ssr/deno/bundle.rb:16).
+- **Pool size**: auto-detected from CPU count (minus 1 for Ruby), min 1, max 8 ([`resolve_pool_size`](../ext/ssr_deno/crates/ssr_deno_core/src/lib.rs:123)). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
+- **Per-isolate worker** ([`IsolateHandle::spawn`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:70)): dedicated OS thread `deno-worker-{index}` with its own tokio runtime, `LocalSet`, and V8 isolate. No `MainWorker` leaves its thread — no `unsafe` needed.
+- **Per-isolate channel**: `tokio::sync::mpsc::channel(1)` — buffer depth of 1 per handle.
+- **Bundle loading broadcasts** to all isolates ([`IsolatePool::load_bundle`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:213)). Path resolution and code reading are done once; all isolates receive the same code.
+- **Multiple bundles** coexist in each V8 context under `globalThis.__ssr_bundles[bundle_id]`.
+- **Ractor-safe** — the Rust extension declares `rb_ext_ractor_safe(true)`.
+
+### 1.1 Per-Isolate Configuration
+
+Each isolate is created with these parameters, fixed at pool init:
+
+| Parameter | Default | Constraint | Ruby Setter |
+|---|---|---|---|
+| `max_heap_size_mb` | 64 MB | 0 = unlimited, up to ~3.8 TB | `SSR::Deno.max_heap_size_mb=` |
+| `render_timeout_ms` | 500 ms | 100–300,000 ms | `SSR::Deno.render_timeout_ms=` |
+
+Defaults defined at [`ssr_deno_core/src/lib.rs:73-75`](../ext/ssr_deno/crates/ssr_deno_core/src/lib.rs:73).
+
+`max_heap_size_mb` is a **per-isolate** V8 `CreateParams` constraint — it is NOT a total process budget. Each isolate independently gets the configured limit so workloads calibrated for a single isolate don't break when the pool auto-detects more cores.
 
 ---
 
 ## 2. Memory Analysis
 
-### 2.1 V8 Isolate Baseline
+### 2.1 Single Isolate Baseline
 
-The single V8 isolate is the dominant memory cost. Breakdown:
+Memory footprint of one idle V8 isolate with Deno Web API extensions:
 
 | Component | Estimated Size | Notes |
 |---|---|---|
 | V8 heap (empty isolate) | ~4–8 MB | Default young + old space |
 | Deno runtime Web APIs | ~8–12 MB | `fetch`, `setTimeout`, `URL`, `TextEncoder`, etc. |
-| Tokio runtime + thread stack | ~2–4 MB | Default 2 MB thread stack + heap |
-| Rust FFI glue + magnus | ~1–2 MB | Ruby↔Rust bridge |
-| **Subtotal (idle)** | **~15–26 MB** | Per Ruby process |
+| Tokio runtime + thread stack | ~2–4 MB | 2 MB default thread stack + tokio heap |
+| Rust FFI glue + magnus | ~1–2 MB | Ruby↔Rust bridge (shared across isolates) |
+| **Per-isolate idle RSS** | **~15–30 MB** | Actual resident, heap limit is higher (64 MB) |
 
 ### 2.2 Bundle Code in V8 Heap
 
-Each loaded bundle adds JavaScript code to the V8 heap:
+Each loaded bundle adds JavaScript code to the V8 heap. Because `load_bundle` broadcasts to all isolates, the code is compiled independently in each one:
 
 | Component | Estimated Size | Notes |
 |---|---|---|
 | React 19 UMD (minified) | ~130 KB | `react` + `react-dom/server` bundled by Vite |
 | Application code | ~10–100 KB | Components, routes, stores |
 | Vite polyfills/wrappers | ~20–50 KB | Module wrapping, import shims |
-| **Per bundle (parsed+compiled)** | **~2–5 MB** | V8's compiled bytecode + internalized strings |
+| **Per bundle (parsed+compiled)** | **~2–5 MB** | V8 compiled bytecode + internalized strings |
 | **Per bundle (source text)** | **~160–280 KB** | Raw JS source retained for stack traces |
 
-**Key insight:** V8 compiles JS to internal bytecode which is ~10–20x larger than source. A 200 KB bundle becomes ~2–4 MB in V8 heap after parsing.
+**Key insight:** V8 compiles JS to internal bytecode ~10–20x larger than source. A 200 KB bundle becomes ~2–4 MB in V8 heap after parsing. **With N isolates, this cost is N × per-bundle.**
 
 ### 2.3 Multiple Bundles
 
-Multiple bundles share the same V8 isolate. React is bundled independently per Vite build, so:
+Multiple bundles share the same V8 isolate. React is bundled independently per Vite build:
 
-- **2 bundles** (e.g., `:application` + `:admin`): ~4–10 MB additional (React duplicated in each bundle's compiled code)
+- **2 bundles** (e.g., `:application` + `:admin`): ~4–10 MB additional per isolate (React duplicated in each bundle's compiled code)
 - **No deduplication** — Vite bundles are self-contained; React's `renderToString` is compiled twice
 
 ### 2.4 Render-Time Memory
 
-During `renderToString`:
+During `renderToString`, per concurrent render:
 
 | Component | Estimated Size | Notes |
 |---|---|---|
@@ -66,25 +96,37 @@ During `renderToString`:
 | JSON serialization buffer | ~1–10 KB | `JSON.stringify` of result |
 | **Per render (peak)** | **~0.5–5 MB** | Freed by V8 GC after call completes |
 
+When all isolates are rendering concurrently, peak memory = `pool_size × per-render peak` (e.g., 4 isolates × 5 MB = 20 MB transient VDOM across the process).
+
 ### 2.5 Total Memory Budget
 
-| Scenario | Estimated RSS | Notes |
+Memory grows linearly with pool size:
+
+| Scenario | Formula | Example (pool_size=4) |
 |---|---|---|
-| Rails app (baseline, no SSR) | ~100–200 MB | Typical Puma worker |
-| Rails + ssr-deno (idle, 1 bundle) | ~115–226 MB | +15–26 MB V8 isolate |
-| Rails + ssr-deno (idle, 2 bundles) | ~119–236 MB | +4–10 MB for second bundle |
-| Rails + ssr-deno (peak render) | ~120–241 MB | +0.5–5 MB transient VDOM |
-| Rails + ssr-deno (multi-threaded) | ~120–241 MB | Same isolate, serialized access |
+| Rails baseline | — | ~100–200 MB |
+| Idle V8 isolates | pool_size × ~20 MB | ~80 MB |
+| Bundle code (1 bundle) | pool_size × ~3 MB | ~12 MB |
+| Bundle code (2 bundles) | pool_size × ~6 MB | ~24 MB |
+| Peak render (all busy) | pool_size × ~5 MB | ~20 MB (transient) |
+| **Total (1 bundle, idle)** | — | **~180–280 MB** |
+| **Total (1 bundle, peak)** | — | **~200–300 MB** |
+
+**Note:** On a 16-core machine with default `pool_size = CPU-1 = 15` (capped at 8 by `MAX_ISOLATES`), the idle SSR overhead alone is ~160 MB for 8 isolates. On a typical 4-core machine, pool_size = 3 → ~60 MB idle overhead. The `max_heap_size_mb=64` per isolate is a *cap*, not the actual RSS — idle isolates use less.
 
 ### 2.6 Memory Concerns
 
-1. **No per-request isolation** — All renders share the same V8 context. A memory-leaking component (e.g., accumulating event listeners, growing caches) affects all subsequent renders until GC runs.
+- **Pool size × everything.** The dominant concern: total memory = `pool_size × (isolate_idle + bundles_compiled)`. The auto-detect default (`CPU-1`) can produce large pools on high-core machines. Override `isolate_pool_size` when memory is tight.
 
-2. **Bundle code is never unloaded** — Once loaded via [`load_bundle_in_worker`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:230), the code stays in V8 heap for the process lifetime. Only `reload` replaces it.
+- **No per-request isolation within an isolate.** All renders sharing a given isolate share the same V8 context. A memory-leaking component (accumulating event listeners, growing caches) affects all renders targeting that isolate until V8 GC runs. Other isolates are unaffected.
 
-3. **`Box::leak` for script names** — At [`deno_runtime_wrapper/mod.rs:131`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:131), each bundle load leaks the script filename string. At ~50 bytes per leak × bundle reloads in development, this is negligible (~5 KB after 100 reloads).
+- **Bundle code is never unloaded.** Once loaded via [`load_bundle_in_worker`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:391), the code stays in V8 heap for the process lifetime — across all isolates. Only `reload` replaces it.
 
-4. **V8 GC pressure** — V8's GC runs independently of Ruby's GC. Under high request throughput, V8 may accumulate garbage between renders, causing periodic latency spikes.
+- **`Box::leak` for script names.** At [`mod.rs:245`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:245), each bundle load leaks the script filename string once (shared by all isolates). At ~50 bytes per leak × bundle reloads in development, this is negligible (~5 KB after 100 reloads).
+
+- **V8 GC pressure.** V8's GC runs independently per isolate. A GC pause in one isolate does NOT block renders in other isolates. However, under high throughput on a single isolate, V8 may accumulate garbage between renders, causing periodic latency spikes.
+
+- **max_heap_size_mb is per-isolate, not total.** Setting `max_heap_size_mb = 64` with `pool_size = 8` means V8 may allocate up to 8 × 64 = 512 MB combined. Users with tight memory budgets should reduce the per-isolate limit or the pool size.
 
 ---
 
@@ -92,35 +134,29 @@ During `renderToString`:
 
 ### 3.1 Request Lifecycle
 
-```
-Request arrives
-  │
-  ▼
-Rails controller action
-  │
-  ▼
-View template calls ssr_render(data)
-  │
-  ▼
-Bundle#render:
-  ├─ [if auto_reload] stat() syscall (~1 µs)
-  ├─ JSON.generate(data) (~1–10 µs for typical data)
-  ├─ instrument() block
-  │   └─ SSR::Deno.native_render(bundle_id, json_input)
-  │       ├─ blocking_send to tokio channel (~1 µs)
-  │       ├─ Worker thread deserializes message
-  │       ├─ V8: lookup bundle + render function
-  │       ├─ V8: call render(args_json)
-  │       │   ├─ JSON.parse(args_json) in JS
-  │       │   ├─ renderToString(React element)
-  │       │   └─ return HTML string
-  │       ├─ V8: JSON.stringify(result)
-  │       ├─ Worker thread sends reply via oneshot channel
-  │       └─ blocking_recv receives result
-  └─ JSON.parse(result) (~1–10 µs)
-  │
-  ▼
-HTML returned to view, rendered in layout
+```mermaid
+sequenceDiagram
+    participant Ruby as Ruby Thread (Puma)
+    participant Pool as IsolatePool (round-robin)
+    participant Handle as IsolateHandle
+    participant Worker as deno-worker-N (tokio + V8)
+
+    Ruby->>Ruby: JSON.generate(data) [~1–10 µs]
+    Ruby->>Pool: native_render(bundle_id, json)
+    Pool->>Pool: next_handle() — round-robin pick
+    Pool->>Handle: block_on_render()
+    Handle->>Handle: blocking_send to channel [~1 µs]
+    Handle->>Worker: WorkerMsg::Render
+    Worker->>Worker: V8 lookup bundle + render function
+    Worker->>Worker: V8 call render(args_json)
+    Worker->>Worker:   JSON.parse(args_json) [~1–5 µs]
+    Worker->>Worker:   renderToString(React) [~5–50 ms]
+    Worker->>Worker:   JSON.stringify(result) [~1–5 µs]
+    Worker->>Handle: reply via oneshot channel
+    Handle->>Handle: recv_timeout [hang_timeout]
+    Handle-->>Ruby: Result<String, DenoError>
+    Ruby->>Ruby: JSON.parse(result) [~1–10 µs]
+    Ruby->>Ruby: HTML returned to view
 ```
 
 ### 3.2 Latency Breakdown
@@ -128,33 +164,52 @@ HTML returned to view, rendered in layout
 | Phase | Duration | Notes |
 |---|---|---|
 | **Ruby serialization** (JSON.generate) | ~1–10 µs | Negligible |
-| **Channel send** (blocking_send) | ~1 µs | Lock-free, fast path |
+| **Round-robin select** (next_handle) | ~1 µs | Atomic increment + modulo |
+| **Channel send** (blocking_send) | ~1 µs | If channel not full; otherwise blocks |
 | **V8 function lookup** | ~1–5 µs | Property access on `__ssr_bundles` |
 | **JS JSON.parse** | ~1–5 µs | Input data deserialization |
 | **React renderToString** | **~5–50 ms** | **Dominant cost** — proportional to component tree |
 | **V8 JSON.stringify** | ~1–5 µs | Output serialization |
-| **Channel receive** (blocking_recv) | ~1 µs | Oneshot channel, fast path |
+| **Channel receive** (recv_timeout) | ~1 µs | Oneshot channel, fast path when reply ready |
 | **Ruby JSON.parse** | ~1–10 µs | Result deserialization |
 | **Total (typical)** | **~5–50 ms** | Per request |
 
-### 3.3 Throughput Analysis
+Latency is unchanged from the single-isolate model — the round-robin dispatch adds negligible overhead.
 
-The architecture has a **critical bottleneck**: a single V8 isolate with a channel buffer of 1.
+### 3.3 Throughput with N Isolates
 
-```
-Request A ──blocking_send──> [channel] ──> V8 isolate ──> reply A
-Request B ──blocking_send──> [channel] ──> V8 isolate ──> reply B
-                              ↑
-                         Queue here
+The pool dispatches concurrently to N isolates via round-robin. Throughput scales linearly with pool size up to the pool capacity:
+
+```mermaid
+flowchart LR
+    subgraph "Puma Threads"
+        T1["Thread 1"]
+        T2["Thread 2"]
+        T3["Thread 3"]
+        T4["Thread 4"]
+    end
+    subgraph "IsolatePool (size=2)"
+        I0["Isolate 0 (busy)"]
+        I1["Isolate 1 (busy)"]
+    end
+    T1 --> I0
+    T2 --> I1
+    T3 --> I0
+    T4 --> I1
+    I0 -.-> I0
+    I1 -.-> I1
+    T3 -.->|"waits (channel full)"| I0
+    T4 -.->|"waits (channel full)"| I1
 ```
 
 | Concurrency Model | Max Throughput | Notes |
 |---|---|---|
-| Single-threaded (1 Puma thread) | ~20–200 req/s | Limited by `renderToString` latency |
-| Multi-threaded (2+ Puma threads) | ~20–200 req/s | **Same limit** — all threads serialize on the single V8 isolate |
-| Multi-process (2+ Puma workers) | ~40–400 req/s | Each worker has its own V8 isolate |
+| 1 Puma thread (1 isolate) | ~20–200 req/s | Limited by `renderToString` latency |
+| N Puma threads, pool_size=N | **N × 20–200 req/s** | Parallel up to pool capacity |
+| N Puma threads, pool_size < N | pool_size × 20–200 req/s | Threads beyond pool_size serialize |
+| Multi-process (Puma workers) | workers × pool_size × 20–200 req/s | Each worker has its own pool |
 
-**Key insight:** Adding Puma threads does NOT increase SSR throughput. The single V8 isolate is the bottleneck. To scale SSR throughput, you must scale Puma **workers** (processes), not threads.
+**Key insight:** Puma threads CAN benefit from parallelism — up to `pool_size` concurrent renders. Threads beyond `pool_size` will block on `blocking_send` (see §5.2).
 
 ### 3.4 React renderToString Performance
 
@@ -167,177 +222,195 @@ Request B ──blocking_send──> [channel] ──> V8 isolate ──> reply 
 | Complex page (200+ components) | ~40–100 ms |
 | Heavy page (500+ components, deeply nested) | ~100–300 ms |
 
-### 3.5 Thread Contention
+### 3.5 Thread Contention & Isolate Saturation
 
-When multiple Puma threads hit SSR simultaneously:
+With `pool_size = 2` and 4 Puma threads hitting SSR simultaneously:
 
-1. **Thread A** calls `native_render` → `blocking_send` → worker picks it up
-2. **Thread A** blocks on `blocking_recv` (releases GVL? **No** — magnus holds the GVL during FFI calls)
-3. **Thread B** calls `native_render` → `blocking_send` → channel is full (buffer=1) → **Thread B blocks** on `blocking_send`
-4. Worker finishes Thread A's render → sends reply → Thread A unblocks
-5. Channel has space → Thread B's `blocking_send` completes → worker picks it up
+1. **Thread A** → round-robin picks isolate 0 → `blocking_send` → channel free → message sent → blocks on `recv_timeout`
+2. **Thread B** → round-robin picks isolate 1 → `blocking_send` → channel free → message sent → blocks on `recv_timeout`
+3. **Thread C** → round-robin picks isolate 0 → `blocking_send` → **channel full** → **Thread C blocks** on `blocking_send` (no timeout)
+4. **Thread D** → round-robin picks isolate 1 → `blocking_send` → **channel full** → **Thread D blocks** on `blocking_send` (no timeout)
+5. Isolate 0 finishes → Thread A unblocks → channel frees → Thread C's `blocking_send` succeeds
+6. Isolate 1 finishes → Thread B unblocks → channel frees → Thread D's `blocking_send` succeeds
 
-**Result:** Threads are serialized at the channel level. No parallelism, but also no data corruption.
+**Key insight:** `blocking_send` on the channel has NO timeout. If all isolates are saturated, additional callers block indefinitely until an isolate frees up — the `render_timeout_ms` only applies *after* the message reaches the worker.
 
 ### 3.6 Ractor Performance
 
-Ractors provide true parallelism (separate GVL), but they still serialize on the single V8 isolate:
-
-```
-Ractor 1 ──> native_render ──blocking_send──> [channel] ──> V8
-Ractor 2 ──> native_render ──blocking_send──> [channel] (full) ──> blocked
-```
-
-Same bottleneck. Ractors don't help SSR throughput unless we have multiple V8 isolates.
+Ractors provide true parallelism (separate GVL) but hit the same `IsolatePool` bottleneck. With `pool_size = M` and `K` ractors, throughput is capped at `M × 1/render_time`. Ractors don't add benefit beyond the pool size.
 
 ---
 
 ## 4. Rough Calculations
 
-### 4.1 Scenario: Typical Rails E-Commerce App
+### 4.1 Scenario: Typical Rails E-Commerce (Medium Traffic)
 
 **Assumptions:**
-- 4 Puma workers (processes)
-- 3 threads per worker
-- 1 SSR bundle (`:application`)
-- Medium page (~50 components)
-- `renderToString` takes ~25 ms
+- 4 Puma workers, 3 threads each
+- 1 SSR bundle (`:application`), ~50 components, 25 ms render
 - 50% of requests use SSR, 50% are API/static
+- 4-core machine → `pool_size = 3` (auto-detect: 4−1)
 
 | Metric | Per Worker | Total (4 workers) |
 |---|---|---|
-| V8 isolate memory | ~20 MB | ~80 MB |
-| Bundle code in V8 heap | ~3 MB | ~12 MB |
-| **SSR memory overhead** | **~23 MB** | **~92 MB** |
+| V8 isolates (3, idle ~20 MB each) | ~60 MB | ~240 MB |
+| Bundle code (3 × 3 MB) | ~9 MB | ~36 MB |
+| **SSR memory overhead** | **~69 MB** | **~276 MB** |
 | Rails baseline RSS | ~150 MB | ~600 MB |
-| **Total RSS with SSR** | **~173 MB** | **~692 MB** |
-| SSR throughput (single worker) | ~40 req/s | ~160 req/s |
+| **Total RSS with SSR** | **~219 MB** | **~876 MB** |
+| SSR throughput (3 isolates × 40 req/s) | ~120 req/s | ~480 req/s |
 | SSR P95 latency | ~35 ms | ~35 ms |
 
-### 4.2 Scenario: High-Traffic SaaS App
+For comparison, `pool_size = 1` (explicit override) would give: ~23 MB overhead, ~40 req/s per worker.
+
+### 4.2 Scenario: High-Traffic SaaS
 
 **Assumptions:**
-- 8 Puma workers
-- 5 threads per worker
-- 2 SSR bundles (`:application`, `:admin`)
-- Simple page (~15 components)
-- `renderToString` takes ~10 ms
+- 8 Puma workers, 5 threads each
+- 2 SSR bundles (`:application`, `:admin`), ~15 components, 10 ms render
 - 70% of requests use SSR
+- 8-core machine → `pool_size = 7` (capped at MAX_ISOLATES=8, auto: 8−1)
 
 | Metric | Per Worker | Total (8 workers) |
 |---|---|---|
-| V8 isolate memory | ~20 MB | ~160 MB |
-| Bundle code (2 bundles) | ~6 MB | ~48 MB |
-| **SSR memory overhead** | **~26 MB** | **~208 MB** |
+| V8 isolates (7, idle ~20 MB each) | ~140 MB | ~1.1 GB |
+| Bundle code (7 × 6 MB for 2 bundles) | ~42 MB | ~336 MB |
+| **SSR memory overhead** | **~182 MB** | **~1.4 GB** |
 | Rails baseline RSS | ~200 MB | ~1.6 GB |
-| **Total RSS with SSR** | **~226 MB** | **~1.8 GB** |
-| SSR throughput (single worker) | ~100 req/s | ~800 req/s |
+| **Total RSS with SSR** | **~382 MB** | **~3.0 GB** |
+| SSR throughput (7 isolates × 100 req/s) | ~700 req/s | ~5,600 req/s |
 | SSR P95 latency | ~15 ms | ~15 ms |
+
+For a more memory-efficient deployment, `pool_size = 2` would give: ~52 MB overhead, ~200 req/s per worker, ~1.6 GB total.
 
 ### 4.3 Scenario: Content Site (Blog/Docs)
 
 **Assumptions:**
-- 2 Puma workers
-- 2 threads per worker
-- 1 SSR bundle
-- Complex page (~100 components, MDX content)
-- `renderToString` takes ~40 ms
+- 2 Puma workers, 2 threads each
+- 1 SSR bundle, ~100 components (MDX), 40 ms render
 - 90% of requests use SSR
+- 2-core machine → `pool_size = 1` (auto: 2−1)
 
 | Metric | Per Worker | Total (2 workers) |
 |---|---|---|
-| V8 isolate memory | ~20 MB | ~40 MB |
-| Bundle code | ~4 MB | ~8 MB |
+| V8 isolate (1, idle ~20 MB) | ~20 MB | ~40 MB |
+| Bundle code (1 × 4 MB) | ~4 MB | ~8 MB |
 | **SSR memory overhead** | **~24 MB** | **~48 MB** |
 | Rails baseline RSS | ~120 MB | ~240 MB |
 | **Total RSS with SSR** | **~144 MB** | **~288 MB** |
-| SSR throughput (single worker) | ~25 req/s | ~50 req/s |
+| SSR throughput (1 isolate × 25 req/s) | ~25 req/s | ~50 req/s |
 | SSR P95 latency | ~55 ms | ~55 ms |
+
+Same as the single-isolate baseline — a 2-core machine auto-detects `pool_size = 1`.
 
 ### 4.4 Cost Comparison: SSR vs CSR
 
 | Factor | SSR (ssr-deno) | CSR (no SSR) |
 |---|---|---|
-| Server memory (4 workers) | +92 MB | 0 |
+| Server memory (4 workers, pool=3) | +276 MB | 0 |
 | Server CPU per request | +25 ms V8 work | 0 |
 | Client TTFB | ~35 ms (server rendered) | ~200 ms (CDN static) |
 | Client FCP | ~50 ms (pre-rendered HTML) | ~500 ms (JS must load + render) |
 | Client TTI | ~500 ms (hydration) | ~800 ms (full client render) |
-| SEO | ✅ Full HTML | ⚠️ Requires crawler JS support |
-| Social preview | ✅ Full HTML | ⚠️ Requires pre-rendering service |
+| SEO | Full HTML | Requires crawler JS support |
+| Social preview | Full HTML | Requires pre-rendering service |
 
 ---
 
 ## 5. Bottlenecks & Risks
 
-### 5.1 Single V8 Isolate (Primary Bottleneck)
+### 5.1 Isolate Saturation
+
+When the number of concurrent SSR requests exceeds `pool_size`, additional callers block on `blocking_send` (channel full, no timeout). This is the limiting factor for throughput per process.
 
 ```mermaid
 flowchart LR
-    PT1["Puma Thread 1"] --> Channel["tokio::mpsc channel(1)"]
-    PT2["Puma Thread 2"] --> Channel
-    PT3["Puma Thread 3"] --> Channel
-    Channel --> V8["V8 Isolate (single)"]
+    PT1["Puma Thread 1"] --> I0["Isolate 0 (1 render)"]
+    PT2["Puma Thread 2"] --> I1["Isolate 1 (1 render)"]
+    PT3["Puma Thread 3"] -.->|"blocking_send — channel full"| I0
+    PT4["Puma Thread 4"] -.->|"blocking_send — channel full"| I1
 ```
 
-**Impact:** SSR throughput is capped at `1 / renderToString_time` per Puma worker. For a 25 ms render, max ~40 req/s per worker regardless of thread count.
+**Impact:** SSR throughput per process is capped at `pool_size / render_time`. For a 25 ms render and pool_size=4, max ~160 req/s. Threads beyond pool_size become a queue, not a parallelism resource.
 
 **Mitigation options:**
-- Scale Puma workers (processes) — each gets its own V8 isolate
-- Use a dedicated SSR process pool (separate from Puma)
-- Consider multiple V8 isolates per process (future work)
+- Increase `isolate_pool_size` (up to 8) for more parallelism within each process — at the cost of memory
+- Scale Puma workers (processes) — each gets its own pool
+- Match `Puma threads` to `pool_size` — extra threads beyond pool_size only add contention without throughput benefit
 
-### 5.2 No Request Timeout
+### 5.2 `blocking_send` Has No Timeout
 
-If a `renderToString` hangs (e.g., infinite loop in component), the V8 isolate is blocked indefinitely. All subsequent SSR requests queue up and eventually time out at the Rack/HTTP layer.
+The `IsolateHandle::block_on_render` method ([`mod.rs:102`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:102)) calls `self.tx.blocking_send()` at line 106 with NO timeout. If the isolate's channel is full (busy render), the calling Ruby thread blocks there indefinitely.
 
-**Mitigation:** Added configurable timeout on the reply channel receiver side in [`block_on_render`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:154) using `std::sync::mpsc::Receiver::recv_timeout`. Configured via `SSR::Deno.render_timeout_ms=` (default 500ms).
-
-### 5.3 V8 GC Pause
-
-V8's garbage collector runs on the same thread as renders. A full GC (mark-sweep) can pause for 10–100 ms, blocking all SSR requests during that window.
-
-**Mitigation:** Monitor V8 heap statistics. If GC pauses become problematic, consider:
-- Isolate-per-render (expensive, high memory)
-- Explicit GC triggering after large renders
-- Heap size limits via V8 `CreateParams::max_old_generation_size_in_bytes` — implemented via `SSR::Deno.max_heap_size_mb=` (default 64 MB)
-
-### 5.4 Bundle Size Bloat
-
-Each Vite SSR bundle includes its own copy of React. With multiple bundles, React is duplicated in V8 heap:
+The `render_timeout_ms` only applies to the reply channel (`recv_timeout` at line 115 with `hang_timeout = render_timeout_ms + 100ms`), which runs *after* the message has been sent and the worker has accepted it. The effective wall-clock blocking time can be:
 
 ```
-Bundle A: [React 19 + App A code]  →  ~3 MB in V8 heap
-Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
-                                    ─────────
-                                    ~6 MB total (React counted twice)
+total_block = wait_for_free_channel (unbounded) + max(render_timeout_ms, actual_render_time)
 ```
 
-**Mitigation:** If multiple bundles share the same framework, consider a shared runtime bundle that loads first, then app-specific bundles. This requires Vite federation or manual code splitting.
+**Impact:** A hung render that blocks an isolate for longer than `render_timeout_ms` will be caught by the hang timeout. But saturation (all isolates legitimately busy) causes unbounded blocking on `blocking_send` with no timeout.
+
+**Mitigation options (future):**
+- Add a `try_send` + backoff loop with a configurable overall timeout wrapping `blocking_send`
+- Use `tokio::sync::mpsc::Sender::try_send` with a bounded retry + timeout
+
+### 5.3 V8 GC Pauses
+
+V8's garbage collector runs on each isolate's thread independently. A full GC (mark-sweep) can pause for 10–100 ms, blocking renders only on that specific isolate.
+
+**Multiple isolates mitigate this:** a GC pause in isolate 0 does not block renders dispatched to isolates 1–N. In the single-isolate model, a GC pause blocked all SSR requests.
+
+**Heap stats limitation:** `SSR::Deno.heap_stats` ([`mod.rs:206`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:206)) uses `next_handle()` to query a single isolate via round-robin — it does NOT aggregate stats across all isolates. The `heap_stats_sample_rate` (default: 100 renders) may miss GC pressure on isolates that aren't sampled. For comprehensive monitoring, sample at a higher rate or query specific isolates directly (future work).
+
+**Additional mitigation:** V8 heap size limits via `max_heap_size_mb=` (default 64 MB per isolate) constrain heap growth and reduce GC pause duration.
+
+### 5.4 Bundle Size Bloat (per-Isolate)
+
+Each Vite SSR bundle includes its own copy of React. With multiple bundles AND multiple isolates, React is duplicated `bundles × isolates` times in V8 heap:
+
+```
+2 bundles, 4 isolates = 8 copies of React compiled bytecode
+Bundle A → {React + App A} × 4 isolates → ~12 MB
+Bundle B → {React + App B} × 4 isolates → ~12 MB
+                                          ─────────
+                                          ~24 MB total
+```
+
+**Mitigation:** If multiple bundles share the same framework, consider a shared runtime bundle that loads first, then app-specific bundles (requires Vite federation or code splitting). Alternatively, reduce `isolate_pool_size` to control the multiplier.
 
 ---
 
 ## 6. Recommendations
 
-### 6.1 Immediate (Low Effort)
+### 6.1 Implemented (Previously "Immediate")
 
-1. ✅ **Add a render timeout** (default 500ms, configurable) — implemented via `SSR::Deno.render_timeout_ms=`.
+✅ **Render timeout** — `SSR::Deno.render_timeout_ms=` (default 500ms). Configurable via `SSR_DENO_RENDER_TIMEOUT_MS`.
 
-2. ✅ **Document the threading model** in README — see the [Configuration section](../README.md#configuration).
+✅ **Threading model documented** — [Configuration section](../README.md#configuration).
 
-3. ✅ **Add V8 heap metrics** to `ActiveSupport::Notifications` — implemented via `SSR::Deno.heap_stats` (13 counters) + sampled `heap_stats.ssr_deno` event. Configurable via `config.ssr_deno.heap_stats_sample_rate` (default 100).
+✅ **V8 heap metrics** — `SSR::Deno.heap_stats` (13 counters) + sampled `heap_stats.ssr_deno` event. Configurable via `config.ssr_deno.heap_stats_sample_rate` (default 100). Note: samples a single isolate per query via round-robin (see §5.3).
 
-4. ✅ **Add a V8 heap size limit** — implemented via `SSR::Deno.max_heap_size_mb=` (default 64 MB). Passes `max_old_generation_size_in_bytes` via the Ruby → Rust bridge, capping V8 heap growth and preventing runaway memory from leaky components.
+✅ **V8 heap size limit** — `SSR::Deno.max_heap_size_mb=` (default 64 MB per isolate). Per-isolate `max_old_generation_size_in_bytes` cap.
+
+✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: auto-detect, max 8). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
 
 ### 6.2 Medium Term
 
-5. **Consider a dedicated SSR process pool** — a separate pool of Ruby processes (or a sidecar) that handle only SSR, fronted by a load balancer. This isolates SSR failures from the main Rails app. See [`plans/archived/ssr-process-pool.md`](ssr-process-pool.md).
+- **Add `blocking_send` timeout.** The current `block_on_render` has no timeout on the channel send path. A hung render or saturated pool can block a Ruby thread indefinitely before the `render_timeout_ms` even starts. Add a configurable overall dispatch timeout wrapping both `blocking_send` and `recv_timeout`.
 
-6. **Evaluate streaming SSR** (React 19's `renderToPipeableStream`) — reduces TTFB by sending HTML in chunks. Requires `ActionController::Live` integration. See [`plans/streaming-ssr.md`](streaming-ssr.md).
+- **Aggregate heap stats across all isolates.** `SSR::Deno.heap_stats` currently queries a single isolate (round-robin). Add an `SSR::Deno.heap_stats_all` that aggregates counters across all isolates, or report per-isolate stats with a label.
+
+- **Evaluate streaming SSR** (React 19's `renderToPipeableStream`). Reduces TTFB by sending HTML in chunks. Requires `ActionController::Live` integration. See [`plans/streaming-ssr.md`](streaming-ssr.md).
+
+- **Evaluate dedicated SSR process pool.** Separate Ruby processes (or sidecar) handling only SSR, fronted by a load balancer. Isolates SSR failures from the main Rails app. The in-process `IsolatePool` already provides parallelism; a process pool would add fault isolation. See [`plans/archived/ssr-process-pool.md`](archived/ssr-process-pool.md).
 
 ### 6.3 Long Term
 
-7. ✅ **Multiple V8 isolates** — Implemented. See [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (`IsolatePool`). Each render is dispatched to the next available isolate via round-robin. Memory and throughput both scale linearly with pool size.
+- **Pool size tuning guide.** Document recommended `pool_size` based on thread count, memory budget, and expected concurrency. The auto-detect default (`CPU-1`) is aggressive on high-core machines.
+
+- **Per-isolate heap monitoring.** Expose per-isolate heap stats with an isolate index label so operators can detect uneven load or isolate-specific memory leaks.
+
+- **Consider a shared framework bundle** (Vite federation or manual code splitting) to avoid compiling React N × M times (N bundles, M isolates).
 
 ---
 
@@ -345,10 +418,12 @@ Bundle B: [React 19 + App B code]  →  ~3 MB in V8 heap
 
 | Aspect | Verdict |
 |---|---|
-| **Memory overhead** | ~20–26 MB per Puma worker — acceptable for most Rails deployments |
-| **Per-render latency** | ~5–50 ms — competitive with Node.js SSR |
-| **Throughput bottleneck** | Single V8 isolate caps at ~20–200 req/s per worker |
-| **Scaling strategy** | Scale Puma workers (processes), not threads |
-| **Risk: hung renders** | No timeout — worker blocks indefinitely |
-| **Risk: GC pauses** | V8 GC can cause latency spikes under high throughput |
-| **Risk: memory leaks** | Shared V8 context means leaky components affect all renders |
+| **Memory overhead** | pool_size × ~20–30 MB per Puma worker. Default auto-detect can be aggressive (e.g., ~160 MB on 8 core) — tune `isolate_pool_size` for your budget |
+| **Per-render latency** | ~5–50 ms — competitive with Node.js SSR. Round-robin dispatch adds negligible overhead |
+| **Throughput** | pool_size × 20–200 req/s per worker. Puma threads CAN benefit up to pool_size |
+| **Scaling strategy** | Scale Puma threads up to pool_size for parallelism; scale workers (processes) for linear throughput |
+| **Risk: isolate saturation** | When threads > pool_size, callers block on `blocking_send` with no timeout |
+| **Risk: `blocking_send` timeout gap** | No timeout on channel send — hung/saturated isolates block callers before `render_timeout_ms` even starts |
+| **Risk: GC pauses** | Mitigated by multiple isolates — GC in one isolate doesn't block others |
+| **Risk: heap stats blind spots** | `heap_stats` samples one isolate at a time — GC pressure in other isolates may go undetected |
+| **Risk: memory leaks** | A leaky component affects all renders on its isolate; other isolates are unaffected |

@@ -1,6 +1,6 @@
 # Streaming SSR
 
-> **Source:** Recommendation #5 from [`memory-performance-analysis.md`](memory-performance-analysis.md)
+> **Source:** `Evaluate streaming SSR` from [`memory-performance-analysis.md`](memory-performance-analysis.md) §6.2
 > **Cross-refs:** [`architecture.md`](architecture.md) (data flow: Ruby → JSON → V8 → HTML), [`helper.rb`](../lib/ssr/deno/rails/helper.rb) (current `ssr_render` returns complete string), [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (blocking render call)
 
 ---

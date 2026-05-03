@@ -1,7 +1,7 @@
 # SSR Process Pool
 
-> **Source:** Recommendation #4 from [`memory-performance-analysis.md`](memory-performance-analysis.md)
-> **Cross-refs:** [`architecture.md`](architecture.md) (isolate pool), [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (isolate pool — alternative approach, already implemented), [`memory-performance-analysis.md`](memory-performance-analysis.md) (scaling rules)
+> **Source:** `Dedicated SSR process pool` from [`memory-performance-analysis.md`](../memory-performance-analysis.md) §6.2
+> **Cross-refs:** [`architecture.md`](architecture.md) (isolate pool), [`deno_runtime_wrapper/mod.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs) (isolate pool — alternative approach, already implemented), [`memory-performance-analysis.md`](../memory-performance-analysis.md) (scaling rules)
 
 ---
 

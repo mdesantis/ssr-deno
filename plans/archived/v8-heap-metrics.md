@@ -1,6 +1,6 @@
 # V8 Heap Metrics Instrumentation
 
-> **Source:** Recommendation #3 from [`memory-performance-analysis.md`](memory-performance-analysis.md)
+> **Source:** `V8 heap metrics` from [`memory-performance-analysis.md`](../memory-performance-analysis.md) §6.1
 > **Cross-refs:** [`architecture.md`](../plans/architecture.md) (instrumentation via `ActiveSupport::Notifications`), [`instrumenter.rb`](../lib/ssr/deno/instrumenter.rb), [`railtie.rb`](../lib/ssr/deno/rails/railtie.rb) (existing event subscribers)
 
 ---
