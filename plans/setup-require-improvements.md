@@ -68,7 +68,7 @@ This ensures that if the import fails, the error is reported immediately at bund
 |------|--------|
 | `lib/ssr/deno.rb` | No API changes |
 | `ext/ssr_deno/src/lib.rs` | No core type changes |
-| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Already fixed separately (see `async-render-polling-improvements.md`) |
+| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Already fixed (see `archived/async-render-polling-improvements.md`) |
 
 ---
 
