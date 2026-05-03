@@ -2,55 +2,106 @@
 
 ## Problem
 
-The `setup_require` function (`ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:370`) has two issues:
+The `setup_require` function in `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` has two issues:
 
-1. **Hard-coded 10,000 iteration poll loop** — Same issue that was fixed in `call_render`. Runs at bundle-load time (not render time), but still uses an arbitrary iteration limit instead of a time-based deadline.
+1. **Hard-coded 10,000 iteration poll loop** — Same issue that was fixed in `call_render`. Runs at bundle-load time, but still uses an arbitrary iteration limit instead of a time-based deadline.
 
-2. **Silent failure** — After the poll loop, it returns `Ok(())` regardless of whether the `createRequire` promise actually resolved. If the import fails, `globalThis.require` is undefined and bundles fail later with confusing errors.
+2. **Silent failure** — After the poll loop, it returns `Ok(())` regardless of whether the `createRequire` promise actually resolved. If the import fails, `globalThis.require` stays undefined and subsequent bundle `require()` calls fail with confusing errors instead of a clear "could not set up require" message.
+
+> **Note on failure likelihood:** `import('node:module')` is a Deno built-in polyfill, so it should never fail in a correctly built worker. The check is defense-in-depth — guarding against future Deno version changes that might remove `node:module` or bugs in node service wiring.
+
+---
+
+## Design Decisions
+
+### Deadline: hard-coded 1 second (not configurable)
+
+`call_render` uses the configurable `render_timeout_ms` because render time varies by bundle complexity. `setup_require` runs the same microtask every time (`import('node:module')` + `createRequire`) — it resolves in under 1ms on a warm isolate. 1 second is overkill but harmless, and adding a new config field for something that never hits the timeout is unnecessary complexity.
+
+### No in-loop promise-state check
+
+Unlike `call_render` (which checks the promise state each iteration via `v8::Global<v8::Promise>`), `setup_require` stores the promise on the JS side (`globalThis.__ssr_require_promise`) and the poll loop runs with no V8 scope chain active. Entering a scope chain inside the loop would be more expensive than the sleep itself. Instead, we poll for the full deadline with `std::thread::sleep(100µs)` between checkpoints, then verify once at the end via `worker.execute_script()`. The sleep keeps CPU usage low during the short window.
+
+### Return type kept as `Result<(), String>`
+
+The function is called by `load_bundle_in_worker`, which also returns `Result<(), String>`. Changing the return type to `DenoError` would ripple into that caller unnecessarily. The error string from `worker.execute_script()` (for the post-loop verification check) already carries the JS error message, and the existing `load_bundle_in_worker` → `load_bundle` → `DenoError::BundleLoad` chain wraps it correctly.
 
 ---
 
 ## Implementation Steps
 
-### [ ] Step 1: Add deadline-based poll loop to setup_require
+### [ ] Step 1: Add `Instant` import
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
-- Apply a hard-coded deadline (e.g., 1 second) + sleep pattern for consistency with the `call_render` fix
-- Replace `for _ in 0..10_000` with a time-based loop:
-  ```rust
-  let deadline = Instant::now() + Duration::from_secs(1);
-  while Instant::now() < deadline {
-      isolate.perform_microtask_checkpoint();
-      // check if require is defined
-      // break if settled
-      std::thread::sleep(Duration::from_micros(100));
-  }
-  ```
-
-### [ ] Step 2: Add promise state check after poll loop
-
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
-
-After the poll loop, check if the `createRequire` promise actually resolved:
-
+Change line 4 from:
 ```rust
-// After the poll loop, check if the require import actually resolved
-let check = r#"
-    if (globalThis.require === undefined) {
-        throw new Error("createRequire failed - globalThis.require is undefined");
-    }
-    globalThis.require;
-"#;
-match eval_js(isolate, check) {
-    Ok(_) => Ok(()),
-    Err(e) => Err(DenoError::BundleLoad(format!(
-        "setup_require failed: {}", e
-    ))),
-}
+use std::time::Duration;
+```
+to:
+```rust
+use std::time::{Duration, Instant};
 ```
 
-This ensures that if the import fails, the error is reported immediately at bundle load time rather than failing later with confusing errors.
+(`call_render.rs` uses the same grouped import style — consistency.)
+
+### [ ] Step 2: Replace hard-coded loop with deadline-based poll + sleep
+
+**File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
+
+Replace lines 369–372:
+```rust
+    let isolate = worker.js_runtime.v8_isolate();
+    for _ in 0..10_000 {
+        isolate.perform_microtask_checkpoint();
+    }
+```
+with:
+```rust
+    let isolate = worker.js_runtime.v8_isolate();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        isolate.perform_microtask_checkpoint();
+        std::thread::sleep(Duration::from_micros(100));
+    }
+```
+
+This matches the pattern used in `call_render` (time-based deadline + 100µs sleep), minus the per-iteration promise-state check (not possible without a scope chain — see Design Decisions).
+
+### [ ] Step 3: Add post-poll verification check
+
+**File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
+
+Replace line 374 (`Ok(())`) with:
+```rust
+    worker
+        .execute_script(
+            "<ssr-deno:require-verify>",
+            r#"
+            if (typeof globalThis.require === 'undefined') {
+                throw new Error('createRequire failed - globalThis.require is undefined');
+            }
+            "#.to_string().into(),
+        )
+        .map_err(|e| format!("setup_require failed: {e}"))
+```
+
+This uses `worker.execute_script()` (the same API already used at the top of `setup_require`) to verify that `globalThis.require` is defined. If the promise rejected, `require` will be `undefined` and the script throws. The error propagates through the existing chain:
+
+```
+setup_require → "setup_require failed: createRequire failed..."
+load_bundle_in_worker → "Failed to set up require: setup_require failed: ..."
+load_bundle → DenoError::BundleLoad("Failed to set up require: ...")
+Ruby Bundle.new → SSR::Deno::JsRuntimeInitializationError (from BundleLoad mapping in lib.rs:72)
+```
+
+### [ ] Step 4: Update `docs/ARCHITECTURE.md`
+
+**File:** `docs/ARCHITECTURE.md`, line 120
+
+Current: "polls the microtask queue until `globalThis.require` is available via `createRequire`."
+
+Replace with: "polls the microtask queue with a 1-second deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails."
 
 ---
 
@@ -58,23 +109,36 @@ This ensures that if the import fails, the error is reported immediately at bund
 
 | File | Change |
 |------|--------|
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Replace hard-coded loop with deadline-based poll + sleep, add promise state check after loop |
-
----
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Add `Instant` import; replace `for 0..10_000` with deadline-based poll + sleep; add post-poll verification via `execute_script` |
+| `docs/ARCHITECTURE.md` | Update `setup_require` description to mention deadline and error behavior |
 
 ## Files NOT Changed
 
 | File | Reason |
 |------|--------|
 | `lib/ssr/deno.rb` | No API changes |
-| `ext/ssr_deno/src/lib.rs` | No core type changes |
+| `sig/ssr/deno.rbs` | No signature changes |
+| `ext/ssr_deno/src/lib.rs` | `BundleLoad` mapping already exists (line 72); no new error variants needed |
+| `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | `DenoError::BundleLoad` already defined; no new variant needed |
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Already fixed (see `archived/async-render-polling-improvements.md`) |
+| `test/ssr/test_deno_errors.rb` | No new error type to test; existing `BundleLoad` mapping is already covered |
+| `test/ssr/test_integration_node_builtins.rb` | Node builtins integration test already exercises the success path |
 
 ---
 
 ## Verification
 
-1. Bundle load with invalid require path → error at `Bundle.new` time (not later)
-2. Bundle load with valid require path → works as before
-3. Poll loop uses time-based deadline instead of hard-coded iteration count
-4. `bundle exec rake` passes (Rust compile, cargo:test, Ruby tests, RuboCop, RBS)
+1. Bundle load with `node_builtins: true` → `globalThis.require` is set (existing integration test covers this)
+2. Poll loop uses wall-clock deadline instead of hard-coded iteration count (visual inspection)
+3. If `createRequire` import fails for any reason → error at `Bundle.new` time with clear message
+4. `bundle exec rake` passes (Rust compile, `cargo test -p ssr_deno_core`, sample builds, Ruby tests, RuboCop, RBS, SimpleCov 100% line + 100% branch)
+
+### Testability note
+
+The failure path (Step 3) is difficult to trigger from Ruby tests because `import('node:module')` always succeeds in a correctly built Deno worker. The verification check is defense-in-depth — it's validated by code review (does the `execute_script` call look correct?) rather than by a test that triggers the failure. If a future Deno version changes `node:module` behavior, the check catches it at bundle load time instead of producing opaque `require is not defined` errors inside user bundles.
+
+---
+
+## Optional Improvement (Not in Scope)
+
+**Idempotency guard:** `setup_require` runs on every bundle load, but `globalThis.require` is already set after the first load in a worker. Adding an early return (`if globalThis.require is defined → skip`) would avoid re-running the async import + poll loop for subsequent bundles loaded into the same isolate. Worth doing if multiple bundles per isolate becomes common.
