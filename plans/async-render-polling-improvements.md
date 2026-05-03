@@ -158,6 +158,7 @@ This is complex and may not be needed — most SSR render functions use `await f
 - **Async render test (nested microtask):** `async function render(args) { await new Promise(r => Promise.resolve().then(r)); return JSON.stringify({ name: "nested" }); } globalThis.render = render;` — verify nested microtask chains resolve
 - **Timeout test:** `async function render() { await new Promise(() => {}); return ""; } globalThis.render = render;` with short timeout (100ms) — assert `RenderError` is raised
 - **Timeout boundary validation:** Already covered by Rust unit tests in `ssr_deno_core/src/lib.rs` (accepts 100/300000, rejects 99/300001). No need to duplicate in Ruby integration tests.
+- **Poll loop verification:** The poll loop execution is verified implicitly by the async test passing; there is no direct way to count polls from Ruby. If the async test returns correctly, the poll loop worked.
 - **Cleanup:** Ensure temp files are removed even on test failure (use `ensure` block)
 - **Note:** `SSR::Deno.render_timeout_ms = 100` must be set at the top of the test file, before any `Bundle.new` call. Only one timeout value per test process — pool cannot be reset.
 
