@@ -145,7 +145,7 @@ This is complex and may not be needed — most SSR render functions use `await f
   ```
 - Keep `RecvTimeoutError::Disconnected` arm for worker crash detection
 
-### [x] Step 5: Add async integration test (via `test_deno_async_render.rb`)
+### [x] Step 4: Add async integration test (via `test_deno_async_render.rb`)
 
 **File:** `test/ssr/test_deno_async_render.rb` (pre-existing, fixture-based)
 
@@ -164,7 +164,7 @@ Existing coverage maps to plan requirements:
 - **Cleanup:** Ensure temp files are removed even on test failure (use `ensure` block)
 - **Note:** `SSR::Deno.render_timeout_ms = 100` must be set at the top of the test file, before any `Bundle.new` call. Only one timeout value per test process — pool cannot be reset.
 
-### [x] Step 6: Run full pipeline
+### [x] Step 5: Run full pipeline
 
 ```bash
 bundle exec rake
@@ -172,7 +172,7 @@ bundle exec rake
 
 Must pass: Rust compile, cargo:test, sample builds, Ruby tests (100% coverage), RuboCop, RBS.
 
-### [x] Step 7: Update CHANGELOG.md
+### [x] Step 6: Update CHANGELOG.md
 
 Add entry under Unreleased → Changed:
 
@@ -211,7 +211,7 @@ Add entry under Unreleased → Changed:
 Extracted to [`setup-require-improvements.md`](setup-require-improvements.md).
 
 ### `was_pending` false case
-If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work (covered by Step 5 sync render test).
+If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work (covered by Step 4 sync render test).
 
 ## Post-Implementation Audit (Completed)
 
@@ -221,4 +221,4 @@ If render is synchronous and returns a resolved promise, the polling loop is ski
 
 ✅ **3. `.vscode/settings.json`** — No samples added/removed, no update needed.
 
-✅ **4. Plan status** — Steps 1–3, 5–7 marked `[x]`; Steps 4, 8 extracted to `setup-require-improvements.md`
+✅ **4. Plan status** — Steps 1–6 marked `[x]`; extracted to `setup-require-improvements.md`
