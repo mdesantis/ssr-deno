@@ -9,6 +9,7 @@
 - `SSR::Deno.heap_stats!` — raises `JsRuntimeNotInitializedError` / `JsRuntimeWorkerError` instead of returning empty Hash.
 
 ### Changed
+- `setup_require` is now idempotent — skips the async import + microtask poll loop when `globalThis.require` is already set from a prior bundle load into the same isolate. Saves ~10ms per subsequent bundle load with `node_builtins: true`.
 - `SSR::Deno.heap_stats` now returns empty Hash with warning instead of raising when runtime not initialized. Use `heap_stats!` to get the old behavior.
 - README rewritten from scratch: self-contained quick start (`File.write` inline bundle), no inline framework examples (links to samples instead), expandable samples table with clickable directory links.
 - All Vite-based sample directories prefixed with `vite-`: `vanilla-ssr-app` → `vite-ssr-app`, `react-ssr-app` → `vite-react-ssr-app`, `vue-ssr-app` → `vite-vue-ssr-app`, `svelte-ssr-app` → `vite-svelte-ssr-app`, `preact-ssr-app` → `vite-preact-ssr-app`, `react-mui-ssr-app` → `vite-react-mui-ssr-app`, `react-mui-emotion-ssr-app` → `vite-react-mui-emotion-ssr-app`, `react-emotion-mui-dashboard-ssr-app` → `vite-react-emotion-mui-dashboard-ssr-app`.

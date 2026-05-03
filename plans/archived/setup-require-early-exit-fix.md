@@ -120,7 +120,7 @@ rejection.
 
 ### [x] Step 3: Idempotency guard — **Extracted**
 
-Extracted to `plans/setup-require-idempotency-guard.md` for separate
+Extracted to `setup-require-idempotency-guard.md` for separate
 implementation. The approach (Rust-side `execute_script` check) was
 fully designed in this plan and is ready to implement.
 

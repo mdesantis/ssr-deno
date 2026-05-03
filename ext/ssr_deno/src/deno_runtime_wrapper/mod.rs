@@ -348,6 +348,21 @@ fn worker_thread_main(
 /// Injects `globalThis.require` into the V8 context by loading
 /// `createRequire` from Deno's built-in `node:module` via async import.
 fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
+    // Idempotency guard: skip the async import + microtask polling when
+    // `globalThis.require` is already set from a prior bundle load into
+    // the same isolate. Saves ~10ms per subsequent bundle load.
+    let check_val = worker
+        .execute_script(
+            "<ssr-deno:require-guard>",
+            "typeof globalThis.require !== 'undefined'".to_string().into(),
+        )
+        .map_err(|e| format!("Failed to check require: {e}"))?;
+    let isolate = worker.js_runtime.v8_isolate();
+    let check_ref = check_val.open(isolate);
+    if check_ref.is_true() {
+        return Ok(());
+    }
+
     // The deno_node extension registers node:module polyfill via its extension
     // system. When import('node:module') is called, the extension serves the
     // source code directly (not through the module loader). We use microtask

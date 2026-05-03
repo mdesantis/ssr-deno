@@ -29,7 +29,7 @@ The approach is safe because:
 
 ## Implementation Steps
 
-### [ ] Step 1: Add idempotency guard to `setup_require`
+### [x] Step 1: Add idempotency guard to `setup_require`
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
