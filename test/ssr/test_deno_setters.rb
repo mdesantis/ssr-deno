@@ -71,12 +71,20 @@ module SSR
       ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'true'
 
       SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
+
+      assert_equal 128, SSR::Deno.max_heap_size_mb
+
       SSR::Deno.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
 
-      capture_io do
+      assert_predicate SSR::Deno, :node_builtins_enabled?
+
+      _, err = capture_io do
         ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = 'abc'
         SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
       end
+
+      assert_equal 128, SSR::Deno.max_heap_size_mb
+      assert_includes err, 'Invalid integer'
 
       ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
       ENV.delete('SSR_DENO_NODE_BUILTINS_ENABLED')
