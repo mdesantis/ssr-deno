@@ -25,6 +25,7 @@ task 'test:main' do
              .reject { |f| f.include?('test_integration_node_builtins') }
              .reject { |f| f.include?('test_deno_async_render') }
              .reject { |f| f.include?('test_deno_setters') }
+             .reject { |f| f.include?('test_deno_env_config') }
              .reject { |f| f.include?('test_helper') }
   runner = <<~RUBY
     require '#{helper}'
