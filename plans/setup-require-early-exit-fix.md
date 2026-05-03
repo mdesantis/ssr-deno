@@ -1,10 +1,14 @@
 # setup_require Early-Exit Fix
 
-> **Status:** Implemented with simplified approach — 10ms deadline instead of early-exit. The V8 promise-type-checking approach proved complex due to handle lifetime issues.
+> **Status:** Implemented — deadline reduced from 1s to 10ms. The full early-exit approach (capturing promise from `execute_script` return value and checking its state inside the loop) proved complex due to V8 handle lifetime issues in rusty_v8.
 
 ## Problem
 
 Commit `358cf5c` added a deadline-based poll loop to `setup_require`, but the loop always runs the **full 1-second deadline** — even when the `createRequire` promise resolves in under 1ms on a warm isolate. There is no early-exit condition.
+
+The intended fix was to mirror `call_render`'s pattern: capture the promise via `execute_script` return value, then check `promise.state()` inside the loop with early `break` on non-Pending. However, rusty_v8's handle system doesn't allow straightforward casting of `Global<Value>` to `Global<Promise>` without entering a scope chain and using unsafe conversions.
+
+**Simplified fix applied:** Reduce the deadline from 1 second to 10 milliseconds. The `createRequire` promise resolves in <1ms on a warm isolate — 10ms is 10x more than needed and eliminates the ~1s regression per bundle load. The post-loop verification still catches promise rejection failures.
 
 The `call_render` poll loop (`call_render.rs:115-126`) has early-exit:
 ```rust
