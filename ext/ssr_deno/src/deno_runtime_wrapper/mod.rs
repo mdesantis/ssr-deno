@@ -41,6 +41,7 @@ enum WorkerMsg {
     Render {
         bundle_id: String,
         args_json: String,
+        render_timeout_ms: u64,
         reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
     },
     HeapStats {
@@ -100,21 +101,22 @@ impl IsolateHandle {
     /// JS type survives the boundary.
     pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
         let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
-        let timeout = Duration::from_millis(self.render_timeout_ms);
+        let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
 
         self.tx
             .blocking_send(WorkerMsg::Render {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
+                render_timeout_ms: self.render_timeout_ms,
                 reply: reply_tx,
             })
             .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        match reply_rx.recv_timeout(timeout) {
+        match reply_rx.recv_timeout(hang_timeout) {
             Ok(result) => result,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(DenoError::Render(format!(
-                "Render timed out after {}ms",
-                timeout.as_millis()
+                "Render process hung after {}ms",
+                hang_timeout.as_millis()
             ))),
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(
                 "Deno worker thread exited before sending a reply".into(),
@@ -328,9 +330,10 @@ fn worker_thread_main(
                 WorkerMsg::Render {
                     bundle_id,
                     args_json,
+                    render_timeout_ms,
                     reply,
                 } => {
-                    let result = call_render(&mut worker, &bundle_id, &args_json);
+                    let result = call_render(&mut worker, &bundle_id, &args_json, render_timeout_ms);
                     let _ = reply.send(result);
                 }
                 WorkerMsg::HeapStats { reply } => {

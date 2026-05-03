@@ -2,9 +2,6 @@
 
 require 'test_helper'
 
-SSR::Deno.render_timeout_ms = 2000
-SSR::Deno.node_builtins_enabled = true
-
 module SSR
   class TestIntegrationReactMuiEmotionSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-mui-emotion-ssr-app/dist/server/entry-server.js', __dir__)

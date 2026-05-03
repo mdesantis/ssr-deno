@@ -21,6 +21,7 @@ task 'test:main' do
   files = Dir.glob(File.join(test_dir, '**', 'test_*.rb'))
              .concat(Dir.glob(File.join(test_dir, '**', '*_test.rb')))
              .reject { |f| f.include?('test_integration_node_builtins') }
+             .reject { |f| f.include?('test_deno_async_render') }
              .reject { |f| f.include?('test_helper') }
   runner = "require '#{helper}'\n"
 
@@ -34,6 +35,7 @@ task 'test:node_builtins' do
   node_test = File.join(test_dir, 'ssr', 'test_integration_node_builtins.rb')
   runner = <<~RUBY
     require '#{helper}'
+    SSR::Deno.render_timeout_ms = 2000
     SSR::Deno.node_builtins_enabled = true
     require '#{node_test}'
   RUBY
@@ -43,8 +45,24 @@ task 'test:node_builtins' do
      Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_node.rb'))
 end
 
+desc 'Run async render tests with short timeout (render_timeout_ms=100)'
+task 'test:async' do
+  async_test = File.join(test_dir, 'ssr', 'test_deno_async_render.rb')
+  runner = <<~RUBY
+    $LOAD_PATH.unshift('#{lib}')
+    require 'ssr/deno'
+    SSR::Deno.render_timeout_ms = 100
+    require '#{helper}'
+    require '#{async_test}'
+  RUBY
+
+  File.write(File.join(tmp, 'test_runner_async.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:async' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_async.rb'))
+end
+
 desc 'Run all test suites'
-task test: %w[test:main test:node_builtins]
+task test: %w[test:main test:node_builtins test:async]
 
 desc 'Check merged coverage (runs after test:node_builtins)'
 task 'coverage:check' do

@@ -13,6 +13,7 @@
 - All Vite-based sample directories prefixed with `vite-`: `vanilla-ssr-app` → `vite-ssr-app`, `react-ssr-app` → `vite-react-ssr-app`, `vue-ssr-app` → `vite-vue-ssr-app`, `svelte-ssr-app` → `vite-svelte-ssr-app`, `preact-ssr-app` → `vite-preact-ssr-app`, `react-mui-ssr-app` → `vite-react-mui-ssr-app`, `react-mui-emotion-ssr-app` → `vite-react-mui-emotion-ssr-app`, `react-emotion-mui-dashboard-ssr-app` → `vite-react-emotion-mui-dashboard-ssr-app`.
 - barebone sample now has standalone `serve.deno.ts` HTTP server (consistent with all others).
 - Dashboard render timeout increased to 2000ms to prevent flaky CI timeouts.
+- Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Outer `recv_timeout` now has 100ms buffer to serve as V8-stuck safety net while inner deadline handles normal async timeouts.
 
 ## [0.1.0-alpha.3] - 2026-05-02
 

@@ -1,5 +1,6 @@
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
+use std::time::{Duration, Instant};
 
 use super::DenoError;
 
@@ -16,6 +17,7 @@ pub fn call_render(
     worker: &mut MainWorker,
     bundle_id: &str,
     args_json: &str,
+    render_timeout_ms: u64,
 ) -> Result<String, DenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
@@ -107,26 +109,28 @@ pub fn call_render(
         was_pending,
     } = async_handle.expect("async_handle is Some when we reach Phase 2");
 
-    const MAX_POLLS: u32 = 10_000;
-
     if was_pending {
-        for poll in 0..MAX_POLLS {
+        let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
+
+        while Instant::now() < deadline {
             isolate.perform_microtask_checkpoint();
 
             let promise_ref = global_promise.open(isolate);
 
             match promise_ref.state() {
                 v8::PromiseState::Pending => {
-                    if poll >= MAX_POLLS - 1 {
-                        return Err(DenoError::Render(
-                            "Async render promise did not settle within \
-                             the maximum number of event-loop polls"
-                                .to_string(),
-                        ));
-                    }
+                    std::thread::sleep(Duration::from_micros(100));
                 }
                 _ => break,
             }
+        }
+
+        // Timeout check before re-entering scope chain.
+        let promise_ref = global_promise.open(isolate);
+        if promise_ref.state() == v8::PromiseState::Pending {
+            return Err(DenoError::Render(
+                format!("Async render promise did not settle within {render_timeout_ms}ms timeout"),
+            ));
         }
     }
 
@@ -139,6 +143,8 @@ pub fn call_render(
         // Open the Global through the scope chain to get &mut Isolate.
         let promise_ref = global_promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
 
+        // Early exit above guarantees we never reach Pending here,
+        // but match arms must be exhaustive.
         match promise_ref.state() {
             v8::PromiseState::Fulfilled => {
                 let resolved = promise_ref.result(&context_scope);
@@ -161,11 +167,7 @@ pub fn call_render(
                 };
                 Err(DenoError::Render(msg))
             }
-            v8::PromiseState::Pending => Err(DenoError::Render(
-                "Async render promise did not settle within \
-                 the maximum number of event-loop polls"
-                    .to_string(),
-            )),
+            v8::PromiseState::Pending => unreachable!("timeout checked before Phase 2"),
         }
     }
 }

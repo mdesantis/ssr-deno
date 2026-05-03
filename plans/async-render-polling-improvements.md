@@ -2,19 +2,19 @@
 
 ## Problem
 
-The async render promise polling loop (`call_render.rs:110-130`) has three issues:
+The async render promise polling loop (`call_render.rs:112-135`) had three issues:
 
 1. **MAX_POLLS (10,000) is hard-coded** and unrelated to `render_timeout_ms`. Users who configure a longer timeout can still hit the iteration limit prematurely, or vice versa.
 2. **Tight CPU spin** — no sleep or yield between poll iterations. Burns CPU for the entire poll duration.
 3. **Microtasks only** — `perform_microtask_checkpoint()` drains promises but not macrotasks (setTimeout, I/O). Renders that schedule macrotasks will never settle.
 
-A secondary poll loop in `setup_require` (`mod.rs:367`) has the same hard-coded 10,000 iteration problem, though it runs at bundle-load time rather than render time.
+A secondary poll loop in `setup_require` (`mod.rs:370`) has the same hard-coded 10,000 iteration problem, though it runs at bundle-load time rather than render time.
 
 ## Proposed Fix
 
 ### 1. Time-based poll loop with configurable duration
 
-Replace `MAX_POLLS: u32 = 10_000` with a wall-clock deadline derived from `render_timeout_ms`, which is already stored on `IsolateHandle` (`mod.rs:63`). Pass it to `call_render` as a fourth parameter.
+Replace `MAX_POLLS: u32 = 10_000` with a wall-clock deadline derived from `render_timeout_ms`, which is already stored on `IsolateHandle` (`mod.rs:64`). Pass it to `call_render` as a fourth parameter.
 
 ### 2. Keep outer `recv_timeout` as defense-in-depth (with buffer)
 
@@ -72,11 +72,11 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 ## Implementation Steps
 
-### [ ] Step 1: Pass render_timeout_ms to call_render
+### [x] Step 1: Pass render_timeout_ms to call_render
 
 **Files:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`, `call_render.rs`
 
-- Add `render_timeout_ms: u64` field to `WorkerMsg::Render` enum variant (mod.rs:41-45):
+- Add `render_timeout_ms: u64` field to `WorkerMsg::Render` enum variant (mod.rs:41-46):
   ```rust
   Render {
       bundle_id: String,
@@ -85,7 +85,7 @@ This is complex and may not be needed — most SSR render functions use `await f
       reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
   },
   ```
-- Pass `self.render_timeout_ms` when sending `WorkerMsg::Render` in `block_on_render` (mod.rs:105-110):
+- Pass `self.render_timeout_ms` when sending `WorkerMsg::Render` in `block_on_render` (mod.rs:107-112):
   ```rust
   self.tx
       .blocking_send(WorkerMsg::Render {
@@ -95,7 +95,7 @@ This is complex and may not be needed — most SSR render functions use `await f
           reply: reply_tx,
       })
   ```
-- Update the worker thread's message handler to pass `render_timeout_ms` to `call_render` (mod.rs:328-335):
+- Update the worker thread's message handler to pass `render_timeout_ms` to `call_render` (mod.rs:330-338):
   ```rust
   WorkerMsg::Render {
       bundle_id,
@@ -107,30 +107,30 @@ This is complex and may not be needed — most SSR render functions use `await f
       let _ = reply.send(result);
   }
   ```
-- Add `render_timeout_ms: u64` parameter to `call_render` function signature (call_render.rs:15-19)
+- Add `render_timeout_ms: u64` parameter to `call_render` function signature (call_render.rs:16-21)
 
-### [ ] Step 2: Replace MAX_POLLS with deadline-based loop + sleep
+### [x] Step 2: Replace MAX_POLLS with deadline-based loop + sleep
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs`
 
-- Add imports at top of file:
+- Add import at top of file:
   ```rust
-  use std::thread;
   use std::time::{Duration, Instant};
   ```
+  (`std::thread::sleep` called inline, no separate import needed)
 - Remove `const MAX_POLLS: u32 = 10_000`
 - Compute deadline: `Instant::now() + Duration::from_millis(render_timeout_ms)`
-- Replace `for poll in 0..MAX_POLLS` with `loop` + deadline check
-- Add `std::thread::sleep(Duration::from_micros(100))` at end of each iteration
+- Replace `for poll in 0..MAX_POLLS` with `while Instant::now() < deadline` + break on settled
+- Add `std::thread::sleep(Duration::from_micros(100))` inside the `Pending` arm of the state match
 - Error message: `"Async render promise did not settle within {render_timeout_ms}ms timeout"`
-- Update stale error message at end of function (call_render.rs:164-168) — currently says "maximum number of event-loop polls", should match the new timeout format
+- Update stale error message at end of function (call_render.rs:170) — replaced with `unreachable!("timeout checked before Phase 2")` since early exit guarantees pending never reaches Phase 2
 
-### [ ] Step 3: Add 100ms buffer to outer recv_timeout
+### [x] Step 3: Add 100ms buffer to outer recv_timeout
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
 - Rename existing `timeout` variable to `hang_timeout` for clarity
-- In `block_on_render` (`mod.rs:101-123`), keep `recv_timeout` but add 100ms buffer:
+- In `block_on_render` (`mod.rs:102-125`), keep `recv_timeout` but add 100ms buffer:
   ```rust
   let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
   ```
@@ -147,13 +147,19 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
-- The `setup_require` function (`mod.rs:367`) has its own `for _ in 0..10_000` loop for `createRequire` bootstrap
+- The `setup_require` function (`mod.rs:370`) has its own `for _ in 0..10_000` loop for `createRequire` bootstrap
 - This runs at bundle-load time, not render time — lower priority
 - Apply a hard-coded deadline (e.g., 1 second) + sleep pattern for consistency, or defer to a follow-up
 
-### [ ] Step 5: Add async integration test
+### [x] Step 5: Add async integration test (via `test_deno_async_render.rb`)
 
-**File:** `test/ssr/test_integration_async.rb` (new)
+**File:** `test/ssr/test_deno_async_render.rb` (pre-existing, fixture-based)
+
+The existing test file already covered the async render scenarios described below. Changes made:
+- Added `SSR::Deno.render_timeout_ms = 100` in `setup` (class method) with rescue for already-initialized pool
+- This makes the hang test complete in ~100ms instead of ~500ms (default)
+
+Existing coverage maps to plan requirements:
 
 - **Sync render test:** `function render(args) { return JSON.stringify({ name: "sync" }); } globalThis.render = render;` — verify async path doesn't break sync renders
 - **Async render test (microtask):** `async function render(args) { await Promise.resolve(); return JSON.stringify({ name: "async" }); } globalThis.render = render;` — verify poll loop resolves. **Do NOT use `setTimeout`** — it's a macrotask and will never settle with microtask-only polling.
@@ -164,7 +170,7 @@ This is complex and may not be needed — most SSR render functions use `await f
 - **Cleanup:** Ensure temp files are removed even on test failure (use `ensure` block)
 - **Note:** `SSR::Deno.render_timeout_ms = 100` must be set at the top of the test file, before any `Bundle.new` call. Only one timeout value per test process — pool cannot be reset.
 
-### [ ] Step 6: Run full pipeline
+### [x] Step 6: Run full pipeline
 
 ```bash
 bundle exec rake
@@ -172,7 +178,7 @@ bundle exec rake
 
 Must pass: Rust compile, cargo:test, sample builds, Ruby tests (100% coverage), RuboCop, RBS.
 
-### [ ] Step 7: Update CHANGELOG.md
+### [x] Step 7: Update CHANGELOG.md
 
 Add entry under Unreleased → Changed:
 
@@ -182,7 +188,7 @@ Add entry under Unreleased → Changed:
 
 ### [ ] Step 8: (Optional) Fix `setup_require` error handling
 
-If time allows, add a promise state check in `setup_require` (mod.rs:367-371) similar to `call_render`'s final check:
+If time allows, add a promise state check in `setup_require` (mod.rs:370-372) similar to `call_render`'s final check:
 
 ```rust
 // After the poll loop, check if the require import actually resolved
@@ -200,7 +206,7 @@ This is out of scope for the main PR but worth documenting.
 |------|--------|
 | `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Replace MAX_POLLS with deadline loop + sleep, add render_timeout_ms param, update stale error message at end |
 | `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, add 100ms buffer to recv_timeout, update setup_require loop (optional) |
-| `test/ssr/test_integration_async.rb` | New async integration test (sync, async microtask, nested microtask, timeout) |
+| `test/ssr/test_deno_async_render.rb` | Updated: added `render_timeout_ms = 100` at top, fixture-based async tests (sync, async microtask, nested microtask, timeout) |
 | `CHANGELOG.md` | Add entry under Unreleased → Changed |
 
 ## Files NOT Changed
@@ -221,17 +227,18 @@ This is out of scope for the main PR but worth documenting.
 
 ## Known Issues (Out of Scope)
 
-### `setup_require` silent failure (mod.rs:367-371)
+### `setup_require` silent failure (mod.rs:370-372)
 The `setup_require` function doesn't check if the `createRequire` promise actually resolved. After the loop, it returns `Ok(())` regardless. If the import fails, `globalThis.require` is undefined and bundles fail later with confusing errors. Should add a promise state check similar to `call_render`'s final check.
 
 ### `was_pending` false case
 If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work (covered by Step 5 sync render test).
 
-## Post-Implementation Audit
+## Post-Implementation Audit (Completed)
 
-Per AGENTS.md convention, after code changes:
+✅ **1. Stale docs audit** — `docs/ARCHITECTURE.md`, `README.md`, `plans/*.md` searched: no references to old poll-loop behavior (MAX_POLLS, iteration counts, event-loop polling) remain in non-source files.
 
-1. **Stale docs audit** — Check `docs/ARCHITECTURE.md`, `README.md`, `plans/*.md` for any references to old poll-loop behavior (MAX_POLLS, iteration counts, event-loop polling)
-2. **Sample directories** — Verify no stale path references in non-vendor, non-generated parts
-3. **`.vscode/settings.json`** — If any samples were added/removed, update `deno.enablePaths`
-4. **Plan status** — Mark each step as `[x]` in this plan file as it completes
+✅ **2. Sample directories** — No stale path references in non-vendor, non-generated parts (no new samples added, no paths changed).
+
+✅ **3. `.vscode/settings.json`** — No samples added/removed, no update needed.
+
+✅ **4. Plan status** — Steps 1–3, 5–7 marked `[x]`; Steps 4, 8 optional/skipped.
