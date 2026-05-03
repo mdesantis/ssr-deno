@@ -559,9 +559,27 @@ fn build_worker(
         unconfigured_runtime: None,
     };
 
-    Ok(MainWorker::bootstrap_from_options::<
+    let mut worker = MainWorker::bootstrap_from_options::<
         NopInNpmPackageChecker,
         NopNpmPackageFolderResolver,
         Sys,
-    >(main_module, services, options))
+    >(main_module, services, options);
+
+    // Register a near-heap-limit callback on the V8 isolate to prevent
+    // fatal OOM aborts. When V8 detects the heap is near its configured
+    // limit (max_heap_size_mb), this callback doubles the limit (buying
+    // one more GC cycle) and terminates the running JS execution so that
+    // the OOM is caught as a RenderError instead of a SIGTRAP.
+    //
+    // Without this, a user component that leaks memory across renders
+    // eventually causes V8 to call abort(), killing the Ruby process.
+    let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+    worker.js_runtime.add_near_heap_limit_callback(
+        move |current_limit, _initial_limit| {
+            let _ = isolate_handle.terminate_execution();
+            current_limit * 2
+        },
+    );
+
+    Ok(worker)
 }

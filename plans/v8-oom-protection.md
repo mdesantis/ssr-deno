@@ -194,7 +194,7 @@ when Level 2 catches the same cases and more.
 
 ## Implementation plan (Level 2)
 
-### [ ] Step 1: Register near-heap-limit callback in `build_worker`
+### [x] Step 1: Register near-heap-limit callback in `build_worker`
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
@@ -230,7 +230,7 @@ Optionally add an `oom_triggered: AtomicBool` flag to the worker or to
 returns the termination error. This lets us return `"JS heap out of memory"` instead
 of the generic `"Error: execution terminated"`.
 
-### [ ] Step 3: Verify
+### [x] Step 3: Verify
 
 `bundle exec rake` passes — compile, cargo test, sample builds, all Ruby suites,
 RuboCop, 100% coverage.
@@ -241,8 +241,10 @@ Rerun `attachments/reproduce_v8_oom.rb` — verify it now produces a Ruby error
 ## Files Changed
 
 | File | Change |
-|---|---|
+|---|---|---|
 | `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Register `add_near_heap_limit_callback` in `build_worker` |
+| `test/ssr/test_deno_stability.rb` | OOM subprocess test `test_oom_produces_render_error` |
+| `test/fixtures/large-payload-bundle.js` | Fixture for large-payload test |
 
 ## Files NOT Changed
 

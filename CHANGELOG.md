@@ -1,6 +1,8 @@
 ## Unreleased
 
 ### Added
+- V8 OOM protection: `near_heap_limit_callback` + `terminate_execution` prevents fatal process crash when a user SSR component exceeds `max_heap_size_mb`. V8 OOM now raises `SSR::Deno::RenderError` instead of `SIGTRAP`.
+- Stability tests: leak detection (heap growth < 3x over 100 renders), large payload, edge-case data, rapid reload, OOM produces `RenderError`.
 - Env var-based config for `SSR::Deno` settings (4 native settings) via `SSR_DENO_` prefix. Env vars act as defaults; setters override. Added getter methods (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`).
 - New sample: `samples/node-ssr-app` — vanilla TypeScript SSR with esbuild, zero Deno. Node.js build (`npm run build`) and serve (`node serve.mjs`).
 - New sample: `samples/vite-preact-ssr-app` — Preact SSR with Vite, uses `resolve.alias` for React compat.

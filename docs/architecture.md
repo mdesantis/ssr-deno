@@ -70,6 +70,7 @@ flowchart LR
 
 - Pool size defaults to `CPU_cores - 1` (capped at 8), reserving one core for Ruby.
 - Each isolate has its own V8 heap (configured by `max_heap_size_mb`).
+- Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `RenderError` (see [`plans/v8-oom-protection.md`](../plans/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
 - Render timeout is enforced via `SyncSender::recv_timeout` on the Ruby side.
@@ -81,6 +82,7 @@ flowchart LR
    - `Permissions::none_without_prompt()` — all Deno permissions denied.
    - `NoopModuleLoader` (or `NodeBuiltinOnlyModuleLoader` if `node_builtins_enabled`).
    - `NodeExtInitServices` (if `node_builtins_enabled`) — provides `NodeRequireLoader`, `NodeResolver`, `PackageJsonResolver` for the `deno_node` extension.
+   - A `near_heap_limit_callback` registered on the V8 isolate — doubles the heap limit and terminates execution when the heap approaches `max_heap_size_mb`, preventing fatal process crash on user memory leaks.
 3. The worker thread runs a message loop processing `LoadBundle`, `Render`, and `HeapStats` messages.
 4. Bundles are evaluated via `MainWorker::execute_script` (synchronous V8 script execution, not module loading).
 
@@ -127,16 +129,20 @@ This allows CJS bundles that call `require("stream")`, `require("buffer")`, `req
 
 ## Testing
 
-Tests are split into two suites that run in separate Ruby processes, each with its own pool:
+Tests run in separate Ruby processes to avoid pool re-initialization
+between suites. Each suite sets its own config before pool init:
 
-| Suite | Command | `node_builtins` | Tests | Covers |
-|-------|---------|-----------------|-------|--------|
-| `test:main` | `ruby test_runner_main.rb` | `false` (default) | 52 | All non-emotion tests |
-| `test:node_builtins` | `ruby test_runner_node.rb` | `true` | 1 | `@emotion/server` integration |
+| Suite | Config differences | Covers |
+|-------|-------------------|--------|
+| `test:main` | Defaults | Core, all integrations, stability |
+| `test:setters` | `max_heap_size_mb=128`, `pool_size=2` | Setter guards before/after init |
+| `test:node_builtins` | `node_builtins_enabled=true`, `render_timeout_ms=2000` | Node builtin modules |
+| `test:async` | `render_timeout_ms=100` | Async render, promise polling |
+| `test:env_config` | Env vars only | `SSR_DENO_*` env var loading |
 
-Both suites are run by `bundle exec rake test` (or as part of `bundle exec rake`).
-
-Each suite sets `SimpleCov.command_name` from the `SIMPLECOV_COMMAND_NAME` env var, giving each run a distinct key in `.resultset.json`. The second run merges and validates the combined coverage at **100% line + 100% branch**.
+All suites run via `bundle exec rake test` (or as part of `bundle exec rake`).
+Each sets `SimpleCov.command_name` for a distinct key in `.resultset.json`.
+The final merge validates combined coverage at **100% line + 100% branch**.
 
 ---
 

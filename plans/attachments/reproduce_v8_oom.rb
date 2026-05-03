@@ -4,9 +4,9 @@
 # Reproduce: what happens when a user SSR component leaks memory past
 # max_heap_size_mb on a V8 isolate.
 #
-# Run from repo root:  ruby tmp/reproduce_v8_oom.rb
+# Run from repo root:  bundle exec ruby plans/attachments/reproduce_v8_oom.rb
 
-$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
+$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
 $stdout.sync = true
 
 require 'ssr/deno'

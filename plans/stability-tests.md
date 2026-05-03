@@ -33,23 +33,13 @@ The concern is that a refactoring in the Rust FFI layer or V8 scope chain handli
 
 ## Implementation Steps
 
-### [ ] Step 1: Add test fixtures
+### [x] Step 1: Add test fixtures
 
-**File:** `test/fixtures/large-payload-bundle.js`
+**File:** `test/fixtures/large-payload-bundle.js` (created)
 
-```js
-globalThis.render = function(data) {
-  var parsed = typeof data === 'string' ? JSON.parse(data) : data;
-  // Stringify the entire payload to exercise V8 string allocation
-  return '<div>' + JSON.stringify(parsed) + '</div>';
-};
-```
+### [x] Step 2: Add stability test file
 
-Reuses `test/fixtures/minimal-bundle.js` for most tests (already exists).
-
-### [ ] Step 2: Add stability test file
-
-**File:** `test/ssr/test_deno_stability.rb`
+**File:** `test/ssr/test_deno_stability.rb` (created)
 
 4 tests total. Concurrent stress and pool saturation are already covered by `test_deno_concurrency.rb` (20 threads, pool_size=1). Not duplicated.
 
@@ -93,11 +83,11 @@ def test_rapid_reload_does_not_crash
 end
 ```
 
-### [ ] Step 3: Integrate into test runner
+### [x] Step 3: Integrate into test runner
 
 No changes needed — `test_deno_stability.rb` matches the `test_*.rb` pattern and is automatically picked up by `test:main` (the `test.rake` glob excludes only specific files by name, not by pattern).
 
-### [ ] Step 4: Verify
+### [x] Step 4: Verify
 
 `bundle exec rake` passes — Rust compile, cargo test, sample builds, all Ruby test suites (including stability), RuboCop, SimpleCov 100%.
 
