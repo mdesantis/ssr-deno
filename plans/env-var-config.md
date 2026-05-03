@@ -38,9 +38,11 @@ After the `class << self` block, add a private method `apply_env_var_defaults` c
 - For each, check `ENV[name]` — if present and non-empty, parse and call the setter.
 - **Integer parsing:** `Integer(value)` with rescue for `ArgumentError` (warn and skip).
 - **Boolean parsing:** `"true"`, `"1"`, `"yes"` (case-insensitive) → `true`; anything else → `false`.
+- **Empty string:** `ENV[name]` that is `nil` or empty string (`""`) is treated as "not set" — skip, native default remains.
 - **No-op if env var not set** — native defaults remain.
-- Invalid values (e.g., `SSR_DENO_RENDER_TIMEOUT_MS=99`) raise `ArgumentError` from the Rust layer.
-  Bad integer format (e.g., `SSR_DENO_MAX_HEAP_SIZE_MB=abc`) prints a warning and skips.
+- **Fail-fast vs silent skip:**
+  - Parsable but invalid (e.g., `SSR_DENO_RENDER_TIMEOUT_MS=99`) → raises `ArgumentError` from Rust layer at require-time (fail-fast, intentional).
+  - Unparseable format (e.g., `SSR_DENO_MAX_HEAP_SIZE_MB=abc`) → warns once, skips, native default used (forgiving, in case env var was accidentally left empty).
 
 ### 4. RBS: Add getter signatures (`sig/ssr/deno.rbs`)
 
@@ -55,10 +57,15 @@ Subprocess-based tests (matching `test_deno_setters.rb` pattern):
 - Invalid integer format produces warning, native default stays
 - Env var not set → native default used
 - Env var set → pool init uses it
+- **Thread safety:** config setters are set-once-before-init (enforced by `check_not_initialized` in Rust)
 
 ### 6. Test runner (`rakelib/test.rake`)
 
-Add `test:env_config` task. Tests set env vars via Open3's env argument. Include in the `test` task dependencies.
+Add `test:env_config` task. Tests set env vars via Open3's `env` argument. Include in the `test` task dependencies.
+
+**Important:** Each test subprocess must explicitly clear `SSR_DENO_*` env vars in its `env` hash (set to `nil`) so tests don't inherit from the parent process. Example:
+```ruby
+sh({ 'SSR_DENO_MAX_HEAP_SIZE_MB' => nil, 'SSR_DENO_ISOLATE_POOL_SIZE' => nil, ... }, ...)
 
 ### 7. Documentation
 
@@ -85,8 +92,9 @@ Rails railtie flow: `ENV` → `require "ssr/deno"` (env vars applied) → railti
 | Case | Behavior |
 |---|---|
 | Env var not set | Native default used (untouched) |
+| Env var empty string (e.g., `SSR_DENO_MAX_HEAP_SIZE_MB=`) | Treated as not set, native default used |
 | Env var set to valid value | Applied via setter (triggers native validation) |
 | Env var set to invalid integer format (e.g., `abc`) | `warn` + skip, native default remains |
-| Env var set to out-of-range value (e.g., `SSR_DENO_RENDER_TIMEOUT_MS=50`) | `ArgumentError` from Rust layer |
+| Env var set to out-of-range value (e.g., `SSR_DENO_RENDER_TIMEOUT_MS=99`) | `ArgumentError` from Rust layer — fails at require-time |
 | Env var set, then setter called | Setter wins (last-write semantics) |
 | Env var set but pool already initialized | Setter raises `JsRuntimeInitializationError` |
