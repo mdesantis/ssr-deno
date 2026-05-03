@@ -72,6 +72,8 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 ## Implementation Steps
 
+**Note:** `setup_require` poll loop improvements were extracted to [`setup-require-improvements.md`](setup-require-improvements.md).
+
 ### [x] Step 1: Pass render_timeout_ms to call_render
 
 **Files:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`, `call_render.rs`
@@ -143,8 +145,6 @@ This is complex and may not be needed — most SSR render functions use `await f
   ```
 - Keep `RecvTimeoutError::Disconnected` arm for worker crash detection
 
-### [ ] Step 4: Update setup_require poll loop — extracted to [`setup-require-improvements.md`](setup-require-improvements.md)
-
 ### [x] Step 5: Add async integration test (via `test_deno_async_render.rb`)
 
 **File:** `test/ssr/test_deno_async_render.rb` (pre-existing, fixture-based)
@@ -179,8 +179,6 @@ Add entry under Unreleased → Changed:
 ```markdown
 - Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Outer recv_timeout now has 100ms buffer to serve as V8-stuck safety net while inner deadline handles normal async timeouts.
 ```
-
-### [ ] Step 8: (Optional) Fix `setup_require` error handling — extracted to [`setup-require-improvements.md`](setup-require-improvements.md)
 
 ## Files Changed
 
