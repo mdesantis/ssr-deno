@@ -91,6 +91,41 @@ Every SSR bundle must expose `globalThis.render(argsJson)`. It receives a JSON
 string and must return an HTML string (or a Promise — the runtime detects async
 and polls the V8 microtask queue until settlement).
 
+## Render usage
+
+### Basic
+
+```ruby
+bundle = SSR::Deno::Bundle.new('dist/server/entry-server.js')
+bundle.render({ page: 'home', user: @user })
+```
+
+### Raw Input
+
+Pass a pre-serialized JSON string instead of a Ruby Hash — skips `JSON.generate`:
+
+```ruby
+bundle.render('{"page":"home"}', raw_input: true)
+```
+
+### Raw Output
+
+Skip JSON parsing of the JS return value — get the raw string back:
+
+```ruby
+bundle.render({ page: 'home' }, raw_output: true)
+```
+
+Useful when the bundle returns a structured response like `JSON.stringify({html, css})` — you parse it yourself to inject CSS into `<head>`.
+
+### Raw Input + Output
+
+Both directions:
+
+```ruby
+bundle.render('{"page":"home"}', raw_input: true, raw_output: true)
+```
+
 ## Using with Vite
 
 The shared SSR build setup for all Vite-based samples:
@@ -156,38 +191,12 @@ SSR::Deno.configure do |config|
 end
 ```
 
-### Basic SSR Rendering
+### Basic
 
-Use `ssr_render` in your view templates. It passes the data hash to the JS render function — keys become the parsed `args` in `globalThis.render`:
+`ssr_render` delegates to `Bundle#render` and accepts the same `raw_input:` and `raw_output:` options:
 
 ```erb
 <%= ssr_render({ page: 'home', user: @user }) %>
-```
-
-### Raw Input
-
-Pass a pre-serialized JSON string instead of a Ruby Hash — `ssr_render` skips `JSON.generate`:
-
-```erb
-<%= ssr_render('{"page":"home"}', raw_input: true) %>
-```
-
-### Raw Output
-
-Skip JSON parsing of the JS return value — get the raw string back:
-
-```erb
-<%= ssr_render({ page: "home" }, raw_output: true) %>
-```
-
-Useful when the bundle returns a structured response like `JSON.stringify({html, css})` — you parse it yourself to inject CSS into `<head>`.
-
-### Raw Input + Output
-
-Both directions — pass a pre-serialized JSON string and get a raw JSON string back:
-
-```erb
-<%= ssr_render('{"page":"home"}', raw_input: true, raw_output: true) %>
 ```
 
 ### CSP Nonce
