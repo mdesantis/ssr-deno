@@ -6,10 +6,11 @@ require 'minitest/test_task'
 Minitest::TestTask.create
 
 # Override test: clears the default Minitest task and splits into suites:
-#   test:main         — 50 tests (default config)
-#   test:setters      —  4 tests (before pool init)
-#   test:node_builtins —  2 tests (node_builtins enabled, 2000ms timeout)
-#   test:async        —  6 tests (short 100ms timeout)
+#   test:main         — default config
+#   test:setters      — before pool init
+#   test:node_builtins — node_builtins enabled, 2000ms timeout
+#   test:async        — short 100ms timeout
+#   test:env_config   — env var config
 Rake::Task[:test].clear if Rake::Task.task_defined?(:test)
 
 root = File.expand_path('..', __dir__)
