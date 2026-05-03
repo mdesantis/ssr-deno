@@ -9,7 +9,12 @@ function — no subprocess, no HTTP bridge, no Node.js.
 ## Installation
 
 ```bash
-bundle add 'ssr-deno'
+# Non-Rails
+bundle add ssr-deno
+
+# Rails
+bundle add ssr-deno --require 'ssr/deno/rails'
+bin/rails generate ssr:deno:install
 ```
 
 ## Quick start
@@ -109,13 +114,7 @@ export default defineConfig({
 })
 ```
 
-Framework-specific builds add their Vite plugin:
-
-| Framework | Plugin |
-|-----------|--------|
-| Vue 3 | `@vitejs/plugin-vue` |
-| Svelte 5 | `@sveltejs/vite-plugin-svelte` |
-| React 19 / Preact | `@vitejs/plugin-react` (Preact uses `resolve.alias` instead — see `samples/vite-preact-ssr-app/vite.config.ts`) |
+Check the next section for examples and framework-specific setup.
 
 ## Samples
 
@@ -147,14 +146,6 @@ bundle exec rake samples:build
 
 ## Rails integration
 
-```ruby
-gem 'ssr-deno', require: 'ssr/deno/rails'
-```
-
-```bash
-rails generate ssr:deno:install
-```
-
 ```erb
 <%= ssr_render({ page: 'home', user: @user }) %>
 ```
@@ -183,8 +174,7 @@ end
 ```bash
 git clone https://github.com/mdesantis/ssr-deno.git
 cd ssr-deno
-cp .env.example .env
-bin/setup
+bin/setup # Will also run `cp .env.example .env`
 ```
 
 ### Compile
@@ -205,12 +195,6 @@ bundle exec rake
 
 Runs: Rust unit tests → Vite sample builds → Ruby tests → RuboCop → RBS
 validation. Coverage must stay at 100% line + 100% branch.
-
-### Console
-
-```bash
-bin/console
-```
 
 ## Architecture
 
