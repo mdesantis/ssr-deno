@@ -140,7 +140,7 @@ module SSR
         begin
           send(setter, Integer(value))
         rescue ArgumentError
-          warn "[ssr-deno] Invalid integer for #{env_var}=#{value.inspect}, skipping"
+          warn "[ssr-deno] Invalid integer for #{env_var}=#{value.inspect}, skipping" if $VERBOSE
         end
       end
 
