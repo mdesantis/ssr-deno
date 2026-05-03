@@ -6,41 +6,36 @@ use std::time::{Duration, Instant};
 use super::DenoError;
 
 // ---------------------------------------------------------------------------
-// call_render (sync + async)
+// call_render (sync + async) — orchestration
 // ---------------------------------------------------------------------------
 
-struct AsyncHandle {
-    global_promise: v8::Global<v8::Promise>,
-    was_pending: bool,
+enum Phase1Outcome {
+    Sync(String),
+    Pending { promise: v8::Global<v8::Promise> },
 }
 
-pub fn call_render(
-    worker: &mut MainWorker,
+/// Look up the render function, call it, and dispatch the result.
+/// - Non-Promise return → stringifies directly → Ok(Sync(s))
+/// - Resolved Promise → reads result in Phase 1 scope → Ok(Sync(s))
+/// - Rejected Promise → extracts error via helper → Err(DenoError)
+/// - Pending Promise → saves Global, returns Ok(Pending { promise })
+fn phase1_lookup_and_call(
+    isolate: &mut v8::OwnedIsolate,
+    context: &v8::Global<v8::Context>,
     bundle_id: &str,
     args_json: &str,
-    render_timeout_ms: u64,
     oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
-    let js_runtime = &mut worker.js_runtime;
-    let context = js_runtime.main_context();
-    let isolate = js_runtime.v8_isolate();
-
-    // Raw Isolate pointer for Global::new inside scope chain.
-    // TryCatch holds `&mut context_scope` blocking `&Isolate` borrow from
-    // the scope.  SAFETY: isolate lives for entire function.
+) -> Result<Phase1Outcome, DenoError> {
     let isolate_raw: *const v8::Isolate = &**isolate as *const v8::Isolate;
 
-    // ══════════════════════════════════════════════════════════════════
-    // Phase 1 — scope chain alive (block-scoped to release isolate borrow)
-    let async_handle: Option<AsyncHandle> = {
+    let result = {
         let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.as_mut().init();
-        let context_local = v8::Local::new(&mut scope, &context);
+        let context_local = v8::Local::new(&mut scope, context);
         let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
 
         let global = context_local.global(&mut context_scope);
 
-        // ── Traversal helper: get a property, filter undefined/null ──────
         let mut get_prop = |obj: v8::Local<v8::Object>, key: &str| -> Result<v8::Local<v8::Value>, DenoError> {
             let k = v8::String::new(&mut context_scope, key).unwrap();
             obj.get(&mut context_scope, k.into())
@@ -70,7 +65,6 @@ pub fn call_render(
         let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
         let undefined = v8::undefined(&mut context_scope);
 
-        // TryCatch prevents V8 from marking the exception as unhandled.
         let mut tc = std::pin::pin!(v8::TryCatch::new(&mut context_scope));
         let try_catch = tc.as_mut().init();
 
@@ -100,108 +94,140 @@ pub fn call_render(
                         .ok_or_else(|| DenoError::Render(
                             "Cannot serialize render result to JSON".to_string()
                         ))?;
-                    return Ok(json_str.to_rust_string_lossy(&try_catch));
+                    return Ok(Phase1Outcome::Sync(json_str.to_rust_string_lossy(&try_catch)));
                 }
                 v8::PromiseState::Rejected => {
-                    let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
-                    Some(AsyncHandle { global_promise, was_pending: false })
+                    let rejection = promise.result(&try_catch);
+                    if oom_triggered.load(Ordering::SeqCst) {
+                        return Err(DenoError::OutOfMemory(
+                            "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                        ));
+                    }
+                    let msg = if rejection.is_string() {
+                        rejection.to_rust_string_lossy(&try_catch)
+                    } else if rejection.is_object() {
+                        v8::json::stringify(&try_catch, rejection)
+                            .map(|s| s.to_rust_string_lossy(&try_catch))
+                            .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
+                    } else {
+                        "Promise rejected".to_string()
+                    };
+                    return Err(DenoError::Render(msg));
                 }
                 v8::PromiseState::Pending => {
                     let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
-                    Some(AsyncHandle { global_promise, was_pending: true })
+                    Ok(Phase1Outcome::Pending { promise: global_promise })
                 }
             }
         } else {
             let json_str = v8::json::stringify(&try_catch, result).ok_or_else(|| {
                 DenoError::Render("Cannot serialize render result to JSON".to_string())
             })?;
-            return Ok(json_str.to_rust_string_lossy(&try_catch));
+            return Ok(Phase1Outcome::Sync(json_str.to_rust_string_lossy(&try_catch)));
         }
-    }; // │ scope chain dropped — isolate borrow released
+    };
 
-    // ══════════════════════════════════════════════════════════════════
-    // Phase 2 — isolate free (scope chain dead)
+    result
+}
 
-    let AsyncHandle {
-        global_promise,
-        was_pending,
-    } = async_handle.expect("async_handle is Some when we reach Phase 2");
+/// Poll the microtask queue until the promise settles or the deadline expires,
+/// then re-enter the scope chain and extract the result.
+fn phase2_poll_and_resolve(
+    isolate: &mut v8::OwnedIsolate,
+    context: &v8::Global<v8::Context>,
+    promise: v8::Global<v8::Promise>,
+    render_timeout_ms: u64,
+    oom_triggered: &AtomicBool,
+) -> Result<String, DenoError> {
+    let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
 
-    if was_pending {
-        let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
+    while Instant::now() < deadline {
+        isolate.perform_microtask_checkpoint();
 
-        while Instant::now() < deadline {
-            isolate.perform_microtask_checkpoint();
+        let promise_ref = promise.open(isolate);
 
-            let promise_ref = global_promise.open(isolate);
-
-            match promise_ref.state() {
-                v8::PromiseState::Pending => {
-                    std::thread::sleep(Duration::from_micros(100));
-                }
-                _ => break,
+        match promise_ref.state() {
+            v8::PromiseState::Pending => {
+                std::thread::sleep(Duration::from_micros(100));
             }
+            _ => break,
         }
+    }
 
-        // Timeout check before re-entering scope chain.
-        let promise_ref = global_promise.open(isolate);
-        if promise_ref.state() == v8::PromiseState::Pending {
+    // Timeout check before re-entering scope chain.
+    let promise_ref = promise.open(isolate);
+    if promise_ref.state() == v8::PromiseState::Pending {
+        if oom_triggered.load(Ordering::SeqCst) {
+            return Err(DenoError::OutOfMemory(
+                "JS heap out of memory — the isolate reached its configured heap limit".into(),
+            ));
+        }
+        return Err(DenoError::Render(
+            format!("Async render promise did not settle within {render_timeout_ms}ms timeout"),
+        ));
+    }
+
+    // Re-enter scope chain to read the promise result.
+    let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+    let mut scope = scope_storage.as_mut().init();
+    let context_local = v8::Local::new(&mut scope, context);
+    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+
+    let promise_ref = promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
+
+    // Timeout above guarantees we never reach Pending here.
+    match promise_ref.state() {
+        v8::PromiseState::Fulfilled => {
+            let resolved = promise_ref.result(&context_scope);
+            let json_str =
+                v8::json::stringify(&mut context_scope, resolved).ok_or_else(|| {
+                    if oom_triggered.load(Ordering::SeqCst) {
+                        DenoError::OutOfMemory(
+                            "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                        )
+                    } else {
+                        DenoError::Render("Cannot serialize render result to JSON".to_string())
+                    }
+                })?;
+            Ok(json_str.to_rust_string_lossy(&mut context_scope))
+        }
+        v8::PromiseState::Rejected => {
+            let rejection = promise_ref.result(&context_scope);
             if oom_triggered.load(Ordering::SeqCst) {
                 return Err(DenoError::OutOfMemory(
                     "JS heap out of memory — the isolate reached its configured heap limit".into(),
                 ));
             }
-            return Err(DenoError::Render(
-                format!("Async render promise did not settle within {render_timeout_ms}ms timeout"),
-            ));
+            let msg = if rejection.is_string() {
+                rejection.to_rust_string_lossy(&mut context_scope)
+            } else if rejection.is_object() {
+                v8::json::stringify(&mut context_scope, rejection)
+                    .map(|s| s.to_rust_string_lossy(&mut context_scope))
+                    .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
+            } else {
+                "Promise rejected".to_string()
+            };
+            Err(DenoError::Render(msg))
         }
+        v8::PromiseState::Pending => unreachable!("timeout checked before scope chain re-entry"),
     }
+}
 
-    {
-        let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
-        let mut scope = scope_storage.as_mut().init();
-        let context_local = v8::Local::new(&mut scope, &context);
-        let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+pub fn call_render(
+    worker: &mut MainWorker,
+    bundle_id: &str,
+    args_json: &str,
+    render_timeout_ms: u64,
+    oom_triggered: &AtomicBool,
+) -> Result<String, DenoError> {
+    let js_runtime = &mut worker.js_runtime;
+    let context = js_runtime.main_context();
+    let isolate = js_runtime.v8_isolate();
 
-        // Open the Global through the scope chain to get &mut Isolate.
-        let promise_ref = global_promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
-
-        // Early exit above guarantees we never reach Pending here,
-        // but match arms must be exhaustive.
-        match promise_ref.state() {
-            v8::PromiseState::Fulfilled => {
-                let resolved = promise_ref.result(&context_scope);
-                let json_str =
-                    v8::json::stringify(&mut context_scope, resolved).ok_or_else(|| {
-                        if oom_triggered.load(Ordering::SeqCst) {
-                            DenoError::OutOfMemory(
-                                "JS heap out of memory — the isolate reached its configured heap limit".into(),
-                            )
-                        } else {
-                            DenoError::Render("Cannot serialize render result to JSON".to_string())
-                        }
-                    })?;
-                Ok(json_str.to_rust_string_lossy(&mut context_scope))
-            }
-            v8::PromiseState::Rejected => {
-                if oom_triggered.load(Ordering::SeqCst) {
-                    return Err(DenoError::OutOfMemory(
-                        "JS heap out of memory — the isolate reached its configured heap limit".into(),
-                    ));
-                }
-                let rejection = promise_ref.result(&context_scope);
-                let msg = if rejection.is_string() {
-                    rejection.to_rust_string_lossy(&mut context_scope)
-                } else if rejection.is_object() {
-                    v8::json::stringify(&mut context_scope, rejection)
-                        .map(|s| s.to_rust_string_lossy(&mut context_scope))
-                        .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
-                } else {
-                    "Promise rejected".to_string()
-                };
-                Err(DenoError::Render(msg))
-            }
-            v8::PromiseState::Pending => unreachable!("timeout checked before Phase 2"),
+    match phase1_lookup_and_call(isolate, &context, bundle_id, args_json, oom_triggered)? {
+        Phase1Outcome::Sync(s) => Ok(s),
+        Phase1Outcome::Pending { promise } => {
+            phase2_poll_and_resolve(isolate, &context, promise, render_timeout_ms, oom_triggered)
         }
     }
 }

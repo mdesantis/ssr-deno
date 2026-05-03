@@ -58,7 +58,11 @@ rejection_error(value, scope, oom_triggered) -> DenoError
 
 ## Implementation
 
-### [ ] Step 1: Extract `rejection_error` helper
+### [x] Step 1: Extract `rejection_error` helper — **Dropped**
+
+The approach was attempted but rusty_v8 methods like `to_rust_string_lossy`
+and `json::stringify` expect concrete scope types, not `&impl AsMut<Isolate>`.
+Rejection formatting is duplicated inline in both phases instead.
 
 ```rust
 /// Format a promise rejection value into a DenoError.
@@ -85,10 +89,13 @@ fn rejection_error<T: AsMut<v8::Isolate>>(
 }
 ```
 
-The generic `T: AsMut<v8::Isolate>` works with both `v8::TryCatch` (Phase 1) and
-`v8::ContextScope` (Phase 2), since both implement `AsMut<Isolate>`.
+The generic `T: AsMut<v8::Isolate>` was attempted but rusty_v8 methods like
+`to_rust_string_lossy` and `json::stringify` expect concrete scope types
+(`&Isolate`, `&PinnedRef<HandleScope>`), not `&impl AsMut<Isolate>`. The
+`rejection_error` helper was dropped — rejection formatting is duplicated
+inline in both phases instead.
 
-### [ ] Step 2: Extract `phase1_lookup_and_call`
+### [x] Step 2: Extract `phase1_lookup_and_call`
 
 Moves lines 24-119 from the current `call_render` into a standalone function
 that owns its scope chain and returns an outcome enum:
@@ -131,89 +138,13 @@ fn phase1_lookup_and_call(
 Key difference from current code: the Rejected arm uses the shared
 `rejection_error` helper and returns `Err(...)` instead of falling through.
 
-### [ ] Step 3: Extract `phase2_poll_and_resolve`
+### [x] Step 3: Extract `phase2_poll_and_resolve`
 
-Moves lines 130-206 from the current `call_render` into a standalone function:
+### [x] Step 4: Rewrite `call_render` as orchestration
 
-```rust
-fn phase2_poll_and_resolve(
-    isolate: &mut v8::OwnedIsolate,
-    context: &v8::Global<v8::Context>,
-    promise: v8::Global<v8::Promise>,
-    render_timeout_ms: u64,
-    oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
-    // poll loop (lines 130-158)
-    let was_pending = true; // only called when pending
-    let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
+### [x] Step 5: Remove obsolete types
 
-    while Instant::now() < deadline {
-        isolate.perform_microtask_checkpoint();
-
-        let promise_ref = promise.open(isolate);
-        match promise_ref.state() {
-            v8::PromiseState::Pending => std::thread::sleep(Duration::from_micros(100)),
-            _ => break,
-        }
-    }
-
-    // Timeout check
-    let promise_ref = promise.open(isolate);
-    if promise_ref.state() == v8::PromiseState::Pending {
-        if oom_triggered.load(Ordering::SeqCst) {
-            return Err(DenoError::OutOfMemory(/* ... */));
-        }
-        return Err(DenoError::Render(format!(/* timeout */)));
-    }
-
-    // scope chain re-entry + result extraction (lines 160-206)
-    let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
-    let mut scope = scope_storage.as_mut().init();
-    let context_local = v8::Local::new(&mut scope, context);
-    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
-
-    let promise_ref = promise.open(AsMut::<v8::Isolate>::as_mut(&mut *context_scope));
-    match promise_ref.state() {
-        v8::PromiseState::Fulfilled => {
-            // ... stringify, return Ok(s)
-        }
-        v8::PromiseState::Rejected => {
-            let rejection = promise_ref.result(&context_scope);
-            Err(rejection_error(rejection, &mut context_scope, oom_triggered))
-        }
-        v8::PromiseState::Pending => unreachable!("timeout checked above"),
-    }
-}
-```
-
-### [ ] Step 4: Rewrite `call_render` as orchestration
-
-```rust
-pub fn call_render(
-    worker: &mut MainWorker,
-    bundle_id: &str,
-    args_json: &str,
-    render_timeout_ms: u64,
-    oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
-    let js_runtime = &mut worker.js_runtime;
-    let context = js_runtime.main_context();
-    let isolate = js_runtime.v8_isolate();
-
-    match phase1_lookup_and_call(isolate, &context, bundle_id, args_json, oom_triggered)? {
-        Phase1Outcome::Sync(s) => Ok(s),
-        Phase1Outcome::Pending { promise } => {
-            phase2_poll_and_resolve(isolate, &context, promise, render_timeout_ms, oom_triggered)
-        }
-    }
-}
-```
-
-### [ ] Step 5: Remove obsolete types
-
-- Remove `struct AsyncHandle` — replaced by `Phase1Outcome::Pending { promise }`.
-
-### [ ] Step 6: Verify
+### [x] Step 6: Verify
 
 `bundle exec rake` passes — compile, cargo test, samples, all Ruby suites,
 RuboCop, 100% coverage, RBS valid.
