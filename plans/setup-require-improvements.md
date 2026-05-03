@@ -16,9 +16,9 @@ The `setup_require` function in `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` h
 
 ## Design Decisions
 
-### Deadline: hard-coded 1 second (not configurable)
+### Deadline: 10ms deadline (not configurable)
 
-`call_render` uses the configurable `render_timeout_ms` because render time varies by bundle complexity. `setup_require` runs the same microtask every time (`import('node:module')` + `createRequire`) — it resolves in under 1ms on a warm isolate. 1 second is overkill but harmless, and adding a new config field for something that never hits the timeout is unnecessary complexity.
+`call_render` uses the configurable `render_timeout_ms` because render time varies by bundle complexity. `setup_require` runs the same microtask every time (`import('node:module')` + `createRequire`) — it resolves in under 1ms on a warm isolate. The initial 1s deadline was reduced to 10ms in a follow-up fix to avoid unnecessary sleep on every bundle load.
 
 ### No in-loop promise-state check
 
@@ -61,7 +61,7 @@ Replace lines 369–372:
 with:
 ```rust
     let isolate = worker.js_runtime.v8_isolate();
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let deadline = Instant::now() + Duration::from_millis(10);
     while Instant::now() < deadline {
         isolate.perform_microtask_checkpoint();
         std::thread::sleep(Duration::from_micros(100));
@@ -103,7 +103,7 @@ Ruby Bundle.new → SSR::Deno::JsRuntimeInitializationError (from BundleLoad map
 
 Current: "polls the microtask queue until `globalThis.require` is available via `createRequire`."
 
-Replace with: "polls the microtask queue with a 1-second deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails."
+Replace with: "polls the microtask queue with a 10ms deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails."
 
 ---
 

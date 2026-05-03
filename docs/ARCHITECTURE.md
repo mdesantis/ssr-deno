@@ -117,7 +117,7 @@ See `samples/` for 11 complete working examples: barebone (plain JS), deno-nativ
 When enabled:
 1. `build_worker` uses `NodeBuiltinOnlyModuleLoader` (allows `node:` scheme URLs) instead of `NoopModuleLoader`.
 2. `build_worker` initializes `NodeExtInitServices` with a `NodeRequireLoader`, `NodeResolver`, and `PackageJsonResolver`.
-3. Before each bundle evaluation, `setup_require` runs an async `import('node:module')` and polls the microtask queue with a 1-second deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails.
+3. Before each bundle evaluation, `setup_require` runs an async `import('node:module')` and polls the microtask queue with a 10ms deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails.
 
 This allows CJS bundles that call `require("stream")`, `require("buffer")`, `require("events")`, etc. to work in the embedded V8 context. Packages like `@emotion/server` that depend on Node.js built-in modules via `through2` → `multipipe` → `html-tokenize` can be used without manual CSS extraction.
 
