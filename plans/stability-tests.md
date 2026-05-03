@@ -26,10 +26,8 @@ The concern is that a refactoring in the Rust FFI layer or V8 scope chain handli
 
 | Concern | Why not |
 |---|---|
-| **Intentional V8 OOM** | `max_heap_size_mb` is `max_old_generation_size_in_bytes`. When V8 hits it, V8 aborts the process — the test itself segfaults. Testable only via subprocess with `assert exit != 0`, but the signal is V8's own behavior, not ours. |
 | **Worker death recovery** | Pool is `OnceLock` — no public API to tear down and re-init. Already noted as skipped test. |
 | **Absolute heap equality** | V8 GC is non-deterministic — heap doesn't shrink on demand. Must use ratio threshold, not exact match. |
-| **User leak graceful handling** | Same as V8 OOM above — pushing a user component to allocate past `max_heap_size_mb` aborts the process. Not testable safely in-process. |
 
 ## Implementation Steps
 
@@ -41,7 +39,7 @@ The concern is that a refactoring in the Rust FFI layer or V8 scope chain handli
 
 **File:** `test/ssr/test_deno_stability.rb` (created)
 
-4 tests total. Concurrent stress and pool saturation are already covered by `test_deno_concurrency.rb` (20 threads, pool_size=1). Not duplicated.
+5 tests total. Concurrent stress and pool saturation are already covered by `test_deno_concurrency.rb` (20 threads, pool_size=1). Not duplicated.
 
 Test A — repeated-render leak detection:
 ```ruby
@@ -83,6 +81,33 @@ def test_rapid_reload_does_not_crash
 end
 ```
 
+Test E — OOM produces `JsRuntimeOutOfMemoryError` (subprocess):
+```ruby
+def test_oom_produces_out_of_memory_error
+  assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM')
+    SSR::Deno.max_heap_size_mb = 16
+    SSR::Deno.isolate_pool_size = 1
+    begin
+      Dir.mktmpdir do |dir|
+        bundle_path = File.join(dir, 'leak-bundle.js')
+        File.write(bundle_path, <<~JS)
+          var leak = [];
+          globalThis.render = function() {
+            leak.push(new Array(64000).fill('x'));
+            return '<p>ok</p>';
+          };
+        JS
+        bundle = SSR::Deno::Bundle.new(bundle_path)
+        100.times { bundle.render({}) }
+      end
+      exit 1
+    rescue SSR::Deno::JsRuntimeOutOfMemoryError
+      exit 0
+    end
+  RUBY
+end
+```
+
 ### [x] Step 3: Integrate into test runner
 
 No changes needed — `test_deno_stability.rb` matches the `test_*.rb` pattern and is automatically picked up by `test:main` (the `test.rake` glob excludes only specific files by name, not by pattern).
@@ -96,15 +121,16 @@ No changes needed — `test_deno_stability.rb` matches the `test_*.rb` pattern a
 | File | Change |
 |---|---|
 | `test/fixtures/large-payload-bundle.js` | New fixture — renders + stringifies full payload |
-| `test/ssr/test_deno_stability.rb` | New test file — 4 stability tests |
+| `test/ssr/test_deno_stability.rb` | New test file — 5 stability tests |
+| `sig/ssr/deno.rbs` | Added `JsRuntimeOutOfMemoryError < Error` class |
+| `lib/ssr/deno/rails/helper.rb` | Rescue `JsRuntimeOutOfMemoryError` alongside `RenderError` |
 
 ## Files NOT Changed
 
 | File | Reason |
 |---|---|
-| `ext/ssr_deno/src/` | No Rust changes |
-| `lib/ssr/deno.rb` | No API changes |
-| `sig/ssr/deno.rbs` | No type changes |
+| `ext/ssr_deno/src/` | No Rust changes at stability test time (OOM callback was added later) |
+| `lib/ssr/deno.rb` | New error class is defined in Rust via magnus, not in Ruby |
 | `rakelib/test.rake` | test:main glob auto-discovers `test_deno_stability.rb` |
 | `README.md` / `docs/architecture.md` | Implementation detail, not architectural |
 

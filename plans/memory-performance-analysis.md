@@ -394,6 +394,8 @@ Bundle B → {React + App B} × 4 isolates → ~12 MB
 
 ✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: auto-detect, max 8). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
 
+✅ **V8 OOM protection** — `near_heap_limit_callback` + `terminate_execution` prevents fatal SIGTRAP when a user SSR component exceeds `max_heap_size_mb`. OOM raises `SSR::Deno::JsRuntimeOutOfMemoryError` (dedicated exception class, sibling of `RenderError`). See [`plans/archived/v8-oom-protection.md`](archived/v8-oom-protection.md).
+
 ### 6.2 Medium Term
 
 - **Add `blocking_send` timeout.** The current `block_on_render` has no timeout on the channel send path. A hung render or saturated pool can block a Ruby thread indefinitely before the `render_timeout_ms` even starts. Add a configurable overall dispatch timeout wrapping both `blocking_send` and `recv_timeout`.
