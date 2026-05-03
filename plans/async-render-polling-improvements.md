@@ -100,11 +100,11 @@ This is complex and may not be needed — most SSR render functions use `await f
 
 **File:** `test/ssr/test_integration_async.rb` (new)
 
-- Write a temp JS bundle with `async function render(args) { await new Promise(r => setTimeout(r, 0)); return JSON.stringify({ name }); } globalThis.render = render;`
-- Load via `Bundle.new(temp_path)`
-- Assert render produces correct JSON
-- Clean up temp file
-- Test timeout: create a never-resolving promise, assert `RenderError` is raised
+- **Sync render test:** `function render(args) { return JSON.stringify({ name: "sync" }); } globalThis.render = render;` — verify async path doesn't break sync renders
+- **Async render test:** `async function render(args) { await new Promise(r => setTimeout(r, 0)); return JSON.stringify({ name: "async" }); } globalThis.render = render;` — verify poll loop resolves
+- **Timeout test:** `async function render() { await new Promise(() => {}); return ""; } globalThis.render = render;` with short timeout — assert `RenderError` is raised
+- **Different timeout values:** Test with 100ms, 1000ms, 5000ms to verify behavior scales correctly
+- **Cleanup:** Ensure temp files are removed even on test failure (use `ensure` block)
 
 ### [ ] Step 6: Run full pipeline
 
@@ -114,14 +114,36 @@ bundle exec rake
 
 Must pass: Rust compile, cargo:test, sample builds, Ruby tests (100% coverage), RuboCop, RBS.
 
+### [ ] Step 7: Update CHANGELOG.md
+
+Add entry under Unreleased → Changed:
+
+```markdown
+- Async render polling: replace fixed 10,000 iteration count with configurable timeout-based deadline. Add 100µs sleep between polls to reduce CPU usage. Removed redundant outer `recv_timeout` — single timeout now applies to entire render operation.
+```
+
+### [ ] Step 8: (Optional) Fix `setup_require` error handling
+
+If time allows, add a promise state check in `setup_require` (mod.rs:367-371) similar to `call_render`'s final check:
+
+```rust
+// After the poll loop, check if the require import actually resolved
+for _ in 0..100 {
+    isolate.perform_microtask_checkpoint();
+}
+// Check if globalThis.require is defined
+```
+
+This is out of scope for the main PR but worth documenting.
+
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Replace MAX_POLLS with deadline loop + sleep, add render_timeout_ms param |
+| `ext/ssr_deno/src/deno_runtime_wrapper/call_render.rs` | Replace MAX_POLLS with deadline loop + sleep, add render_timeout_ms param, update stale error message at end |
 | `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Pass render_timeout_ms to call_render, remove outer recv_timeout, update setup_require loop |
-| `test/ssr/test_integration_async.rb` | New async integration test |
-| `CHANGELOG.md` | Entry under Unreleased |
+| `test/ssr/test_integration_async.rb` | New async integration test (sync, async, timeout, different values) |
+| `CHANGELOG.md` | Add entry under Unreleased → Changed |
 
 ## Tradeoffs
 
@@ -129,3 +151,15 @@ Must pass: Rust compile, cargo:test, sample builds, Ruby tests (100% coverage), 
 - **Single timeout** — Removing the outer `recv_timeout` means the worker thread is the sole timeout authority. If the worker crashes without sending a reply, `recv()` returns `Disconnected` which maps to `WorkerDied`.
 - **Macrotasks not supported** — Documented as a known limitation. Most SSR bundles don't use setTimeout in their render path.
 - **No Ruby-level async** — The Ruby thread remains blocked during render. This is by design — the pool architecture is synchronous from Ruby's perspective. Making it truly async would require a major redesign (Fiber scheduler, non-blocking FFI).
+- **Zero timeout (0ms)** — If user sets `render_timeout_ms = 0`, deadline = `Instant::now()`. First `Instant::now() >= deadline` check is a race condition (same instant). Behavior: one microtask checkpoint then timeout. Add validation to reject 0 or treat as "no limit".
+
+## Known Issues (Out of Scope)
+
+### `setup_require` silent failure (mod.rs:367-371)
+The `setup_require` function doesn't check if the `createRequire` promise actually resolved. After the loop, it returns `Ok(())` regardless. If the import fails, `globalThis.require` is undefined and bundles fail later with confusing errors. Should add a promise state check similar to `call_render`'s final check.
+
+### Stale error message at end of `call_render` (call_render.rs:164-168)
+After the polling loop exits, the `v8::PromiseState::Pending` arm at the end of `call_render` has the old "maximum number of event-loop polls" message. Should be updated to match the new timeout message format.
+
+### `was_pending` false case
+If render is synchronous and returns a resolved promise, the polling loop is skipped entirely. This is correct behavior but the integration test should cover this path to ensure sync renders still work.
