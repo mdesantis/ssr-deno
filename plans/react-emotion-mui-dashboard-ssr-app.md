@@ -101,7 +101,7 @@ globalThis.render = render
 3. Create src/entry-server.ts (SSR wrapper)
 4. Build: `deno task build`
 5. Update `rakelib/samples.rake` — add dashboard to SAMPLES
-6. Update test/ssr/test_integration_samples.rb — add dashboard test
+ 6. Update test/ssr/test_integration_samples.rb — add dashboard test [x]
 7. Run `bundle exec rake` (full pipeline, needs `node_builtins: true`)
 
 ---

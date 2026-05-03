@@ -2,6 +2,10 @@
 
 require 'test_helper'
 
+# Tests that require Node built-in support (stream, buffer, events, etc.)
+# must go in test/ssr/test_integration_node_builtins.rb instead,
+# which runs with SSR::Deno.node_builtins_enabled = true.
+# Example: TestIntegrationReactMuiDashboardSSR (vite-react-emotion-mui-dashboard-ssr-app)
 module SSR
   class TestIntegrationReactSSR < Minitest::Test
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-ssr-app/dist/server/entry-server.js', __dir__)
