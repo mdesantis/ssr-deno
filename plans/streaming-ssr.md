@@ -41,6 +41,27 @@ flowchart LR
 
 The key insight is that the V8 isolate produces HTML in chunks via React's streaming scheduler. Each chunk is sent back to Ruby as it becomes available, and Ruby forwards it immediately to the HTTP response via `ActionController::Live`.
 
+### Prerequisite: Event loop
+
+React 19's streaming APIs (`renderToPipeableStream`, `renderToReadableStream`)
+use `MessagePort.postMessage` internally to schedule chunk emission between
+event loop iterations. This is a **macrotask** — it requires the event loop to
+run, unlike microtasks (Promises) which are dispatched by
+`perform_microtask_checkpoint`.
+
+The current SSR pipeline (`call_render`) only runs `execute_script` and
+`perform_microtask_checkpoint`. It never calls `MainWorker::run_event_loop`.
+Without the event loop, `MessagePort` messages are never dispatched, and the
+stream produces one chunk then hangs.
+
+Implementing streaming SSR requires switching from `execute_script` to a
+module-based evaluation with a running event loop. This is a significant
+architectural change: the V8 isolate must stay alive across multiple event loop
+ticks while Ruby consumes chunks.
+
+For more detail on macrotask vs microtask behavior, see
+[`plans/macrotasks-in-ssr.md`](macrotasks-in-ssr.md).
+
 ### How React 19 Streaming Works
 
 `renderToPipeableStream` returns a `PipeableStream` object:

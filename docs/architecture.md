@@ -103,6 +103,22 @@ globalThis.render = render
 - The return value must be an HTML string (or a Promise resolving to one).
 - The Rust runtime auto-detects async (`v8::Promise`) returns and polls the microtask queue.
 
+### SSR task type limitations
+
+The SSR pipeline runs `execute_script` + `perform_microtask_checkpoint` but
+NEVER runs the V8 event loop. This means only **microtasks** are dispatched;
+**macrotasks** are silently queued and never executed.
+
+| Category | APIs that work | APIs that silently never fire |
+|---|---|---|
+| **Microtasks** | `Promise.then`, `queueMicrotask`, `async/await` | — |
+| **Macrotasks** | — | `setTimeout`, `setInterval`, `MessagePort`, `fetch`, `requestAnimationFrame` |
+
+React 19's streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
+requires `MessagePort` (a macrotask) and cannot work without the event loop.
+Vue 3 async SSR works because it uses only Promises (microtasks). See
+[`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for details.
+
 **Key Vite settings:**
 - `ssr.noExternal: true` — bundles all dependencies into a single self-contained file.
 - `ssr.target: 'webworker'` — produces a bundle using only Web APIs (safe default; not a gem requirement).
