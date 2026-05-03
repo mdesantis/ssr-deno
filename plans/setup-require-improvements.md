@@ -30,7 +30,7 @@ The function is called by `load_bundle_in_worker`, which also returns `Result<()
 
 ## Implementation Steps
 
-### [ ] Step 1: Add `Instant` import
+### [x] Step 1: Add `Instant` import
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 (`call_render.rs` uses the same grouped import style — consistency.)
 
-### [ ] Step 2: Replace hard-coded loop with deadline-based poll + sleep
+### [x] Step 2: Replace hard-coded loop with deadline-based poll + sleep
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
@@ -68,7 +68,7 @@ with:
 
 This matches the pattern used in `call_render` (time-based deadline + 100µs sleep), minus the per-iteration promise-state check (not possible without a scope chain — see Design Decisions).
 
-### [ ] Step 3: Add post-poll verification check
+### [x] Step 3: Add post-poll verification check
 
 **File:** `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
@@ -95,7 +95,7 @@ load_bundle → DenoError::BundleLoad("Failed to set up require: ...")
 Ruby Bundle.new → SSR::Deno::JsRuntimeInitializationError (from BundleLoad mapping in lib.rs:72)
 ```
 
-### [ ] Step 4: Update `docs/ARCHITECTURE.md`
+### [x] Step 4: Update `docs/ARCHITECTURE.md`
 
 **File:** `docs/ARCHITECTURE.md`, line 120
 

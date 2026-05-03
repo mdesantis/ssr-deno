@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
@@ -367,11 +367,23 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
         .map_err(|e| format!("Failed to start require import: {e}"))?;
 
     let isolate = worker.js_runtime.v8_isolate();
-    for _ in 0..10_000 {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
         isolate.perform_microtask_checkpoint();
+        std::thread::sleep(Duration::from_micros(100));
     }
 
-    Ok(())
+    worker
+        .execute_script(
+            "<ssr-deno:require-verify>",
+            r#"
+            if (typeof globalThis.require === 'undefined') {
+                throw new Error('createRequire failed - globalThis.require is undefined');
+            }
+            "#.to_string().into(),
+        )
+        .map(|_| ())
+        .map_err(|e| format!("setup_require failed: {e}"))
 }
 
 /// Evaluates the bundle code and moves `globalThis.render` into the bundle
