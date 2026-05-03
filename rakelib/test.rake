@@ -82,25 +82,41 @@ task 'test:async' do
      Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_async.rb'))
 end
 
-desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async]
+desc 'Run env var config tests'
+task 'test:env_config' do
+  env_config_test = File.join(test_dir, 'ssr', 'test_deno_env_config.rb')
+  runner = <<~RUBY
+    require '#{helper}'
+    require '#{env_config_test}'
+  RUBY
 
-desc 'Check merged coverage (runs after test:node_builtins)'
+  File.write(File.join(tmp, 'test_runner_env_config.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:env_config' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_env_config.rb'))
+end
+
+desc 'Run all test suites'
+task test: %w[test:main test:setters test:node_builtins test:async test:env_config]
+
+desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do
   require 'simplecov'
-  require 'json'
 
   rs_path = File.join(SimpleCov.coverage_path, '.resultset.json')
-
   abort 'No coverage results — run `rake test` first' unless File.exist?(rs_path)
 
   results = SimpleCov::ResultMerger.merged_result
-  line = results.covered_percentages[:line]
-  branch = results.covered_percentages[:branch]
+  stats = results.coverage_statistics
 
-  puts "Merged line coverage: #{line.round(2)}%"
-  puts "Merged branch coverage: #{branch.round(2)}%" if branch
+  line_stat = stats[:line]
+  branch_stat = stats[:branch]
 
-  abort "Merged line coverage #{line.round(2)}% is below 100%" if line < 100.0
-  abort "Merged branch coverage #{branch.round(2)}% is below 100%" if branch && branch < 100.0
+  line_pct = line_stat&.percent
+  branch_pct = branch_stat&.percent
+
+  puts "Merged line coverage: #{line_pct.round(2)}%"
+  puts "Merged branch coverage: #{branch_pct.round(2)}%" if branch_pct
+
+  abort "Merged line coverage #{line_pct.round(2)}% is below 100%" if line_pct && line_pct < 100.0
+  abort "Merged branch coverage #{branch_pct.round(2)}% is below 100%" if branch_pct && branch_pct < 100.0
 end

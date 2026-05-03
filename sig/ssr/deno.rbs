@@ -114,5 +114,16 @@ module SSR
     def self.isolate_pool_size=: (Integer size) -> void
     def self.render_timeout_ms=: (Integer milliseconds) -> void
     def self.node_builtins_enabled=: (bool enabled) -> void
+
+    def self.max_heap_size_mb: () -> Integer
+    def self.isolate_pool_size: () -> Integer
+    def self.render_timeout_ms: () -> Integer
+    def self.node_builtins_enabled?: () -> bool
+
+    private
+
+    def self.apply_env_var_defaults: () -> void
+    def self.apply_integer_env: (String env_var, Symbol setter) -> void
+    def self.apply_bool_env: (String env_var, Symbol setter) -> void
   end
 end

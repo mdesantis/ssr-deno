@@ -126,6 +126,26 @@ fn native_set_render_timeout_ms(ms: u64) -> Result<(), Error> {
 }
 
 // ---------------------------------------------------------------------------
+// Native getter functions — read CONFIG without initialization check
+// ---------------------------------------------------------------------------
+
+fn native_get_max_heap_size_mb() -> usize {
+    CONFIG.lock().unwrap().max_heap_size_mb
+}
+
+fn native_get_isolate_pool_size() -> usize {
+    CONFIG.lock().unwrap().isolate_pool_size
+}
+
+fn native_get_render_timeout_ms() -> u64 {
+    CONFIG.lock().unwrap().render_timeout_ms
+}
+
+fn native_get_node_builtins_enabled() -> bool {
+    CONFIG.lock().unwrap().node_builtins
+}
+
+// ---------------------------------------------------------------------------
 // Pool initialization (OnceLock + init mutex)
 //   OnceLock provides lock-free reads after init.
 //   POOL_INIT_LOCK prevents duplicate pool creation during the init window.
@@ -248,6 +268,22 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_set_node_builtins_enabled",
         function!(native_set_node_builtins_enabled, 1),
+    )?;
+    deno_module.define_singleton_method(
+        "native_get_max_heap_size_mb",
+        function!(native_get_max_heap_size_mb, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_get_isolate_pool_size",
+        function!(native_get_isolate_pool_size, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_get_render_timeout_ms",
+        function!(native_get_render_timeout_ms, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_get_node_builtins_enabled",
+        function!(native_get_node_builtins_enabled, 0),
     )?;
     Ok(())
 }

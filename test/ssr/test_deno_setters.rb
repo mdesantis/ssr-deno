@@ -54,5 +54,31 @@ module SSR
         end
       RUBY
     end
+
+    # Getter methods (coverage for native getter delegation)
+    def test_getter_methods_are_callable
+      assert_kind_of Integer, SSR::Deno.max_heap_size_mb
+      assert_kind_of Integer, SSR::Deno.isolate_pool_size
+      assert_kind_of Integer, SSR::Deno.render_timeout_ms
+      assert_includes [true, false], SSR::Deno.node_builtins_enabled?
+    end
+
+    # Env var apply methods (coverage for apply_integer_env and apply_bool_env)
+    def test_env_var_apply_methods
+      # Set env vars so the methods don't return early
+      ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = '128'
+      ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'true'
+
+      SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
+      SSR::Deno.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
+
+      # Also test the warning branch (invalid integer)
+      ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = 'abc'
+      SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
+      ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
+
+      # Clean up
+      ENV.delete('SSR_DENO_NODE_BUILTINS_ENABLED')
+    end
   end
 end

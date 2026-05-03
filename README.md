@@ -40,6 +40,22 @@ SSR::Deno.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, ma
 SSR::Deno.node_builtins_enabled = true  # Node.js built-in modules (default: false)
 ```
 
+### Environment variables
+
+All four native settings can also be configured via environment variables,
+which act as **defaults** — explicit setter calls override them.
+
+| Env var | Setting | Type | Default |
+|---|---|---|---|
+| `SSR_DENO_MAX_HEAP_SIZE_MB` | `max_heap_size_mb` | Integer (MB) | 64 |
+| `SSR_DENO_ISOLATE_POOL_SIZE` | `isolate_pool_size` | Integer | 0 (auto) |
+| `SSR_DENO_RENDER_TIMEOUT_MS` | `render_timeout_ms` | Integer (ms) | 500 |
+| `SSR_DENO_NODE_BUILTINS_ENABLED` | `node_builtins_enabled` | Boolean | false |
+
+Boolean env vars accept `true`, `1`, `yes` (case-insensitive) for true;
+anything else is treated as false. Invalid integer formats print a warning
+and are skipped. Env vars are read once at `require 'ssr/deno'` time.
+
 The isolate pool distributes renders across V8 isolates in round-robin. Pool
 size defaults to `CPU_cores - 1` (capped at 8), leaving one core for Ruby.
 

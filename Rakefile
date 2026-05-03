@@ -21,4 +21,4 @@ end
 
 RuboCop::RakeTask.new
 
-task default: %i[compile cargo:test samples:build test rubocop rbs]
+task default: %i[compile cargo:test samples:build test coverage:check rubocop rbs]

@@ -68,6 +68,22 @@ module SSR
         native_set_node_builtins_enabled(enabled)
       end
 
+      def max_heap_size_mb
+        native_get_max_heap_size_mb
+      end
+
+      def isolate_pool_size
+        native_get_isolate_pool_size
+      end
+
+      def render_timeout_ms
+        native_get_render_timeout_ms
+      end
+
+      def node_builtins_enabled?
+        native_get_node_builtins_enabled
+      end
+
       # Returns V8 heap statistics from the isolate pool as a Hash.
       # Returns an empty Hash and prints a warning if the runtime is not yet
       # initialized (no Bundle.new has been called yet).
@@ -102,5 +118,41 @@ module SSR
         {}
       end
     end
+
+    class << self
+      private
+
+      # Applies SSR_DENO_* env vars as defaults at require-time.
+      # Explicit setter calls override these values.
+      # Invalid integer format (e.g., "abc") prints a warning and skips.
+      # Empty or nil env vars are treated as "not set".
+      def apply_env_var_defaults
+        apply_integer_env('SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
+        apply_integer_env('SSR_DENO_ISOLATE_POOL_SIZE', :isolate_pool_size=)
+        apply_integer_env('SSR_DENO_RENDER_TIMEOUT_MS', :render_timeout_ms=)
+        apply_bool_env('SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
+      end
+
+      def apply_integer_env(env_var, setter)
+        value = ENV.fetch(env_var, nil)
+        return if value.nil? || value.empty?
+
+        begin
+          send(setter, Integer(value))
+        rescue ArgumentError
+          warn "[ssr-deno] Invalid integer for #{env_var}=#{value.inspect}, skipping"
+        end
+      end
+
+      def apply_bool_env(env_var, setter)
+        value = ENV.fetch(env_var, nil)
+        return if value.nil? || value.empty?
+
+        bool_value = %w[true 1 yes].include?(value.downcase)
+        send(setter, bool_value)
+      end
+    end
+
+    apply_env_var_defaults
   end
 end
