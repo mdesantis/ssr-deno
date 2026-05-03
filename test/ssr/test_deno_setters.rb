@@ -63,21 +63,22 @@ module SSR
       assert_includes [true, false], SSR::Deno.node_builtins_enabled?
     end
 
-    # Env var apply methods (coverage for apply_integer_env and apply_bool_env)
+    # Env var apply methods (coverage for apply_integer_env and apply_bool_env).
+    # The invalid-integer warning branch is tested with capture_io, so stderr
+    # is not polluted by the warning.
     def test_env_var_apply_methods
-      # Set env vars so the methods don't return early
       ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = '128'
       ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'true'
 
       SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
       SSR::Deno.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
 
-      # Also test the warning branch (invalid integer)
-      ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = 'abc'
-      SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
-      ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
+      capture_io do
+        ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = 'abc'
+        SSR::Deno.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
+      end
 
-      # Clean up
+      ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
       ENV.delete('SSR_DENO_NODE_BUILTINS_ENABLED')
     end
   end
