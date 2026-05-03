@@ -85,30 +85,43 @@ Deno's `web_worker.rs` also tracks whether the callback fired via an
 `oom_triggered: Arc<AtomicBool>` flag, so it can report a specific
 `ERR_WORKER_OUT_OF_MEMORY` error instead of the generic "execution terminated".
 
-### Important: Deno's `MainWorker` has zero default OOM protection
+### Deno CLI's approach (found in source)
 
-Despite providing the API in `deno_core`, **Deno's libraries do NOT register a
-near-heap-limit callback by default.** Search results across all available
-crates:
+The Deno CLI source at `cli/lib/worker.rs` confirms the pattern is
+**identical** to ours:
 
-| Component | near-heap callback registered? | `oom_triggered` set? |
-|---|---|---|
-| `deno_core::JsRuntime::new` | No — API exists but never auto-registered | N/A |
-| `deno_runtime::MainWorker` (what we use) | No — no OOM protection at all | N/A |
-| `deno_runtime::WebWorker` | No — `oom_triggered` field exists but callback not registered by the library | `false` at init, never set in lib code |
-| `ssr-deno` (Step 1, done) | **Yes** — registered in `build_worker` | Not yet (Step 2 pending) |
+- **MainWorker** (`create_custom_worker`): no near-heap-limit callback
+  registered → would SIGTRAP on OOM, same as pre-Step-1
 
-The `add_near_heap_limit_callback` is only called:
+- **WebWorker** (created via JS `new Worker(...)`): callback registered **only
+  when `args.resource_limits.is_some()`** — i.e., when the user specifies
+  `resourceLimits` option in the Worker constructor. The exact code:
 
-- In `deno_core` tests (`misc.rs`)
-- Potentially by the Deno **CLI binary** (not a library — the source is not a
-  crate we depend on)
+  ```rust
+  if has_resource_limits {
+      let ts_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      let oom_flag = worker.oom_triggered.clone();
+      worker.js_runtime.add_near_heap_limit_callback(
+          move |current_limit, _initial_limit| {
+              oom_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+              ts_handle.terminate_execution();
+              current_limit * 2
+          },
+      );
+  }
+  ```
 
-**What this means:** Our Step 1 already puts us ahead of Deno's own
-`MainWorker` setup. If Deno's CLI hits the heap limit on the main isolate, it
-SIGTRAPs — same as we did before implementing the callback. Our `web_worker.rs`
-pattern (`oom_triggered: Arc<AtomicBool>`) mirrors what the Deno CLI likely
-does, but adapted for our blocking render model.
+  This is the exact same `oom_triggered + terminate_execution + limit * 2`
+  pattern. The `oom_flag` is later checked in `web_worker.rs` to emit
+  `ERR_WORKER_OUT_OF_MEMORY`.
+
+**What this means:** Our Step 1 registers the callback **unconditionally** for
+all isolates (including the main one), which is strictly more protective than
+the Deno CLI's own behavior. We're ahead of Deno's MainWorker, which gets no
+protection.
+
+The libraries (`deno_core`, `deno_runtime`) only expose the API — the
+embedder (Deno CLI or us) is responsible for wiring it up.
 
 ## Three levels of Rust-side defense
 
