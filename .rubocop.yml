@@ -9,6 +9,7 @@ AllCops:
   NewCops: enable
   Exclude:
     - 'ext/ssr_deno/target/**/*'
+    - 'plans/**/*'
     - 'samples/**/*'
     - 'tmp/**/*'
     - 'test/dummy/**/*'
