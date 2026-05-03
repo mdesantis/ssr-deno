@@ -1,6 +1,12 @@
 ## Unreleased
 
 ### Added
+
+### Changed
+
+## [0.1.0-alpha.4] - 2026-05-04
+
+### Added
 - `Bundle#render` now accepts `event_loop: true` to run the V8 event loop during rendering. This enables macrotask-based APIs (`setTimeout`, `MessagePort`) to fire during SSR, and is a prerequisite for React 19 streaming SSR. `Bundle#render_stream` is available as an alias. Adds event loop integration via `MainWorker::run_up_to_duration` and the `op_ssr_push_chunk` op.
 - V8 OOM protection: `near_heap_limit_callback` + `terminate_execution` prevents fatal process crash when a user SSR component exceeds `max_heap_size_mb`. V8 OOM now raises `SSR::Deno::JsRuntimeOutOfMemoryError` (a dedicated exception class, sibling of `RenderError`).
 - Stability tests: leak detection (heap growth < 3x over 100 renders), large payload, edge-case data, rapid reload, OOM produces `JsRuntimeOutOfMemoryError`.

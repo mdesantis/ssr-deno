@@ -26,6 +26,11 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
 - **Compile with `bundle exec rake compile`, never raw `cargo build`.** Rake wires the correct linker flags and installs the `.so` into `lib/ssr/deno/` where Ruby can load it. Plain `cargo build` skips that and produces an artifact Ruby cannot load.
 - **Keep `sig/ssr/deno.rbs` in sync.** When changing method signatures, return types, or exception classes in `lib/ssr/deno.rb` or `ext/ssr_deno/src/lib.rs`, update `sig/ssr/deno.rbs` in the same step.
 - **When archiving a plan to `plans/archived/`, stage both the new file AND the deletion of the old path.** Use `git mv` or add the deletion explicitly. Git only detects the rename as a rename when both the old deletion and the new file are in the same commit.
+- **Release workflow:**
+  - Bump `lib/ssr/deno/version.rb`, `ext/ssr_deno/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml` (all three match).
+  - After bumping versions, run `bundle install` to update `Gemfile.lock` and commit it.
+  - Move `## Unreleased` content to a new `## [version] - YYYY-MM-DD` section, then add a fresh empty `## Unreleased` section on top.
+  - Tag the release commit with the version (e.g., `v0.1.0-alpha.4`).
 - **Check for stale docs, plans, and comments after every changeset.** Before marking any task complete, audit all modified areas for content that no longer matches the code. This includes:
   - `README.md` — usage examples, API references, setup instructions
   - `plans/*.md` — architecture docs, integration plans, security reviews
