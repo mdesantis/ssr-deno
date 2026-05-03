@@ -303,7 +303,7 @@ The `current_limit * 2` return value gives V8 one more GC cycle to try to
 free memory. If still over after GC, the termination flag is already set and
 `execute_script` returns the error.
 
-### [ ] Step 2: Add `oom_triggered` flag and custom `JsRuntimeOutOfMemoryError`
+### [x] Step 2: Add `oom_triggered` flag and custom `JsRuntimeOutOfMemoryError`
 
 Currently the OOM termination error propagates as a generic `DenoError::Render`
 with message "`render` function threw an exception" — confusing for users who

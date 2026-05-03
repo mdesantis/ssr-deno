@@ -1,5 +1,6 @@
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use super::DenoError;
@@ -18,6 +19,7 @@ pub fn call_render(
     bundle_id: &str,
     args_json: &str,
     render_timeout_ms: u64,
+    oom_triggered: &AtomicBool,
 ) -> Result<String, DenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
@@ -77,6 +79,11 @@ pub fn call_render(
         let result = match call_result {
             Some(v) => v,
             None => {
+                if oom_triggered.load(Ordering::SeqCst) {
+                    return Err(DenoError::OutOfMemory(
+                        "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                    ));
+                }
                 let msg = try_catch
                     .message()
                     .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))

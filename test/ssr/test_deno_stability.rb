@@ -54,8 +54,8 @@ module SSR
       end
     end
 
-    def test_oom_produces_render_error
-      assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on OOM')
+    def test_oom_produces_out_of_memory_error
+      assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM')
         SSR::Deno.max_heap_size_mb = 16
         SSR::Deno.isolate_pool_size = 1
         begin
@@ -72,7 +72,7 @@ module SSR
             100.times { bundle.render({}) }
           end
           exit 1
-        rescue SSR::Deno::RenderError
+        rescue SSR::Deno::JsRuntimeOutOfMemoryError
           exit 0
         end
       RUBY

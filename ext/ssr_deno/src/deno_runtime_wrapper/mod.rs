@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -300,7 +300,11 @@ fn worker_thread_main(
             }
         };
 
-        let mut worker = match build_worker(&main_module_url, max_heap_size_mb, node_builtins) {
+        let oom_triggered = Arc::new(AtomicBool::new(false));
+
+        let mut worker = match build_worker(
+            &main_module_url, max_heap_size_mb, node_builtins, oom_triggered.clone(),
+        ) {
             Ok(w) => w,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
@@ -333,7 +337,9 @@ fn worker_thread_main(
                     render_timeout_ms,
                     reply,
                 } => {
-                    let result = call_render(&mut worker, &bundle_id, &args_json, render_timeout_ms);
+                    let result = call_render(
+                        &mut worker, &bundle_id, &args_json, render_timeout_ms, &oom_triggered,
+                    );
                     let _ = reply.send(result);
                 }
                 WorkerMsg::HeapStats { reply } => {
@@ -448,6 +454,7 @@ fn build_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
     node_builtins: bool,
+    oom_triggered: Arc<AtomicBool>,
 ) -> Result<MainWorker, String> {
     let node_services = if node_builtins {
         use std::borrow::Cow;
@@ -567,15 +574,17 @@ fn build_worker(
 
     // Register a near-heap-limit callback on the V8 isolate to prevent
     // fatal OOM aborts. When V8 detects the heap is near its configured
-    // limit (max_heap_size_mb), this callback doubles the limit (buying
-    // one more GC cycle) and terminates the running JS execution so that
-    // the OOM is caught as a RenderError instead of a SIGTRAP.
+    // limit (max_heap_size_mb), this callback sets the oom_triggered flag,
+    // doubles the limit (buying one more GC cycle), and terminates the
+    // running JS execution so that the OOM is caught as a RenderError
+    // instead of a SIGTRAP.
     //
     // Without this, a user component that leaks memory across renders
     // eventually causes V8 to call abort(), killing the Ruby process.
     let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     worker.js_runtime.add_near_heap_limit_callback(
         move |current_limit, _initial_limit| {
+            oom_triggered.store(true, Ordering::SeqCst);
             let _ = isolate_handle.terminate_execution();
             current_limit * 2
         },

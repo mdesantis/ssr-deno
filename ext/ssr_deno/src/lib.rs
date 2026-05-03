@@ -64,11 +64,16 @@ fn render_error(msg: impl Into<String>) -> Error {
     Error::new(deno_exception_class("RenderError"), msg.into())
 }
 
+fn js_runtime_out_of_memory_error(msg: impl Into<String>) -> Error {
+    Error::new(deno_exception_class("JsRuntimeOutOfMemoryError"), msg.into())
+}
+
 fn map_render_error(e: DenoError) -> Error {
     match e {
         DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
         DenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
         DenoError::Render(msg) => render_error(msg),
+        DenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(msg),
         DenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
         DenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
     }
@@ -245,6 +250,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("JsRuntimeWorkerError", base_error)?;
     deno_module.define_error("BundleNotFoundError", base_error)?;
     deno_module.define_error("RenderError", base_error)?;
+    deno_module.define_error("JsRuntimeOutOfMemoryError", base_error)?;
 
     deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
     deno_module.define_singleton_method("native_render", function!(native_render, 2))?;

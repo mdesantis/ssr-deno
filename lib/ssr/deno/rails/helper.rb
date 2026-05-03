@@ -24,7 +24,8 @@ module SSR
         bundle = find_bundle!(bundle_name)
 
         bundle.render(data, **options).html_safe
-      rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError => error
+      rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
+             SSR::Deno::JsRuntimeOutOfMemoryError => error
         raise if Rails.application.config.ssr_deno.raise_on_render_error
 
         Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \

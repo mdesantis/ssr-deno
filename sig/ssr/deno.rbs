@@ -22,6 +22,9 @@ module SSR
     class RenderError < Error
     end
 
+    class JsRuntimeOutOfMemoryError < Error
+    end
+
     module Instrumenter
       def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
     end

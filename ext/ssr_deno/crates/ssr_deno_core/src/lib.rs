@@ -22,6 +22,7 @@ pub enum DenoError {
     WorkerDied(String),
     BundleNotFound(String),
     Render(String),
+    OutOfMemory(String),
 }
 
 impl std::fmt::Display for DenoError {
@@ -31,7 +32,8 @@ impl std::fmt::Display for DenoError {
             | Self::WorkerInit(msg)
             | Self::WorkerDied(msg)
             | Self::BundleNotFound(msg)
-            | Self::Render(msg) => write!(f, "{msg}"),
+            | Self::Render(msg)
+            | Self::OutOfMemory(msg) => write!(f, "{msg}"),
         }
     }
 }
