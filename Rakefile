@@ -17,7 +17,7 @@ end
 # Task files in rakelib/:
 #   cargo.rake   — cargo:test
 #   samples.rake — samples:build, samples:build:<name>
-#   test.rake    — test:main, test:node_builtins
+#   test.rake    — test:main, test:setters, test:node_builtins, test:async, test:env_config
 
 RuboCop::RakeTask.new
 

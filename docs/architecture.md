@@ -103,20 +103,35 @@ globalThis.render = render
 - The return value must be an HTML string (or a Promise resolving to one).
 - The Rust runtime auto-detects async (`v8::Promise`) returns and polls the microtask queue.
 
-### SSR task type limitations
+### SSR render modes
 
-The SSR pipeline runs `execute_script` + `perform_microtask_checkpoint` but
-NEVER runs the V8 event loop. This means only **microtasks** are dispatched;
-**macrotasks** are silently queued and never executed.
+The gem provides two render paths with different event loop behavior:
+
+#### Default render (`bundle.render(data)`)
+
+Runs `execute_script` + `perform_microtask_checkpoint` only. The V8 event
+loop is **not** pumped. Only **microtasks** fire; **macrotasks** are queued
+but never executed.
 
 | Category | APIs that work | APIs that silently never fire |
 |---|---|---|
 | **Microtasks** | `Promise.then`, `queueMicrotask`, `async/await` | — |
 | **Macrotasks** | — | `setTimeout`, `setInterval`, `MessagePort`, `fetch`, `requestAnimationFrame` |
 
+Vue 3 async SSR works because it uses only Promises (microtasks).
+
+#### Event-loop render (`bundle.render(data, event_loop: true)` / `bundle.render_stream(data)`)
+
+Runs `MainWorker::run_up_to_duration` in a loop, which **pumps the full V8
+event loop** including macrotask queues. Both microtasks and macrotasks fire.
+
+| Category | APIs that work |
+|---|---|
+| **Microtasks** | `Promise.then`, `queueMicrotask`, `async/await` |
+| **Macrotasks** | `setTimeout`, `setInterval`, `MessagePort` |
+
 React 19's streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
-requires `MessagePort` (a macrotask) and cannot work without the event loop.
-Vue 3 async SSR works because it uses only Promises (microtasks). See
+requires `MessagePort` and works only with this path. See
 [`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for details.
 
 **Recommended bundler settings (Vite example):**
@@ -124,7 +139,7 @@ Vue 3 async SSR works because it uses only Promises (microtasks). See
 - `ssr.target: 'webworker'` — produces a bundle using only Web APIs (safe default; not a gem requirement).
 - `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']` — prevents packages like `@emotion/cache` from resolving to their browser-specific build.
 
-See `samples/` for 12 complete working examples: barebone (plain JS), deno-native (no Vite), vanilla TS, React 19, React 19 streaming, Vue 3, Svelte 5, Preact, MUI v9, Emotion CSS, and a full dashboard.
+See `samples/` for complete working examples covering: barebone (plain JS), deno-native (no Vite), vanilla TS, React 19, React 19 streaming, Vue 3, Svelte 5, Preact, MUI v9, Emotion CSS, a full dashboard, Webpack, and Node.js/esbuild.
 
 ---
 

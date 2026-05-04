@@ -18,10 +18,10 @@ Findings from a general codebase audit. Ordered by priority.
   Every `load_bundle` leaks a `&'static str`. Auto-reload in dev → unbounded leak per
   mtime change. Fix: static `Mutex<HashMap<String, &'static str>>` cache + `intern_script_name` helper.
 
-- [ ] **docs/architecture.md — update "NEVER runs event loop" section**
+- [x] **docs/architecture.md — update "NEVER runs event loop" section**
   Stale since event_loop/render_stream added. Needs caveat for `render_stream`/`event_loop: true` path.
 
-- [ ] **Rakefile comment — list all 5 test suites**
+- [x] **Rakefile comment — list all 5 test suites**
   Line 20 says "test:main, test:node_builtins" but there are 5 suites now.
 
 ### LOW
