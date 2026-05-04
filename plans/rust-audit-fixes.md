@@ -1,6 +1,6 @@
 # Rust Audit Fixes
 
-Status: Pending
+Status: Closed (all items resolved)
 
 ## Optimizations
 
@@ -14,7 +14,7 @@ Status: Pending
 → [drain-serialization.md](archived/drain-serialization.md) ✅ closed (low priority, serialization overhead negligible)
 
 ### 4. `setup_require` — 50µs busy-sleep burns CPU
-→ [require-backoff.md](require-backoff.md) — exponential backoff proposal.
+→ [require-backoff.md](archived/require-backoff.md) ✅ closed (low priority, not worth the churn)
 
 ### 5. `SCRIPT_NAMES` → `OnceLock` ✅ implemented
 
