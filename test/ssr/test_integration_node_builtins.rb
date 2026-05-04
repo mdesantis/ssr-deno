@@ -22,6 +22,32 @@ module SSR
     end
   end
 
+  class TestIntegrationReactStreamingSSR < Minitest::Test
+    BUNDLE_PATH = File.expand_path('../../samples/vite-react-streaming-ssr-app/dist/server/entry-server.js', __dir__)
+
+    def setup
+      skip 'React Streaming SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+    end
+
+    def test_render_stream_produces_valid_html
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+
+      html = bundle.render_stream({ data: { name: 'Streaming' } })
+
+      assert_match(%r{<html>.*</html>}m, html)
+      assert_includes html, 'Streaming'
+      assert_includes html, '<div id="root">'
+    end
+
+    def test_render_stream_includes_streamed_content
+      bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
+
+      html = bundle.render_stream({ data: { name: 'StreamTest' } })
+
+      assert_includes html, 'Streamed content for StreamTest'
+    end
+  end
+
   class TestIntegrationReactMuiDashboardSSR < Minitest::Test
     BUNDLE_DIR = '../../samples/vite-react-emotion-mui-dashboard-ssr-app/dist/server'
     BUNDLE_PATH = File.expand_path("#{BUNDLE_DIR}/entry-server.js", __dir__)

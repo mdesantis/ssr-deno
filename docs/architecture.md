@@ -124,7 +124,7 @@ Vue 3 async SSR works because it uses only Promises (microtasks). See
 - `ssr.target: 'webworker'` — produces a bundle using only Web APIs (safe default; not a gem requirement).
 - `ssr.resolve.conditions: ['edge-light', 'module', 'browser', 'development']` — prevents packages like `@emotion/cache` from resolving to their browser-specific build.
 
-See `samples/` for 11 complete working examples: barebone (plain JS), deno-native (no Vite), vanilla TS, React 19, Vue 3, Svelte 5, Preact, MUI v9, Emotion CSS, and a full dashboard.
+See `samples/` for 12 complete working examples: barebone (plain JS), deno-native (no Vite), vanilla TS, React 19, React 19 streaming, Vue 3, Svelte 5, Preact, MUI v9, Emotion CSS, and a full dashboard.
 
 ---
 
@@ -237,6 +237,7 @@ samples/
 ├── deno-native-react-ssr-app/                        # Deno.serve() + React 19, no build
 ├── vite-ssr-app/                                     # Plain TS + Vite
 ├── vite-react-ssr-app/                               # React 19 + Vite
+├── vite-react-streaming-ssr-app/                     # React 19 streaming SSR + Vite
 ├── vite-react-mui-ssr-app/                           # React 19 + MUI v9 + Vite
 ├── vite-react-mui-emotion-ssr-app/                   # React 19 + MUI v9 + Emotion CSS + Vite
 ├── vite-react-emotion-mui-dashboard-ssr-app/         # Full dashboard + Vite

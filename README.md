@@ -180,6 +180,7 @@ The `samples/` directory contains several SSR samples. Run any with
 | 3111 | [`webpack-ssr-app`](samples/webpack-ssr-app/) | Vanilla TypeScript + Webpack 5 |
 | 3112 | [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 |
 | 3113 | [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) |
+| 3114 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite |
 
 Build all Vite samples at once:
 

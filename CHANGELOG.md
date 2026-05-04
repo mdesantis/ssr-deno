@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- New sample: `samples/vite-react-streaming-ssr-app` — React 19 streaming SSR with `renderToPipeableStream` + Suspense, demonstrating the `render_stream` (event loop) path.
 
 ### Changed
 
