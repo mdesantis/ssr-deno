@@ -4,7 +4,7 @@
 #
 # Usage:
 #   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
-#     test/ssr/integration_deno_rails_runner.rb
+#     test/support/integration_deno_rails_runner.rb
 #
 # This runner is separate from the main test suite because it requires
 # a full Rails application boot with its own Gemfile.
@@ -30,4 +30,4 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require_relative '../dummy/config/environment'
 
 require 'minitest/autorun'
-require_relative 'integration_deno_rails'
+require_relative 'test_integration_deno_rails'

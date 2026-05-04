@@ -6,7 +6,7 @@
 #
 # Run with:
 #   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
-#     test/ssr/integration_deno_rails_runner.rb
+#     test/support/integration_deno_rails_runner.rb
 
 module SSR
   module Deno
