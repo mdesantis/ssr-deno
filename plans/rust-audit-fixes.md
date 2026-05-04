@@ -15,7 +15,7 @@ Both files share identical:
 
 Only differences: chunked runs `drain_chunks` and cleanup, buffered does not.
 Extract shared watchdog + error dispatch logic into a common helper.
-→ [render-core-extraction.md](render-core-extraction.md)
+→ [render-core-extraction.md](archived/render-core-extraction.md) ✅ implemented
 
 ### 2. `poll_render_state` — allocates `String` every 50ms tick
 
