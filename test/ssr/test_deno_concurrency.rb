@@ -4,7 +4,7 @@ require 'test_helper'
 
 module SSR
   class TestDenoConcurrency < Minitest::Test
-    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
+    include TestFixturePaths
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)

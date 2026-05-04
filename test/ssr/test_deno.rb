@@ -4,7 +4,7 @@ require 'test_helper'
 
 module SSR
   class TestDeno < Minitest::Test
-    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
+    include TestFixturePaths
 
     def test_that_it_has_a_version_number
       refute_nil ::SSR::Deno::VERSION

@@ -22,6 +22,7 @@ tmp = File.join(root, 'tmp')
 desc 'Run tests without Node.js builtin support (default config)'
 task 'test:main' do
   files = Dir.glob(File.join(test_dir, '**', 'test_*.rb'))
+             # *_test.rb glob: Minitest convention, currently unused
              .concat(Dir.glob(File.join(test_dir, '**', '*_test.rb')))
              .reject { |f| f.include?('test_integration_node_builtins') }
              .reject { |f| f.include?('test_deno_async_render') }

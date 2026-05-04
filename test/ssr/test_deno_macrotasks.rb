@@ -1,24 +1,9 @@
 # frozen_string_literal: true
 
 require 'test_helper'
-require 'open3'
-require 'rbconfig'
 
 module SSR
   class TestDenoMacrotasks < Minitest::Test
-    GEM_ROOT = File.expand_path('../..', __dir__)
-
-    BOOTSTRAP = <<~RUBY.freeze
-      require 'tmpdir'
-      $LOAD_PATH.unshift('#{File.join(GEM_ROOT, 'lib')}')
-      require 'ssr/deno'
-      SSR::Deno.isolate_pool_size = 1
-      SSR::Deno.render_timeout_ms = 2000
-    RUBY
-
-    # Async bundles: return a Promise that resolves after macrotask fires.
-    # Verifies the event loop processes macrotasks during render.
-
     ASYNC_TIMEOUT = <<~JS
       var fired = false;
       setTimeout(function() { fired = true; }, 0);

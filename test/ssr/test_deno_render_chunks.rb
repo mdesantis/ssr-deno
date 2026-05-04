@@ -5,7 +5,7 @@ require 'tmpdir'
 
 module SSR
   class TestDenoRenderChunks < Minitest::Test
-    CHUNKED_BUNDLE = File.expand_path('../fixtures/chunked-bundle.js', __dir__)
+    include TestFixturePaths
 
     def setup
       @bundle = SSR::Deno::Bundle.new(CHUNKED_BUNDLE)

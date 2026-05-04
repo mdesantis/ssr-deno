@@ -4,7 +4,8 @@ require 'test_helper'
 
 module SSR
   class TestDenoAsyncRender < Minitest::Test
-    MINIMAL_BUNDLE  = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
+    include TestFixturePaths
+
     ASYNC_IMMEDIATE = File.expand_path('../fixtures/async-immediate-bundle.js', __dir__)
     ASYNC_RESOLVE   = File.expand_path('../fixtures/async-resolve-bundle.js', __dir__)
     ASYNC_REJECT    = File.expand_path('../fixtures/async-reject-bundle.js', __dir__)

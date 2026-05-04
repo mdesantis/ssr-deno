@@ -1,23 +1,10 @@
 # frozen_string_literal: true
 
-require 'open3'
-require 'rbconfig'
+require 'support/subprocess_helper'
 
 module SSR
   class TestDenoSetters < Minitest::Test
-    GEM_ROOT = File.expand_path('../..', __dir__)
-
-    BOOTSTRAP = <<~RUBY
-      $LOAD_PATH.unshift('lib')
-      require 'ssr/deno'
-    RUBY
-
-    def assert_subprocess(body, msg)
-      script = "#{BOOTSTRAP}#{body}"
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status, :success?, msg
-    end
+    include SubprocessHelper
 
     def test_max_heap_size_mb_before_init
       assert_subprocess(<<~RUBY, 'Expected max_heap_size_mb= to succeed before init')
@@ -44,7 +31,7 @@ module SSR
       assert_subprocess(<<~RUBY, 'Expected JsRuntimeInitializationError after init')
         SSR::Deno.render_timeout_ms = 100
         SSR::Deno.isolate_pool_size = 1
-        bundle_path = File.join('#{GEM_ROOT}', 'test', 'fixtures', 'minimal-bundle.js')
+        bundle_path = File.join('#{TestFixturePaths::GEM_ROOT}', 'test', 'fixtures', 'minimal-bundle.js')
         bundle = SSR::Deno::Bundle.new(bundle_path)
         begin
           SSR::Deno.max_heap_size_mb = 256
@@ -55,7 +42,6 @@ module SSR
       RUBY
     end
 
-    # Getter methods (coverage for native getter delegation)
     def test_getter_methods_are_callable
       assert_kind_of Integer, SSR::Deno.max_heap_size_mb
       assert_kind_of Integer, SSR::Deno.isolate_pool_size
@@ -63,9 +49,6 @@ module SSR
       assert_includes [true, false], SSR::Deno.node_builtins_enabled?
     end
 
-    # Env var apply methods (coverage for apply_integer_env and apply_bool_env).
-    # The invalid-integer warning branch is tested with capture_io, so stderr
-    # is not polluted by the warning.
     def test_env_var_apply_methods
       ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = '128'
       ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'true'

@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
 require 'test_helper'
-require 'open3'
-require 'rbconfig'
+require 'support/subprocess_helper'
 
 module SSR
   class TestDenoErrors < Minitest::Test
-    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
-    GEM_ROOT = File.expand_path('../..', __dir__)
+    include TestFixturePaths
+    include SubprocessHelper
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
@@ -20,9 +19,7 @@ module SSR
     end
 
     def test_native_load_bundle_when_bundle_not_found_raises_bundle_not_found_error
-      script = <<~RUBY
-        $LOAD_PATH.unshift('lib')
-        require 'ssr/deno'
+      assert_subprocess(<<~RUBY, 'Expected Errno::ENOENT to be raised')
         begin
           SSR::Deno::Bundle.new('/nonexistent/entry-server.js')
         rescue Errno::ENOENT
@@ -30,15 +27,10 @@ module SSR
         end
         exit 1
       RUBY
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?, 'Expected Errno::ENOENT to be raised'
     end
 
     def test_native_render_when_runtime_not_initialized_raises_js_runtime_not_initialized_error
-      script = <<~RUBY
-        $LOAD_PATH.unshift('lib')
-        require 'ssr/deno'
+      assert_subprocess(<<~RUBY, 'Expected JsRuntimeNotInitializedError to be raised')
         begin
           SSR::Deno.native_render('some_id', '{}')
         rescue SSR::Deno::JsRuntimeNotInitializedError
@@ -46,9 +38,6 @@ module SSR
         end
         exit 1
       RUBY
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeNotInitializedError to be raised'
     end
   end
 end

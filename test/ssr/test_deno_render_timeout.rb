@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 require 'test_helper'
-require 'open3'
-require 'rbconfig'
+require 'support/subprocess_helper'
 
 module SSR
   class TestDenoRenderTimeout < Minitest::Test
-    GEM_ROOT = File.expand_path('../..', __dir__)
+    include SubprocessHelper
 
     HANG_JS = <<~JS.chomp
       globalThis.render = function() {
@@ -16,21 +15,9 @@ module SSR
       };
     JS
 
-    BOOTSTRAP = <<~RUBY
-      require 'tmpdir'
-      $LOAD_PATH.unshift('lib')
-      require 'ssr/deno'
-    RUBY
-
-    def assert_subprocess(body, msg)
-      script = "#{BOOTSTRAP}#{body}"
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?, msg
-    end
-
     def test_render_timeout_raises_render_error
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on hung render')
+        require 'tmpdir'
         SSR::Deno.render_timeout_ms = 200
         SSR::Deno.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
@@ -56,6 +43,7 @@ module SSR
         };
       JS
       assert_subprocess(<<~RUBY, 'Expected timeout at ~100ms')
+        require 'tmpdir'
         SSR::Deno.render_timeout_ms = 100
         SSR::Deno.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
@@ -80,6 +68,7 @@ module SSR
 
     def test_render_works_after_timeout
       assert_subprocess(<<~RUBY, 'Expected recovery render to succeed after timeout on another isolate')
+        require 'tmpdir'
         SSR::Deno.render_timeout_ms = 200
         SSR::Deno.isolate_pool_size = 2
         Dir.mktmpdir do |dir|

@@ -1,20 +1,12 @@
 # frozen_string_literal: true
 
 require 'test_helper'
-require 'open3'
-require 'rbconfig'
+require 'support/subprocess_helper'
 
 module SSR
   class TestDenoStability < Minitest::Test
-    MINIMAL_BUNDLE = File.expand_path('../fixtures/minimal-bundle.js', __dir__)
-    LARGE_PAYLOAD_BUNDLE = File.expand_path('../fixtures/large-payload-bundle.js', __dir__)
-    GEM_ROOT = File.expand_path('../..', __dir__)
-
-    BOOTSTRAP = <<~RUBY.freeze
-      require 'tmpdir'
-      $LOAD_PATH.unshift('#{File.join(GEM_ROOT, 'lib')}')
-      require 'ssr/deno'
-    RUBY
+    include TestFixturePaths
+    include SubprocessHelper
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
@@ -55,7 +47,8 @@ module SSR
     end
 
     def test_oom_produces_out_of_memory_error
-      assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM')
+      assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM', env: {})
+        require 'tmpdir'
         SSR::Deno.max_heap_size_mb = 16
         SSR::Deno.isolate_pool_size = 1
         begin
@@ -76,15 +69,6 @@ module SSR
           exit 0
         end
       RUBY
-    end
-
-    private
-
-    def assert_subprocess(body, msg)
-      script = "#{BOOTSTRAP}#{body}"
-      _, _, status = Open3.capture3(RbConfig.ruby, '-e', script, chdir: GEM_ROOT)
-
-      assert_predicate status.exitstatus, :zero?, msg
     end
   end
 end
