@@ -212,6 +212,18 @@ mod tests {
     }
 
     #[test]
+    fn deno_error_display_out_of_memory() {
+        let e = SSRDenoError::OutOfMemory("oom".into());
+        assert_eq!(format!("{e}"), "oom");
+    }
+
+    #[test]
+    fn deno_error_display_heap_stats_serialization() {
+        let e = SSRDenoError::HeapStatsSerialization("ser".into());
+        assert_eq!(format!("{e}"), "ser");
+    }
+
+    #[test]
     fn deno_error_source_is_none() {
         use std::error::Error;
         let e = SSRDenoError::Render("x".into());
@@ -266,7 +278,8 @@ mod tests {
 
     #[test]
     fn validate_render_timeout_rejects_99() {
-        assert!(validate_render_timeout_ms(99).is_err());
+        let err = validate_render_timeout_ms(99).unwrap_err();
+        assert!(err.contains("at least 100ms"), "got: {err}");
     }
 
     #[test]
@@ -276,7 +289,8 @@ mod tests {
 
     #[test]
     fn validate_render_timeout_rejects_300001() {
-        assert!(validate_render_timeout_ms(300_001).is_err());
+        let err = validate_render_timeout_ms(300_001).unwrap_err();
+        assert!(err.contains("300000ms"), "got: {err}");
     }
 
     // -----------------------------------------------------------------------
