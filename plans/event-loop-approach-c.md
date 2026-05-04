@@ -2,7 +2,7 @@
 
 ## Problem
 
-Two related limitations of the current `execute_script`-only pipeline:
+Two related limitations of the original `execute_script`-only pipeline:
 
 1. **Macrotask starvation** — `setTimeout`, `setInterval`, `MessagePort`, and
    `fetch` callbacks silently never fire because the V8 event loop never runs.
@@ -32,172 +32,111 @@ flowchart TD
     end
 
     subgraph "Approach C (render + event loop)"
-        msg2["recv RenderStreamMsg"] --> exec2["execute_script → renderToPipeableStream"]
-        exec2 --> eloop["run_event_loop()"]
+        msg2["recv RenderStreamMsg"] --> exec2["execute_script → start render"]
+        exec2 --> eloop["run_up_to_duration loop"]
         eloop -->|"chunk dispatched by JS"| chunk["op_ssr_push_chunk(chunk)"]
-        chunk -->|"more chunks"| eloop
-        chunk -->|"stream closed"| done["event loop exits → reply"]
+        chunk -->|"more ticks"| eloop
+        eloop -->|"result ready or timeout"| done["reply final HTML"]
     end
 ```
 
 ## Architecture
 
-### Key insight: no polling needed
+### Key insight: poll loop with timeout
 
-Instead of Rust checking a completion flag in a loop, let the JS side signal
-completion **through** the event loop. When React's stream closes and all
-work is done, `run_event_loop` returns naturally — same as a normal
-`deno run` invocation:
+The streaming render uses `run_up_to_duration` in a tick-by-tick loop with
+a deadline. Each tick advances the V8 event loop (processing macrotasks,
+promises, timers). The JS render function stores its result in
+`globalThis.__ssr_stream_result` when done, or sets
+`globalThis.__ssr_stream_error` on rejection. A single `poll_stream_state`
+call per tick checks both via a tagged-string protocol (`E:msg`, `R:json`,
+or `null` for pending).
 
 ```
-execute_script(start stream) → run_event_loop
-  → Phase 2 dispatch MessagePort → React emits chunk → push chunk to Ruby
-  → Phase 2 dispatch MessagePort → React emits chunk → push chunk to Ruby
-  → ... repeats ...
-  → Stream closes, no more refed ops/timers
-  → run_event_loop → Ok(())
-  → return to Ruby
+execute_script(start render) → tick loop
+  → run_up_to_duration(50ms) → poll_stream_state → null (pending)
+  → run_up_to_duration(50ms) → poll_stream_state → null (pending)
+  → run_up_to_duration(50ms) → poll_stream_state → "R:{html}"
+  → return Ok(html)
 ```
 
-### New message type
+### WorkerMsg variant
 
 ```rust
-enum WorkerMsg {
-    // ... existing ...
-    RenderStream {
-        bundle_id: String,
-        args_json: String,
-        render_timeout_ms: u64,
-        chunk_tx: tokio::sync::mpsc::Sender<String>,
-        reply: std::sync::mpsc::SyncSender<Result<(), DenoError>>,
-    },
-}
+RenderStream {
+    bundle_id: String,
+    args_json: String,
+    render_timeout_ms: u64,
+    chunk_tx: tokio::sync::mpsc::Sender<String>,
+    reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
+},
 ```
 
-### The `__ssr_push_chunk` op
+The `chunk_tx` is placed in `OpState` so `op_ssr_push_chunk` can access it.
+Currently chunks are silently dropped (only the final result matters) — true
+chunked HTTP streaming is a Phase 2 concern.
 
-A new Rust op registered in the worker's extensions:
+### The `op_ssr_push_chunk` op
 
 ```rust
 #[op2(fast)]
-fn op_ssr_push_chunk(#[string] chunk: String, state: &mut OpState) -> Result<(), AnyError> {
-    let tx = state.borrow::<tokio::sync::mpsc::Sender<String>>();
-    tx.try_send(chunk).ok();
+pub fn op_ssr_push_chunk(#[string] chunk: String, state: &mut OpState) -> Result<(), CoreError> {
+    let tx = state.borrow::<mpsc::Sender<String>>();
+    let _ = tx.try_send(chunk);
     Ok(())
-}
-```
-
-### JS streaming setup
-
-The JS side that React 19 pipes to:
-
-```js
-// Injected via execute_script before calling the render function
-globalThis.__ssr_push_chunk = (chunk) => Deno.core.op_ssr_push_chunk(chunk);
-
-const { pipe, abort } = renderToPipeableStream(element, {
-    onShellReady() {
-        const writable = new Writable({
-            write(chunk, encoding, callback) {
-                __ssr_push_chunk(chunk);
-                callback();
-            },
-            final(callback) {
-                __ssr_push_chunk('');  // empty string = end signal
-                callback();
-            }
-        });
-        pipe(writable);
-    },
-    onError(err) { /* ... */ }
-});
-```
-
-### Worker message handler
-
-```rust
-WorkerMsg::RenderStream { bundle_id, args_json, render_timeout_ms, chunk_tx, reply } => {
-    // Register chunk_tx in op_state so op_ssr_push_chunk can find it
-    worker.js_runtime.op_state().borrow_mut().put(chunk_tx);
-
-    // Start the stream
-    worker.execute_script("<ssr-deno:stream>",
-        format!("__ssr_render_stream({args_json})").into()
-    )?;
-
-    // Run event loop until stream completes
-    let result = tokio::time::timeout(
-        Duration::from_millis(render_timeout_ms),
-        worker.run_event_loop(false),
-    ).await;
-
-    let _ = reply.send(match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(/* map CoreError */),
-        Err(_) => Err(DenoError::Render("Streaming render timed out")),
-    });
 }
 ```
 
 ### Ruby side
 
-```ruby
-# Bundle#render_stream
-def render_stream(data)
-  chunk_rx = native_render_stream(@bundle_id, JSON.generate(data))
+The streaming path is exposed as `Bundle#render_stream`, which delegates to
+`render(data, event_loop: true)`. This calls `native_render_stream` on the
+Rust side, which dispatches to the tick-loop implementation. The return value
+is a `String` (the final HTML), not an enumerator — true chunked streaming
+to the HTTP response is Phase 2.
 
-  Enumerator.new do |yielder|
-    while (chunk = chunk_rx.recv)
-      break if chunk.empty?  # empty = end signal
-      yielder << chunk
-    end
-  end
+```ruby
+def render_stream(data = nil, raw_input: false, raw_output: false)
+  render(data, raw_input: raw_input, raw_output: raw_output, event_loop: true)
 end
 ```
 
 ## Non-streaming macrotask support (setTimeout)
 
-For sync renders where a component uses `setTimeout(fn, 0)` for debouncing
-during render, the cleaner approach is to offer `render_stream` as the
-general solution for any render that needs macrotasks. Sync renders that
-don't need them stay on the fast path.
-
-Alternatively, after the sync render completes, drain one event-loop tick:
-
-```rust
-if drain_timeout_ms > 0 {
-    let deadline = tokio::time::Instant::now() + Duration::from_millis(drain_timeout_ms);
-    while tokio::time::Instant::now() < deadline {
-        // Process one event-loop tick to fire setTimeout(0) callbacks
-    }
-}
-```
+Sync renders that use `setTimeout(fn, 0)` for debouncing can opt into
+`render(data, event_loop: true)` (or equivalently `render_stream`) to get
+macrotask support without needing true chunked streaming.
 
 ## Implementation phases
 
-### [x] Phase 1: Streaming render prototype (6 files)
+### [x] Phase 1: Event-loop render with final result
 
 | File | Change |
 |---|---|
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | Add `RenderStream` to `WorkerMsg`, handler, Extension |
-| `ext/ssr_deno/src/deno_runtime_wrapper/render_stream.rs` | New: `render_streaming` + `op_ssr_push_chunk` |
-| `ext/ssr_deno/src/lib.rs` | Add `native_render_stream` Ruby method |
-| `lib/ssr/deno/bundle.rb` | Add `Bundle#render_stream(raw_input:)` |
-| `test/ssr/test_deno_render_stream.rb` | New: streaming render test |
+| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | `RenderStream` variant in `WorkerMsg`, handler, Extension registration |
+| `ext/ssr_deno/src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` + `op_ssr_push_chunk` + `poll_stream_state` |
+| `ext/ssr_deno/src/lib.rs` | `native_render_stream` Ruby method |
+| `lib/ssr/deno/bundle.rb` | `Bundle#render_stream` + `event_loop:` param on `#render` |
+| `sig/ssr/deno.rbs` | `render_stream`, `native_render_stream` signatures |
+| `test/ssr/test_deno_render_stream.rb` | Streaming render + promise rejection tests |
+| `test/ssr/test_deno_macrotasks.rb` | setTimeout, setInterval, MessagePort tests |
 
-### [ ] Phase 2: Rails integration (ActionController::Live)
+### [ ] Phase 2: True chunked HTTP streaming (Rails ActionController::Live)
+
+Wire `chunk_tx` through to Ruby as a real streaming enumerator so chunks are
+flushed to the HTTP response as they arrive, rather than buffering the full
+HTML in memory before replying.
 
 ```ruby
+# Future API sketch:
 def show
-  stream = @bundle.render_stream({ data: @page })
-  self.response_body = stream.each  # Rack streaming
+  stream = @bundle.render_stream_chunks({ data: @page })
+  self.response_body = stream  # Rack streaming via each
 end
 ```
 
-## Files NOT Changed
-
-| File | Reason |
-|---|---|
-| `call_render.rs` | Sync path unchanged |
-| `ssr_deno_core/` | No new types |
-| `sig/ssr/deno.rbs` | Phase 1 is prototype — RBS deferred |
+This requires:
+- Changing `op_ssr_push_chunk` from `try_send` (fire-and-forget) to
+  `send().await` (backpressure)
+- Exposing the `mpsc::Receiver` to the Ruby side as an `Enumerator`
+- Integrating with Rails `ActionController::Live` or Rack hijack
