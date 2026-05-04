@@ -1,6 +1,8 @@
 # Op-Based Chunked Streaming (Alternative to Poll-Based)
 
-Status: Evaluation — no implementation decision yet
+Status: Evaluated — poll-based confirmed as default
+
+**PoC branch:** `poc/op-based-chunked-streaming` (commit `57e5839`)
 
 ## Context
 
@@ -156,8 +158,32 @@ worker message dispatches to.
 
 ## Dependencies
 
-- [ ] Verify `js_files` field works with manual `Extension` struct (not macro)
-- [ ] Verify `import { core } from "ext:core/mod.js"` is available in extension
-  JS for deno_core 0.400
-- [ ] Test that captured op binding survives bootstrap finalization
-- [ ] Benchmark: op dispatch latency vs. batch drain for 10/100/1000 chunks
+- [x] Verify `js_files` field works with manual `Extension` struct (not macro)
+- [x] Verify `import { core } from "ext:core/mod.js"` is available in extension
+  JS for deno_core 0.400 — **Not needed.** `Deno.core.ops` is accessible directly
+  in classic `js_files` scripts (no ESM import required).
+- [x] Test that captured op binding survives bootstrap finalization
+- [x] Benchmark: op dispatch latency vs. batch drain for 10/100/1000 chunks
+
+## PoC Benchmark Results
+
+Branch `poc/op-based-chunked-streaming` implements both paths with identical Ruby
+API. Benchmark (`test/bench_chunked_streaming.rb`):
+
+| Chunks | Poll p50 (ms) | Op p50 (ms) | Ratio (op/poll) |
+|--------|--------------|------------|-----------------|
+| 10 | 0.18 | 0.18 | 1.00x |
+| 25 | 0.22 | 0.24 | 1.09x |
+| 50 | 0.27 | 0.34 | 1.28x |
+| 100 | 0.34 | 0.60 | 1.74x |
+| 250 | 0.79 | 1.22 | 1.54x |
+| 500 | 0.96 | 1.82 | 1.89x |
+| 1000 | 1.58 | 3.13 | 1.98x |
+
+**Conclusion:** Op-based is ~1.5-2x slower at scale due to per-chunk V8 promise
+machinery + OpState borrow overhead. Poll-based batch drain amortizes the
+V8-to-Rust crossing cost. At real SSR chunk counts (5-25), difference is
+negligible — but poll-based wins on simplicity, coupling, and throughput.
+
+Op-based path remains available on the PoC branch if a backpressure use case
+emerges (untrusted bundles, very large documents, sub-ms latency requirements).
