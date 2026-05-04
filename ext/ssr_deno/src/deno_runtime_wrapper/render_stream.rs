@@ -38,12 +38,19 @@ pub async fn render_streaming(
     // Kick off the render. The bundle's render function is stored at
     // globalThis.__ssr_bundles[bundle_id].render. It returns a Promise
     // that resolves with the final HTML when streaming completes.
+    //
+    // Error handling: rejected promises store the error message in a
+    // separate `__ssr_stream_error` global (not in `__ssr_stream_result`).
+    // The poll loop checks `__ssr_stream_error` first and returns
+    // `DenoError::Render` when set, ensuring proper exception propagation
+    // back to Ruby.
     let script = format!(
         r#"
         if (typeof globalThis.__SSR_STREAM_SENTINEL === 'undefined') {{
             globalThis.__SSR_STREAM_SENTINEL = {{}};
         }}
         globalThis.__ssr_stream_result = globalThis.__SSR_STREAM_SENTINEL;
+        globalThis.__ssr_stream_error = null;
         var __bundle = globalThis.__ssr_bundles[{bundle_id_json:?}];
         if (!__bundle || typeof __bundle.render !== 'function') {{
             throw new Error('Bundle not found: {bundle_id_json:?}');
@@ -52,7 +59,7 @@ pub async fn render_streaming(
         if (__result && typeof __result.then === 'function') {{
             __result.then(
                 (html) => {{ globalThis.__ssr_stream_result = html; }},
-                (err) => {{ globalThis.__ssr_stream_result = 'ERROR:' + (err.message || String(err)); }}
+                (err) => {{ globalThis.__ssr_stream_error = (err && err.message) || String(err); }}
             );
         }} else {{
             globalThis.__ssr_stream_result = __result;
@@ -89,19 +96,50 @@ pub async fn render_streaming(
             ));
         }
 
-        // Check if the render has completed.
+        // Check if the render rejected with an error.
+        if let Some(err_msg) = read_stream_error(worker) {
+            return Err(DenoError::Render(err_msg));
+        }
+
+        // Check if the render has completed successfully.
         if let Some(result) = read_stream_result(worker) {
             return Ok(result);
         }
     }
 }
 
+/// Checks `globalThis.__ssr_stream_error` for a rejection message.
+/// Returns `Some(msg)` when the streaming render's promise rejected.
+fn read_stream_error(worker: &mut MainWorker) -> Option<String> {
+    let global_val = worker
+        .execute_script(
+            "<ssr-deno:stream-error-check>",
+            "globalThis.__ssr_stream_error"
+                .to_string()
+                .into(),
+        )
+        .ok()?;
+
+    let context = worker.js_runtime.main_context();
+    let isolate = worker.js_runtime.v8_isolate();
+    let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+    let mut scope = scope_storage.as_mut().init();
+    let context_local = v8::Local::new(&mut scope, &context);
+    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+
+    let local_val = v8::Local::new(&mut context_scope, &global_val);
+
+    if local_val.is_null_or_undefined() {
+        return None;
+    }
+
+    Some(local_val.to_rust_string_lossy(&mut context_scope))
+}
+
 /// Checks `__ssr_stream_result` for the final rendered HTML.
 /// Uses a sentinel object (`__SSR_STREAM_SENTINEL`) to distinguish
 /// "not yet set" from a render that returned null/undefined.
 fn read_stream_result(worker: &mut MainWorker) -> Option<String> {
-    // Check sentinel: compare __ssr_stream_result against the unique sentinel
-    // by checking a boolean flag that's set when the stream completes.
     let global_val = worker
         .execute_script(
             "<ssr-deno:stream-check>",

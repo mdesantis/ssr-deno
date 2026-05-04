@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'tmpdir'
 
 module SSR
   class TestDenoRenderStream < Minitest::Test
@@ -52,6 +53,37 @@ module SSR
                               raw_input: true, event_loop: true)
 
       assert_includes result, '<h1>el-raw-input</h1>'
+    end
+
+    def test_render_stream_raises_render_error_on_promise_rejection
+      bundle = with_reject_bundle
+      error = assert_raises(SSR::Deno::RenderError) { bundle.render_stream({}) }
+
+      assert_includes error.message, 'stream-rejection'
+    end
+
+    def test_render_with_event_loop_raises_render_error_on_promise_rejection
+      bundle = with_reject_bundle
+      error = assert_raises(SSR::Deno::RenderError) { bundle.render({}, event_loop: true) }
+
+      assert_includes error.message, 'stream-rejection'
+    end
+
+    private
+
+    def with_reject_bundle
+      dir = Dir.mktmpdir
+      path = File.join(dir, 'reject-stream.js')
+
+      File.write(path, <<~JS)
+        globalThis.render = function() {
+          return new Promise(function(resolve, reject) {
+            setTimeout(function() { reject(new Error('stream-rejection')); }, 0);
+          });
+        };
+      JS
+
+      SSR::Deno::Bundle.new(path)
     end
   end
 end

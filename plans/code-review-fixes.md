@@ -6,7 +6,7 @@ Findings from a general codebase audit. Ordered by priority.
 
 ### HIGH
 
-- [ ] **render_stream.rs — propagate promise rejections as `DenoError::Render`**
+- [x] **render_stream.rs — propagate promise rejections as `DenoError::Render`**
   Promise rejection stored as `'ERROR:' + msg` in `__ssr_stream_result` → returned as
   successful `Ok(String)` → Ruby gets garbage instead of exception.
   Fix: use separate `globalThis.__ssr_stream_error` sentinel, check in poll loop,

@@ -3,6 +3,9 @@
 ### Added
 - New sample: `samples/vite-react-streaming-ssr-app` — React 19 streaming SSR with `renderToPipeableStream` + Suspense, demonstrating the `render_stream` (event loop) path.
 
+### Fixed
+- Streaming render (`render_stream` / `event_loop: true`) now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.
+
 ### Changed
 - Bundle identifiers now use `<basename>#<object_id>` format (e.g. `entry-server.js#47278032594620`) instead of bare `object_id`. Improves readability in instrumentation events, error messages, and logs.
 
