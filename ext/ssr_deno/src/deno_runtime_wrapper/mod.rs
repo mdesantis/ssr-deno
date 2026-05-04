@@ -37,6 +37,8 @@ pub(crate) mod render_stream;
 
 pub(crate) mod render_stream_chunked;
 
+pub(crate) mod render_stream_chunked_op;
+
 // ---------------------------------------------------------------------------
 // Script name interning — avoids unbounded `Box::leak` on bundle reloads
 // ---------------------------------------------------------------------------
@@ -89,6 +91,13 @@ enum WorkerMsg {
         reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
     RenderStreamChunked {
+        bundle_id: String,
+        args_json: String,
+        render_timeout_ms: u64,
+        chunk_tx: tokio::sync::mpsc::Sender<String>,
+        reply: tokio::sync::oneshot::Sender<Result<(), SSRDenoError>>,
+    },
+    RenderStreamChunkedOp {
         bundle_id: String,
         args_json: String,
         render_timeout_ms: u64,
@@ -228,6 +237,33 @@ impl IsolateHandle {
         Ok((chunk_rx, reply_rx))
     }
 
+    /// Sends an op-based chunked streaming render request. Same channel
+    /// semantics as `start_render_stream_chunked`, but chunks flow through the
+    /// async `op_ssr_push_chunk` op instead of array polling.
+    pub fn start_render_stream_chunked_op(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<
+        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
+        SSRDenoError,
+    > {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Result<(), SSRDenoError>>();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
+
+        self.tx
+            .blocking_send(WorkerMsg::RenderStreamChunkedOp {
+                bundle_id: bundle_id.to_string(),
+                args_json: args_json.to_string(),
+                render_timeout_ms: self.render_timeout_ms,
+                chunk_tx,
+                reply: reply_tx,
+            })
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
+
+        Ok((chunk_rx, reply_rx))
+    }
+
     /// Queries V8 heap statistics from this isolate's thread.
     pub fn block_on_heap_stats(&self) -> Result<String, SSRDenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -328,6 +364,20 @@ impl IsolatePool {
         SSRDenoError,
     > {
         self.next_handle().start_render_stream_chunked(bundle_id, args_json)
+    }
+
+    /// Dispatches an op-based chunked streaming render to the next isolate.
+    /// Same semantics as `dispatch_render_stream_chunked` but uses the async op
+    /// path for true backpressure.
+    pub fn dispatch_render_stream_chunked_op(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<
+        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
+        SSRDenoError,
+    > {
+        self.next_handle().start_render_stream_chunked_op(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
@@ -506,6 +556,19 @@ fn worker_thread_main(
                     reply,
                 } => {
                     let result = render_stream_chunked::render_streaming_chunked(
+                        &mut worker, &bundle_id, &args_json,
+                        render_timeout_ms, chunk_tx, &oom_triggered,
+                    ).await;
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::RenderStreamChunkedOp {
+                    bundle_id,
+                    args_json,
+                    render_timeout_ms,
+                    chunk_tx,
+                    reply,
+                } => {
+                    let result = render_stream_chunked_op::render_streaming_chunked_op(
                         &mut worker, &bundle_id, &args_json,
                         render_timeout_ms, chunk_tx, &oom_triggered,
                     ).await;
@@ -742,6 +805,14 @@ fn build_worker(
             deno_runtime::deno_core::Extension {
                 name: "ssr_stream",
                 ops: Cow::Owned(vec![render_stream::op_ssr_push_chunk()]),
+                js_files: Cow::Owned(vec![
+                    deno_runtime::deno_core::ExtensionFileSource::new(
+                        "ext:ssr_stream/init.js",
+                        deno_runtime::deno_core::ascii_str_include!(
+                            concat!(env!("CARGO_MANIFEST_DIR"), "/src/js/ssr_stream_init.js")
+                        ),
+                    ),
+                ]),
                 ..Default::default()
             },
         ],

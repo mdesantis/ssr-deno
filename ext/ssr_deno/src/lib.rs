@@ -287,6 +287,45 @@ fn native_render_stream_chunks(
     }
 }
 
+/// Op-based chunked streaming render — same semantics as
+/// `native_render_stream_chunks` but uses the async `op_ssr_push_chunk` op
+/// for true backpressure instead of array polling.
+fn native_render_stream_chunks_op(
+    ruby: &Ruby,
+    rb_self: Value,
+    bundle_id: String,
+    args_json: String,
+) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+    if !ruby.block_given() {
+        return Ok(Yield::Enumerator(
+            rb_self.enumeratorize("native_render_stream_chunks_op", (bundle_id, args_json)),
+        ));
+    }
+
+    let (mut chunk_rx, reply_rx) = get_pool()?
+        .dispatch_render_stream_chunked_op(&bundle_id, &args_json)
+        .map_err(map_render_error)?;
+
+    // Yield chunks to the block until the channel closes.
+    loop {
+        match chunk_rx.blocking_recv() {
+            Some(chunk) => {
+                let _: Value = ruby.yield_value(ruby.str_new(&chunk))?;
+            }
+            None => break,
+        }
+    }
+
+    // Channel closed — check if the render completed successfully or errored.
+    match reply_rx.blocking_recv() {
+        Ok(Ok(())) => Ok(Yield::Iter(std::iter::empty())),
+        Ok(Err(e)) => Err(map_render_error(e)),
+        Err(_) => Err(map_render_error(SSRDenoError::WorkerDied(
+            "Deno worker thread exited before signaling stream completion".into(),
+        ))),
+    }
+}
+
 /// The magnus init function — called when Ruby loads the native extension.
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
@@ -360,6 +399,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_render_stream_chunks",
         method!(native_render_stream_chunks, 2),
+    )?;
+    deno_module.define_singleton_method(
+        "native_render_stream_chunks_op",
+        method!(native_render_stream_chunks_op, 2),
     )?;
     Ok(())
 }

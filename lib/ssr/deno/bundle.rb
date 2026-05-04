@@ -110,6 +110,20 @@ module SSR
         SSR::Deno.native_render_stream_chunks(@bundle_id, json_input, &)
       end
 
+      # Op-based chunked streaming render (PoC) — same API as
+      # +render_stream_chunks+ but uses the async +op_ssr_push_chunk+ Deno op
+      # for true backpressure instead of array polling.
+      #
+      # JS bundles must use +await globalThis.__ssr_push_chunk_op(string)+
+      # instead of the synchronous +globalThis.__ssr_push_chunk(string)+.
+      def render_stream_chunks_op(data = nil, raw_input: false, &)
+        reload_if_changed if @auto_reload
+
+        json_input = raw_input ? data : JSON.generate(data)
+
+        SSR::Deno.native_render_stream_chunks_op(@bundle_id, json_input, &)
+      end
+
       private
 
       # Delegate instrumentation to the shared Instrumenter module.
