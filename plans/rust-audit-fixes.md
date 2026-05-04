@@ -34,7 +34,7 @@ iteration via `get_array_length` + index lookups would eliminate both allocs.
 Poll loop spins at ~20kHz (`100ms / 50µs = 2000 iter`). Exponential backoff
 or Condvar-style blocking would reduce wakeups.
 
-### 5. `SCRIPT_NAMES` — `Mutex<Option<HashMap>>` could be `OnceLock<Mutex<HashMap>>`
+### 5. `SCRIPT_NAMES` — `Mutex<Option<HashMap>>` could be `OnceLock<Mutex<HashMap>>` ✅ implemented
 
 The `Option` is `None` only before first use, then `Some` forever. Extra branch
 every access. `OnceLock<Mutex<HashMap>>` eliminates the Option layer.
@@ -50,7 +50,7 @@ every access. `OnceLock<Mutex<HashMap>>` eliminates the Option layer.
 OS thread creation failure (rare but real under memory pressure) causes process
 abort. Return `Result` instead — fallback to no-watchdog or bubble error.
 
-### 7. `render.rs` — OOM vs timeout priority ordering
+### 7. `render.rs` — OOM vs timeout priority ordering ✅ implemented
 
 In the event loop, OOM is checked first, then timeout. In the `execute_script`
 error handler, the same order is used. This is correct (OOM is more specific)

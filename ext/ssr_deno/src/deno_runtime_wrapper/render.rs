@@ -84,6 +84,8 @@ pub(super) fn begin_render(
         watchdog.cancel();
         cleanup_render_globals(worker);
 
+        // Check OOM before timeout — when both fire concurrently,
+        // OOM is the root cause (V8 limit triggers terminate_execution).
         if oom_triggered.load(Ordering::SeqCst) {
             worker.js_runtime.v8_isolate().cancel_terminate_execution();
             return Err(SSRDenoError::OutOfMemory(format!(
@@ -178,6 +180,9 @@ pub async fn render(
         // Run the event loop briefly to let macrotasks/promises progress.
         let _ = worker.run_up_to_duration(Duration::from_millis(50)).await;
 
+        // OOM checked before timeout — when both fire concurrently
+        // OOM is the root cause (V8 near-heap-limit callback sets flag
+        // and terminates execution). Returning OOM is more specific.
         if oom_triggered.load(Ordering::SeqCst) {
             worker.js_runtime.v8_isolate().cancel_terminate_execution();
             break Err(SSRDenoError::OutOfMemory(

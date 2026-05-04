@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
@@ -43,20 +43,20 @@ pub(crate) mod watchdog;
 /// Cache of leaked script name strings. `MainWorker::execute_script` requires
 /// `&'static str`, so we must leak — but we intern by value so each unique
 /// filename is leaked at most once regardless of how many reloads occur.
-static SCRIPT_NAMES: Mutex<Option<HashMap<String, &'static str>>> = Mutex::new(None);
+static SCRIPT_NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
 
 /// Returns a `&'static str` for the given script name, reusing a previously
 /// interned value if available. At most one leak per unique filename.
 fn intern_script_name(name: &str) -> &'static str {
-    let mut guard = SCRIPT_NAMES.lock().unwrap();
-    let map = guard.get_or_insert_with(HashMap::new);
+    let map = SCRIPT_NAMES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap();
 
-    if let Some(&cached) = map.get(name) {
+    if let Some(&cached) = guard.get(name) {
         return cached;
     }
 
     let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
-    map.insert(name.to_owned(), leaked);
+    guard.insert(name.to_owned(), leaked);
     leaked
 }
 
