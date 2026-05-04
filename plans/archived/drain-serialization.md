@@ -1,6 +1,6 @@
 # drain_chunks — double serialization per tick
 
-Status: Pending
+Status: Closed (low priority)
 
 ## Problem
 
@@ -94,4 +94,4 @@ tests (`test_deno_render_chunks.rb`) continue to pass.
 
 ## Verification
 
-- [ ] Close as not-a-hot-path (documented, low priority)
+- [x] Close as not-a-hot-path (documented, low priority)

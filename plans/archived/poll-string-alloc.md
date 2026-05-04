@@ -1,6 +1,6 @@
 # poll_render_state — String allocation every tick
 
-Status: Pending
+Status: Closed (not a real problem)
 
 ## Problem
 

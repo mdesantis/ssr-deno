@@ -8,10 +8,10 @@ Status: Pending
 → [archived/render-core-extraction.md](archived/render-core-extraction.md) ✅ implemented
 
 ### 2. `poll_render_state` — String alloc every tick
-→ [poll-string-alloc.md](archived/poll-string-alloc.md) — analysis shows allocation is terminal-only (one per render, not per tick). Not a real problem.
+→ [poll-string-alloc.md](archived/poll-string-alloc.md) ✅ closed (terminal-only, not a real problem)
 
 ### 3. `drain_chunks` — double serialization per tick
-→ [drain-serialization.md](drain-serialization.md) — not a hot path for SSR workloads. Low priority.
+→ [drain-serialization.md](archived/drain-serialization.md) ✅ closed (low priority, serialization overhead negligible)
 
 ### 4. `setup_require` — 50µs busy-sleep burns CPU
 → [require-backoff.md](require-backoff.md) — exponential backoff proposal.
