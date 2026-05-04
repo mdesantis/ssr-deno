@@ -488,7 +488,8 @@ fn load_bundle_in_worker(
 
     // Move globalThis.render into the bundle namespace so multiple bundles
     // can coexist in the same V8 context without overwriting each other.
-    // bundle_id is validated to [a-zA-Z0-9_-] before reaching here.
+    // bundle_id format: "basename#object_id" (e.g. "entry-server.js#47278032594620").
+    // The :? formatting below ensures proper escaping in the JS string literal.
     let namespace_script = format!(
         r#"(function(id) {{
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
@@ -499,7 +500,7 @@ fn load_bundle_in_worker(
             }}
             globalThis.__ssr_bundles[id] = {{ render: globalThis.render }};
             globalThis.render = undefined;
-        }})("{bundle_id}");"#
+        }})({bundle_id:?});"#
     );
 
     worker

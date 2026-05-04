@@ -4,6 +4,7 @@
 - New sample: `samples/vite-react-streaming-ssr-app` — React 19 streaming SSR with `renderToPipeableStream` + Suspense, demonstrating the `render_stream` (event loop) path.
 
 ### Changed
+- Bundle identifiers now use `<basename>#<object_id>` format (e.g. `entry-server.js#47278032594620`) instead of bare `object_id`. Improves readability in instrumentation events, error messages, and logs.
 
 ## [0.1.0-alpha.4] - 2026-05-04
 
