@@ -146,18 +146,18 @@ The V8 event loop always runs during render (macrotasks + microtasks fire). This
 bundle.render({ page: 'home' })
 ```
 
-### Chunked streaming render
+### Chunked render
 
 Delivers HTML fragments incrementally as they arrive from JS. The JS bundle pushes chunks via `globalThis.__ssr_push_chunk(string)`:
 
 ```ruby
 # Block form — yields each chunk
-bundle.render_stream_chunks({ page: 'home' }) do |chunk|
+bundle.render_chunks({ page: 'home' }) do |chunk|
   response.stream.write(chunk)
 end
 
 # Enumerator form — Rack 3 compatible response body
-body = bundle.render_stream_chunks({ page: 'home' })
+body = bundle.render_chunks({ page: 'home' })
 [200, { 'content-type' => 'text/html' }, body]
 ```
 

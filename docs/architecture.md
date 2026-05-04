@@ -32,7 +32,7 @@ flowchart TB
 | File | Purpose |
 |------|---------|
 | `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
-| `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_stream_chunks(data)` → chunked streaming via `Enumerator` |
+| `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator` |
 | `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |
 | `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev |
@@ -122,7 +122,7 @@ returns (sync) or its Promise resolves (async). Returns the final HTML string.
 
 Vue 3, React 19, and any framework's async SSR works out of the box.
 
-#### Chunked streaming render (`bundle.render_stream_chunks(data)`)
+#### Chunked render (`bundle.render_chunks(data)`)
 
 Pumps the full V8 event loop (same as event-loop render) but delivers HTML
 **incrementally** as chunks arrive from JS. The JS bundle pushes chunks via

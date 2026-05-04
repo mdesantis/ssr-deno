@@ -35,7 +35,7 @@ graph TD
 
     subgraph After
         F[render] --> G[render.rs — event loop, final string]
-        H[render_stream_chunks] --> I[render_chunked.rs — event loop, chunks]
+        H[render_chunks] --> I[render_chunked.rs — event loop, chunks]
     end
 ```
 
@@ -75,10 +75,10 @@ Dead code removal:
 |--------|-------|
 | `render(data, raw_input:, raw_output:, event_loop:)` | `render(data, raw_input:, raw_output:)` |
 | `render_stream(data, raw_input:, raw_output:)` | Removed (was alias for `render(event_loop: true)`) |
-| `render_stream_chunks(data, raw_input:, &)` | Unchanged |
+| `render_stream_chunks(data, raw_input:, &)` | `render_chunks(data, raw_input:, &)` |
 | `native_render(bundle_id, json)` | Removed |
 | `native_render_stream(bundle_id, json)` | Renamed to `native_render` |
-| `native_render_stream_chunks(bundle_id, json, &)` | Unchanged |
+| `native_render_stream_chunks(bundle_id, json, &)` | `native_render_chunks(bundle_id, json, &)` |
 
 ### Test changes
 

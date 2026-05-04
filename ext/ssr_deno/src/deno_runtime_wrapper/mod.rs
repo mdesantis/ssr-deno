@@ -675,7 +675,7 @@ fn build_worker(
         bootstrap: BootstrapOptions::default(),
         extensions: vec![
             deno_runtime::deno_core::Extension {
-                name: "ssr_stream",
+                name: "ssr_deno_ops",
                 ops: Cow::Owned(vec![render::op_ssr_push_chunk()]),
                 ..Default::default()
             },

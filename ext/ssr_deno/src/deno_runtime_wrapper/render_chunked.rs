@@ -49,11 +49,11 @@ pub async fn render_chunked(
     // Set up the chunk array + push function, then kick off the render.
     let script = format!(
         r#"
-        if (typeof globalThis.__SSR_STREAM_SENTINEL === 'undefined') {{
-            globalThis.__SSR_STREAM_SENTINEL = {{}};
+        if (typeof globalThis.__SSR_DENO_SENTINEL === 'undefined') {{
+            globalThis.__SSR_DENO_SENTINEL = {{}};
         }}
-        globalThis.__ssr_stream_result = globalThis.__SSR_STREAM_SENTINEL;
-        globalThis.__ssr_stream_error = null;
+        globalThis.__ssr_deno_result = globalThis.__SSR_DENO_SENTINEL;
+        globalThis.__ssr_deno_error = null;
         globalThis.__ssr_chunks = [];
         globalThis.__ssr_push_chunk = function(chunk) {{
             globalThis.__ssr_chunks.push(chunk);
@@ -65,11 +65,11 @@ pub async fn render_chunked(
         var __result = __bundle.render({args_json_js});
         if (__result && typeof __result.then === 'function') {{
             __result.then(
-                (html) => {{ globalThis.__ssr_stream_result = html; }},
-                (err) => {{ globalThis.__ssr_stream_error = (err && err.message) || String(err); }}
+                (html) => {{ globalThis.__ssr_deno_result = html; }},
+                (err) => {{ globalThis.__ssr_deno_error = (err && err.message) || String(err); }}
             );
         }} else {{
-            globalThis.__ssr_stream_result = __result;
+            globalThis.__ssr_deno_result = __result;
         }}
         "#,
         bundle_id_js = bundle_id_js,

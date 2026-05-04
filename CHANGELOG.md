@@ -1,11 +1,12 @@
 ## Unreleased
 
 ### Added
-- `Bundle#render_stream_chunks` — chunked streaming render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render`.
+- `Bundle#render_chunks` — chunked render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render`.
 - V8 termination watchdog — a dedicated OS thread per render that calls `terminate_execution()` when the render timeout expires. Enables timeout and OOM detection for synchronous blocking JS (e.g., infinite `while` loops). Previously, only async renders (Promises) respected the timeout.
 - Branch coverage enforcement in `coverage:check` task — computes merged branch coverage from raw `.resultset.json` (works around SimpleCov 0.22 merger limitation).
 
 ### Changed
+- **BREAKING:** `Bundle#render_stream_chunks` renamed to `Bundle#render_chunks`. Internal JS globals renamed from `__ssr_stream_*` to `__ssr_deno_*` and the sentinel from `__SSR_STREAM_SENTINEL` to `__SSR_DENO_SENTINEL`.
 - **BREAKING:** `Bundle#render_stream` removed — use `Bundle#render` (always runs the event loop now).
 - **BREAKING:** `render(event_loop:)` keyword argument removed — the event loop is always active. Macrotasks, timers, and Promises fire during every render.
 - `native_render` now uses the event-loop path internally (was direct V8 function call). Async renders (Promises) resolve naturally; sync renders complete on first poll tick.

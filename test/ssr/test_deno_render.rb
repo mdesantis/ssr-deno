@@ -41,19 +41,19 @@ module SSR
       bundle = with_reject_bundle
       error = assert_raises(SSR::Deno::RenderError) { bundle.render({}) }
 
-      assert_includes error.message, 'stream-rejection'
+      assert_includes error.message, 'render-rejection'
     end
 
     private
 
     def with_reject_bundle
       dir = Dir.mktmpdir
-      path = File.join(dir, 'reject-stream.js')
+      path = File.join(dir, 'reject-render.js')
 
       File.write(path, <<~JS)
         globalThis.render = function() {
           return new Promise(function(resolve, reject) {
-            setTimeout(function() { reject(new Error('stream-rejection')); }, 0);
+            setTimeout(function() { reject(new Error('render-rejection')); }, 0);
           });
         };
       JS

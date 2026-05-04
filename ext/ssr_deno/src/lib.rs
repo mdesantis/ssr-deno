@@ -234,14 +234,14 @@ fn native_heap_stats() -> Result<String, Error> {
 }
 
 /// Dispatches a chunked render. Yields each HTML chunk to the provided block
-/// as it arrives from React's `renderToPipeableStream`.
+/// as it arrives from the JS render function.
 ///
 /// If no block is given, returns an Enumerator (Ruby's standard pattern).
 /// When a block IS given, yields chunks incrementally and raises
-/// `SSR::Deno::RenderError` if the render fails mid-stream.
+/// `SSR::Deno::RenderError` if the render fails during chunk delivery.
 ///
 /// The Ruby thread blocks on each `chunk_rx.blocking_recv()` between yields.
-fn native_render_stream_chunks(
+fn native_render_chunks(
     ruby: &Ruby,
     rb_self: Value,
     bundle_id: String,
@@ -249,7 +249,7 @@ fn native_render_stream_chunks(
 ) -> Result<Yield<impl Iterator<Item = String>>, Error> {
     if !ruby.block_given() {
         return Ok(Yield::Enumerator(
-            rb_self.enumeratorize("native_render_stream_chunks", (bundle_id, args_json)),
+            rb_self.enumeratorize("native_render_chunks", (bundle_id, args_json)),
         ));
     }
 
@@ -276,7 +276,7 @@ fn native_render_stream_chunks(
         }
         Ok(Err(e)) => Err(map_render_error(e)),
         Err(_) => Err(map_render_error(SSRDenoError::WorkerDied(
-            "Deno worker thread exited before signaling stream completion".into(),
+            "Deno worker thread exited before signaling render completion".into(),
         ))),
     }
 }
@@ -348,8 +348,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         function!(native_get_node_builtins_enabled, 0),
     )?;
     deno_module.define_singleton_method(
-        "native_render_stream_chunks",
-        method!(native_render_stream_chunks, 2),
+        "native_render_chunks",
+        method!(native_render_chunks, 2),
     )?;
     Ok(())
 }

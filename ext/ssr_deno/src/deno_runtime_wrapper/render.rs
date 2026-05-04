@@ -15,7 +15,7 @@ use super::SSRDenoError;
 use super::watchdog::Watchdog;
 
 // ---------------------------------------------------------------------------
-// Op: receive a chunk of HTML from JS during chunked streaming render
+// Op: receive a chunk of HTML from JS during chunked render
 // ---------------------------------------------------------------------------
 
 /// Pushes an HTML chunk from JS to the Rust channel. Async for backpressure:
@@ -74,8 +74,8 @@ pub async fn render(
     // JSON string (same contract as the direct V8 API call path).
     //
     // Error handling: rejected promises store the error message in a
-    // separate `__ssr_stream_error` global (not in `__ssr_stream_result`).
-    // The poll loop checks `__ssr_stream_error` first and returns
+    // separate `__ssr_deno_error` global (not in `__ssr_deno_result`).
+    // The poll loop checks `__ssr_deno_error` first and returns
     // `SSRDenoError::Render` when set, ensuring proper exception propagation
     // back to Ruby.
     let args_json_js = serde_json::to_string(args_json)
@@ -83,11 +83,11 @@ pub async fn render(
 
     let script = format!(
         r#"
-        if (typeof globalThis.__SSR_STREAM_SENTINEL === 'undefined') {{
-            globalThis.__SSR_STREAM_SENTINEL = {{}};
+        if (typeof globalThis.__SSR_DENO_SENTINEL === 'undefined') {{
+            globalThis.__SSR_DENO_SENTINEL = {{}};
         }}
-        globalThis.__ssr_stream_result = globalThis.__SSR_STREAM_SENTINEL;
-        globalThis.__ssr_stream_error = null;
+        globalThis.__ssr_deno_result = globalThis.__SSR_DENO_SENTINEL;
+        globalThis.__ssr_deno_error = null;
         var __bundle = globalThis.__ssr_bundles[{bundle_id_js}];
         if (!__bundle || typeof __bundle.render !== 'function') {{
             throw new Error('Bundle not found: ' + {bundle_id_js});
@@ -95,11 +95,11 @@ pub async fn render(
         var __result = __bundle.render({args_json_js});
         if (__result && typeof __result.then === 'function') {{
             __result.then(
-                (html) => {{ globalThis.__ssr_stream_result = html; }},
-                (err) => {{ globalThis.__ssr_stream_error = (err && err.message) || String(err); }}
+                (html) => {{ globalThis.__ssr_deno_result = html; }},
+                (err) => {{ globalThis.__ssr_deno_error = (err && err.message) || String(err); }}
             );
         }} else {{
-            globalThis.__ssr_stream_result = __result;
+            globalThis.__ssr_deno_result = __result;
         }}
         "#,
         bundle_id_js = bundle_id_js,
@@ -189,7 +189,7 @@ pub(super) enum RenderState {
     Done(String),
 }
 
-/// Checks both `__ssr_stream_error` and `__ssr_stream_result` in a single
+/// Checks both `__ssr_deno_error` and `__ssr_deno_result` in a single
 /// `execute_script` call. Returns the render state as a tagged string:
 /// - `null` / undefined - still pending
 /// - starts with `E:` - promise rejected, rest is the error message
@@ -197,11 +197,11 @@ pub(super) enum RenderState {
 pub(super) fn poll_render_state(worker: &mut MainWorker) -> RenderState {
     let Ok(global_val) = worker.execute_script(
         "<ssr-deno:render-poll>",
-        "globalThis.__ssr_stream_error \
-         ? ('E:' + globalThis.__ssr_stream_error) \
-         : (globalThis.__ssr_stream_result === globalThis.__SSR_STREAM_SENTINEL \
+        "globalThis.__ssr_deno_error \
+         ? ('E:' + globalThis.__ssr_deno_error) \
+         : (globalThis.__ssr_deno_result === globalThis.__SSR_DENO_SENTINEL \
             ? null \
-            : ('R:' + JSON.stringify(globalThis.__ssr_stream_result)))"
+            : ('R:' + JSON.stringify(globalThis.__ssr_deno_result)))"
             .to_string()
             .into(),
     ) else {

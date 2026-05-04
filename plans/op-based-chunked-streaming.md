@@ -149,7 +149,7 @@ The unbounded-within-tick memory concern is theoretical — a synchronous burst 
 ## Recommendation
 
 Keep poll-based as default. Consider op-based as an opt-in mode (e.g.,
-`render_stream_chunks(data, backpressure: true)`) if a concrete use case
+`render_chunks(data, backpressure: true)`) if a concrete use case
 emerges — likely untrusted bundles or sub-ms latency requirements.
 
 If implemented, both modes share the same Ruby API (`Enumerator` / block yield).

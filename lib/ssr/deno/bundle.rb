@@ -68,9 +68,9 @@ module SSR
         end
       end
 
-      # Chunked streaming render -- yields HTML chunks incrementally as they
-      # arrive from React's +renderToPipeableStream+ (or any streaming renderer
-      # that calls +globalThis.__ssr_push_chunk(string)+).
+      # Chunked render -- yields HTML chunks incrementally as they arrive from
+      # the JS render function (e.g., React's +renderToPipeableStream+ or any
+      # renderer calling +globalThis.__ssr_push_chunk(string)+).
       #
       # Returns an +Enumerator+ when no block is given (Rack 3 compatible --
       # usable directly as a response body). When a block IS given, yields each
@@ -86,12 +86,12 @@ module SSR
       # @raise [SSR::Deno::RenderError] if the JavaScript render function throws
       # @raise [SSR::Deno::JsRuntimeOutOfMemoryError] if the V8 isolate heap
       #   exceeds the configured limit (+max_heap_size_mb+)
-      def render_stream_chunks(data = nil, raw_input: false, &)
+      def render_chunks(data = nil, raw_input: false, &)
         reload_if_changed if @auto_reload
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        SSR::Deno.native_render_stream_chunks(@bundle_id, json_input, &)
+        SSR::Deno.native_render_chunks(@bundle_id, json_input, &)
       end
 
       private
