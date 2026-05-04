@@ -1,6 +1,6 @@
 # Refactoring: Always-On Event Loop
 
-Status: Complete (pending final pipeline verification)
+Status: Complete
 
 ## Motivation
 
@@ -110,7 +110,7 @@ Dead code removal:
 - [x] Ruby: update `bundle.rb` — remove `event_loop:`, remove `render_stream`
 - [x] Ruby: update `sig/ssr/deno.rbs`
 - [x] Tests: update `deno_macrotasks_test.rb`
-- [x] Tests: merge `deno_render_stream_test.rb` into `deno_test.rb`, delete file
+- [x] Tests: merge `test_deno_render_stream.rb` into `deno_test.rb`, delete file
 - [x] Tests: update integration tests (`render_stream` → `render`)
 - [x] Docs: update `docs/architecture.md`, `docs/compatibility.md`, `README.md`, `CHANGELOG.md`
 - [x] Run `bundle exec rake` — must exit 0
