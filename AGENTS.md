@@ -36,7 +36,7 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
 
 - **Keep `sig/ssr/deno.rbs` in sync.** When changing method signatures, return types, or exception classes in `lib/ssr/deno.rb` or `ext/ssr_deno/src/lib.rs`, update `sig/ssr/deno.rbs` in the same step.
 
-- **When archiving a plan to `plans/archived/`, stage both the new file AND the deletion of the old path.** Use `git mv` or add the deletion explicitly. Git only detects the rename as a rename when both the old deletion and the new file are in the same commit.
+- **When archiving a plan to `plans/archived/`, stage both the new file AND the deletion of the old path.** Use `git mv` or add the deletion explicitly. Git only detects the rename as a rename when both the old deletion and the new file are in the same commit. Also update any references to the old path in other plan files, docs, or the consolidated plan index.
 
 - **Release workflow:**
   - Bump `lib/ssr/deno/version.rb`, `ext/ssr_deno/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml` (all three match).
