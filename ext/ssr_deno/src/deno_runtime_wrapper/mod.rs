@@ -63,7 +63,7 @@ fn intern_script_name(name: &str) -> &'static str {
 enum WorkerMsg {
     LoadBundle {
         bundle_id: String,
-        bundle_code: String,
+        bundle_code: Arc<str>,
         script_name: &'static str,
         reply: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
@@ -308,6 +308,8 @@ impl IsolatePool {
             DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}"))
         })?;
 
+        let bundle_code: Arc<str> = bundle_code.into();
+
         // `MainWorker::execute_script` requires `&'static str` for the script
         // name. Interned so each unique filename is leaked at most once,
         // regardless of how many reloads occur in development.
@@ -317,17 +319,25 @@ impl IsolatePool {
             .map(intern_script_name)
             .unwrap_or("main.js");
 
-        // Broadcast to all isolates (sequential — keeps things simple for v1).
+        // Broadcast to all isolates in parallel: send all messages first, then
+        // collect replies. Each worker processes independently, cutting load
+        // time from O(n × eval_time) to O(eval_time).
+        let mut reply_rxs = Vec::with_capacity(self.handles.len());
+
         for handle in &self.handles {
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
             handle.blocking_send(WorkerMsg::LoadBundle {
                 bundle_id: bundle_id.to_string(),
-                bundle_code: bundle_code.clone(),
+                bundle_code: Arc::clone(&bundle_code),
                 script_name,
                 reply: reply_tx,
             })?;
 
+            reply_rxs.push(reply_rx);
+        }
+
+        for reply_rx in reply_rxs {
             reply_rx
                 .blocking_recv()
                 .map_err(|_| DenoError::WorkerDied("Isolate worker exited before reply".into()))?
@@ -462,11 +472,9 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
         .execute_script(
             "<ssr-deno:require>",
             r#"
-            globalThis.__ssr_require_ready = false;
             (async () => {
                 const { createRequire } = await import('node:module');
                 globalThis.require = createRequire('file:///');
-                globalThis.__ssr_require_ready = true;
             })();
             "#
             .to_string()
@@ -505,7 +513,7 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
 fn load_bundle_in_worker(
     worker: &mut MainWorker,
     bundle_id: &str,
-    bundle_code: String,
+    bundle_code: Arc<str>,
     script_name: &'static str,
     node_builtins: bool,
 ) -> Result<(), String> {
@@ -524,7 +532,10 @@ fn load_bundle_in_worker(
     // Move globalThis.render into the bundle namespace so multiple bundles
     // can coexist in the same V8 context without overwriting each other.
     // bundle_id format: "basename#object_id" (e.g. "entry-server.js#47278032594620").
-    // The :? formatting below ensures proper escaping in the JS string literal.
+    // serde_json::to_string produces a guaranteed-valid JS string literal.
+    let bundle_id_js = serde_json::to_string(bundle_id)
+        .unwrap_or_else(|_| format!("\"{}\"", bundle_id));
+
     let namespace_script = format!(
         r#"(function(id) {{
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
@@ -535,7 +546,7 @@ fn load_bundle_in_worker(
             }}
             globalThis.__ssr_bundles[id] = {{ render: globalThis.render }};
             globalThis.render = undefined;
-        }})({bundle_id:?});"#
+        }})({bundle_id_js});"#
     );
 
     worker

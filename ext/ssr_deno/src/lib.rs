@@ -68,6 +68,10 @@ fn js_runtime_out_of_memory_error(msg: impl Into<String>) -> Error {
     Error::new(deno_exception_class("JsRuntimeOutOfMemoryError"), msg.into())
 }
 
+fn heap_stats_serialization_error(msg: impl Into<String>) -> Error {
+    Error::new(deno_exception_class("HeapStatsSerializationError"), msg.into())
+}
+
 fn map_render_error(e: DenoError) -> Error {
     match e {
         DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
@@ -76,6 +80,7 @@ fn map_render_error(e: DenoError) -> Error {
         DenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(msg),
         DenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
         DenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
+        DenoError::HeapStatsSerialization(msg) => heap_stats_serialization_error(msg),
     }
 }
 
@@ -223,7 +228,7 @@ fn native_version() -> String {
 fn native_heap_stats() -> Result<String, Error> {
     get_pool()?
         .heap_stats()
-        .map_err(|e| js_runtime_worker_error(e.to_string()))
+        .map_err(map_render_error)
 }
 
 /// Dispatches a streaming render to the next available isolate.
@@ -258,6 +263,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("BundleNotFoundError", base_error)?;
     deno_module.define_error("RenderError", base_error)?;
     deno_module.define_error("JsRuntimeOutOfMemoryError", base_error)?;
+    deno_module.define_error("HeapStatsSerializationError", base_error)?;
 
     deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
     deno_module.define_singleton_method("native_render", function!(native_render, 2))?;

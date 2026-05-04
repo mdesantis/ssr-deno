@@ -25,6 +25,9 @@ module SSR
     class JsRuntimeOutOfMemoryError < Error
     end
 
+    class HeapStatsSerializationError < Error
+    end
+
     module Instrumenter
       def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
     end

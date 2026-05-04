@@ -23,6 +23,10 @@ pub enum DenoError {
     BundleNotFound(String),
     Render(String),
     OutOfMemory(String),
+    /// Heap statistics serialization failed. Should never occur in practice
+    /// (the struct contains only plain integers), but distinct from Render to
+    /// avoid misleading exception types in Ruby.
+    HeapStatsSerialization(String),
 }
 
 impl std::fmt::Display for DenoError {
@@ -33,7 +37,8 @@ impl std::fmt::Display for DenoError {
             | Self::WorkerDied(msg)
             | Self::BundleNotFound(msg)
             | Self::Render(msg)
-            | Self::OutOfMemory(msg) => write!(f, "{msg}"),
+            | Self::OutOfMemory(msg)
+            | Self::HeapStatsSerialization(msg) => write!(f, "{msg}"),
         }
     }
 }
