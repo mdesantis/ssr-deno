@@ -82,6 +82,6 @@ verified by code review.
 
 ## Verification
 
-- [ ] Implement the fix
-- [ ] `bundle exec rake` — must exit 0
-- [ ] Verify `test_render_chunks_after_consumer_disconnect` passes
+- [x] Implement the fix
+- [x] `bundle exec rake` — must exit 0
+- [x] Verify `test_render_chunks_after_consumer_disconnect` passes

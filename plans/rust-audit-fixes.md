@@ -60,4 +60,4 @@ but the implicit assumption should be documented.
 
 - [render-global-cleanup.md](archived/render-global-cleanup.md) — missing JS global cleanup after buffered render ✅ implemented
 - [poll-sentinel-guard.md](archived/poll-sentinel-guard.md) — `poll_render_state` corrupt sentinel edge case ✅ implemented
-- [channel-send-error.md](channel-send-error.md) — `drain_chunks` sends to closed channel silently
+- [channel-send-error.md](archived/channel-send-error.md) — `drain_chunks` sends to closed channel silently ✅ implemented
