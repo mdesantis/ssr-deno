@@ -37,7 +37,7 @@ const fn = new Function(`
   return typeof render !== "undefined" ? render : null;
 `);
 
-let renderFn: ((url: string, context: Record<string, unknown>) => string) | null;
+let renderFn: ((argsJson: string) => string) | null;
 
 try {
   renderFn = fn() as typeof renderFn;
@@ -62,10 +62,7 @@ Deno.serve({ port: PORT }, (req: Request) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname}${url.search}`);
 
   try {
-    const html = renderFn(url.pathname, {
-      component_data: { name },
-      props: { extraData: { timestamp: Date.now(), source: "ssr-deno-sample" } },
-    });
+    const html = renderFn(JSON.stringify({ data: { name } }));
 
     return new Response(html, {
       status: 200,
