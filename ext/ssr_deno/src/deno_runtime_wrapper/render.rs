@@ -76,7 +76,8 @@ pub(super) fn begin_render(
 ) -> Result<(Watchdog, Arc<AtomicBool>), SSRDenoError> {
     let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     let timeout_triggered = Arc::new(AtomicBool::new(false));
-    let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone());
+    let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone())
+        .map_err(|e| SSRDenoError::Render(e))?;
 
     let exec_result = worker.execute_script(script_name, startup_script.into());
 

@@ -32,7 +32,7 @@ impl Watchdog {
         v8_handle: v8::IsolateHandle,
         timeout_ms: u64,
         timeout_triggered: Arc<AtomicBool>,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
 
         let handle = std::thread::Builder::new()
@@ -48,12 +48,12 @@ impl Watchdog {
                     }
                 }
             })
-            .expect("failed to spawn watchdog thread");
+            .map_err(|e| format!("failed to spawn watchdog thread: {e}"))?;
 
-        Self {
+        Ok(Self {
             cancel_tx: Some(cancel_tx),
             handle: Some(handle),
-        }
+        })
     }
 
     /// Cancels the watchdog (render completed in time). Drops the sender to
