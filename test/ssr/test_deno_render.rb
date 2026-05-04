@@ -44,6 +44,16 @@ module SSR
       assert_includes error.message, 'render-rejection'
     end
 
+    def test_render_after_failed_execute_script
+      assert_raises(SSR::Deno::RenderError) do
+        @bundle.render('!invalid-json', raw_input: true)
+      end
+
+      result = @bundle.render({ data: { name: 'recovery' } })
+
+      assert_includes result, '<h1>recovery</h1>'
+    end
+
     private
 
     def with_reject_bundle

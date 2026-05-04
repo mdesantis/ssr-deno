@@ -46,6 +46,17 @@ pub async fn op_ssr_push_chunk(
 // Render — event-loop based, returns final result as JSON string
 // ---------------------------------------------------------------------------
 
+/// Cleans up render-state globals to prevent leakage across renders.
+pub(super) fn cleanup_render_globals(worker: &mut MainWorker) {
+    let _ = worker.execute_script(
+        "<ssr-deno:render-cleanup>",
+        "globalThis.__ssr_deno_result = undefined; \
+         globalThis.__ssr_deno_error = undefined;"
+            .to_string()
+            .into(),
+    );
+}
+
 /// Runs a render with the full Deno event loop. The bundle's `render` function
 /// is called with `args_json`. If it returns a Promise, the event loop runs
 /// until the Promise settles (or the timeout expires). Macrotasks like
@@ -119,6 +130,7 @@ pub async fn render(
     // handle the termination before entering the event loop.
     if let Err(e) = exec_result {
         watchdog.cancel();
+        cleanup_render_globals(worker);
 
         if oom_triggered.load(Ordering::SeqCst) {
             worker.js_runtime.v8_isolate().cancel_terminate_execution();
@@ -175,6 +187,8 @@ pub async fn render(
     if timeout_triggered.load(Ordering::SeqCst) || oom_triggered.load(Ordering::SeqCst) {
         worker.js_runtime.v8_isolate().cancel_terminate_execution();
     }
+
+    cleanup_render_globals(worker);
 
     result
 }

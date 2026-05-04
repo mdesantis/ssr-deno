@@ -7,7 +7,7 @@ use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
 use super::SSRDenoError;
-use super::render::{RenderState, poll_render_state};
+use super::render::{RenderState, cleanup_render_globals, poll_render_state};
 use super::watchdog::Watchdog;
 
 // ---------------------------------------------------------------------------
@@ -85,6 +85,7 @@ pub async fn render_chunked(
 
     if let Err(e) = exec_result {
         watchdog.cancel();
+        cleanup_render_globals(worker);
 
         if oom_triggered.load(Ordering::SeqCst) {
             worker.js_runtime.v8_isolate().cancel_terminate_execution();

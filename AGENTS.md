@@ -59,6 +59,12 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
 
 - **When fixing RuboCop offenses, try auto-correct first.** If a RuboCop offense is marked `[Correctable]`, run `bundle exec rubocop -a <file>` (safe auto-correct) or `bundle exec rubocop -A <file>` (all auto-correct) instead of manually editing. Only fix manually if auto-correct fails or is unavailable.
 
+- **When implementing a plan step, prefer TDD when the fix is testable.** When it makes sense (the step has a testable behavior change, not just mechanical refactoring), follow:
+  1. Write a failing test that reproduces the issue or asserts the new behavior
+  2. Write the implementation to make the test pass
+  3. Verify the test passes before proceeding
+  If the expected-to-fail test does NOT fail (passes without the fix), investigate the root cause before implementing — the bug may not be real, or the test may not be exercising the right path. Skip TDD for untestable changes (cosmetic cleanup, code comments, trivial renames). Use `bundle exec rake test` as the fast-feedback loop during TDD; still run the full `bundle exec rake` before committing.
+
 - **When implementing a plan step, mark it completed in the plan file immediately.** After each implementation step passes verification (`bundle exec rake` succeeds, tests pass, coverage meets threshold), update the plan's implementation checklist — change `[ ]` to `[x]` for that step. The plan file is the authoritative source of progress. Do not leave unmarked steps behind.
 
 - **After completing a plan and committing the changes, propose to archive it.** The plan stays in `plans/` during the implementation commit — it is committed alongside the code changes, not moved to archive first. Once the commit lands, ask the user whether to move the plan to `plans/archived/`. If confirmed, move it and make a separate commit for the archive. Do not archive without confirmation — the user may want to keep it in `plans/` for reference during follow-up work.
