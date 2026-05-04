@@ -27,6 +27,10 @@ Metrics/BlockLength:
     - 'rakelib/**/*'
     - 'ssr-deno.gemspec'
 
+Metrics/ClassLength:
+  Exclude:
+    - 'test/**/*'
+
 Metrics/MethodLength:
   Max: 15
   CountAsOne:

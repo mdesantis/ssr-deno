@@ -4,7 +4,6 @@ require 'open3'
 require 'rbconfig'
 
 module SSR
-  # rubocop:disable Metrics/ClassLength
   class TestDenoEnvConfig < Minitest::Test
     GEM_ROOT = File.expand_path('../..', __dir__)
     # rubocop:disable Style/MutableConstant
@@ -177,5 +176,4 @@ module SSR
                         'SSR_DENO_MAX_HEAP_SIZE_MB' => '128')
     end
   end
-  # rubocop:enable Metrics/ClassLength
 end
