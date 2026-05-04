@@ -82,8 +82,8 @@ Dead code removal:
 
 ### Test changes
 
-- `test_deno_render_stream.rb` — merge relevant tests into `deno_test.rb`, remove file
-- `deno_macrotasks_test.rb` — remove "does_not_fire" tests (they tested the sync path).
+- `test_deno_render_stream.rb` — merge relevant tests into `test_deno.rb`, remove file
+- `test_deno_macrotasks.rb` — remove "does_not_fire" tests (they tested the sync path).
    Rename remaining tests to use `render()` instead of `render(event_loop: true)`.
 - All `render_stream()` calls → `render()`
 - All `render(event_loop: true)` → `render()`
@@ -109,8 +109,8 @@ Dead code removal:
 - [x] Rust: update `lib.rs` — remove `native_render_stream`, `native_render` uses event-loop dispatch
 - [x] Ruby: update `bundle.rb` — remove `event_loop:`, remove `render_stream`
 - [x] Ruby: update `sig/ssr/deno.rbs`
-- [x] Tests: update `deno_macrotasks_test.rb`
-- [x] Tests: merge `test_deno_render_stream.rb` into `deno_test.rb`, delete file
+- [x] Tests: update `test_deno_macrotasks.rb`
+- [x] Tests: merge `test_deno_render_stream.rb` into `test_deno.rb`, delete file
 - [x] Tests: update integration tests (`render_stream` → `render`)
 - [x] Docs: update `docs/architecture.md`, `docs/compatibility.md`, `README.md`, `CHANGELOG.md`
 - [x] Run `bundle exec rake` — must exit 0

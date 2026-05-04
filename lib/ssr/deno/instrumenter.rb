@@ -7,7 +7,7 @@ module SSR
     #
     # The +ActiveSupport::Notifications+ branch is exercised by the main test
     # suite via a mock module (see +test_instrument_with_active_support_notifications+
-    # in deno_bundle_test.rb) and end-to-end by the Rails integration test
+    # in test_deno_bundle.rb) and end-to-end by the Rails integration test
     # (+test_instrumentation_fires_bundle_miss_event+ in integration_deno_rails.rb).
     module Instrumenter
       class << self

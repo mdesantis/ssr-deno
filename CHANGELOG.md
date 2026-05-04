@@ -14,7 +14,6 @@
 - `native_render` now uses the event-loop path internally (was direct V8 function call). Async renders (Promises) resolve naturally; sync renders complete on first poll tick.
 - Render timeout is now enforced by the watchdog thread (sole authority). The previous inline `Instant::now() >= deadline` check has been removed — eliminates race conditions between two timeout mechanisms.
 - Bundle identifiers now use `<basename>#<object_id>` format (e.g. `entry-server.js#47278032594620`) instead of bare `object_id`. Improves readability in instrumentation events, error messages, and logs.
-- Test files renamed from `test_*.rb` to `*_test.rb` to follow Minitest convention.
 
 ### Fixed
 - Render now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.
