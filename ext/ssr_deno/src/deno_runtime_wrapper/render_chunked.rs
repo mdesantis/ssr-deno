@@ -1,5 +1,4 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use deno_runtime::deno_core::v8;
@@ -7,8 +6,9 @@ use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
 use super::SSRDenoError;
-use super::render::{RenderState, cleanup_render_globals, poll_render_state};
-use super::watchdog::Watchdog;
+use super::render::{
+    begin_render, end_render, poll_render_state, to_js_string, RenderState,
+};
 
 // ---------------------------------------------------------------------------
 // Chunked render — chunks flow through JS global array to Ruby
@@ -41,10 +41,8 @@ pub async fn render_chunked(
     chunk_tx: mpsc::Sender<String>,
     oom_triggered: &AtomicBool,
 ) -> Result<(), SSRDenoError> {
-    let bundle_id_js = serde_json::to_string(bundle_id)
-        .unwrap_or_else(|_| format!("\"{}\"", bundle_id));
-    let args_json_js = serde_json::to_string(args_json)
-        .unwrap_or_else(|_| format!("\"{}\"", args_json));
+    let bundle_id_js = to_js_string(bundle_id);
+    let args_json_js = to_js_string(args_json);
 
     // Set up the chunk array + push function, then kick off the render.
     let script = format!(
@@ -75,36 +73,10 @@ pub async fn render_chunked(
         bundle_id_js = bundle_id_js,
         args_json_js = args_json_js,
     );
-    // Arm the watchdog before execute_script — covers sync-blocking renders.
-    let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
-    let timeout_triggered = Arc::new(AtomicBool::new(false));
-    let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone());
 
-    let exec_result = worker
-        .execute_script("<ssr-deno:render-chunked-start>", script.into());
-
-    if let Err(e) = exec_result {
-        watchdog.cancel();
-        cleanup_render_globals(worker);
-
-        if oom_triggered.load(Ordering::SeqCst) {
-            worker.js_runtime.v8_isolate().cancel_terminate_execution();
-            return Err(SSRDenoError::OutOfMemory(
-                "JS heap out of memory - the isolate reached its configured heap limit".into(),
-            ));
-        }
-        if timeout_triggered.load(Ordering::SeqCst) {
-            worker.js_runtime.v8_isolate().cancel_terminate_execution();
-            return Err(SSRDenoError::Render("Chunked render timed out".into()));
-        }
-
-        let msg = e.to_string();
-        return if msg.contains("Bundle not found:") {
-            Err(SSRDenoError::BundleNotFound(msg))
-        } else {
-            Err(SSRDenoError::Render(format!("Chunked render failed to start: {msg}")))
-        };
-    }
+    let (watchdog, timeout_triggered) = begin_render(
+        worker, script, "<ssr-deno:render-chunked-start>", render_timeout_ms, oom_triggered, "chunked-render",
+    )?;
 
     // Run the event loop -- each tick, drain __ssr_chunks and forward to Ruby.
     // The watchdog is the sole timeout authority — no separate deadline check.
@@ -138,14 +110,7 @@ pub async fn render_chunked(
         }
     };
 
-    watchdog.cancel();
-
-    // If the watchdog or OOM callback fired between the loop's deadline check
-    // and watchdog.cancel(), the isolate has pending termination. Clear it so
-    // the isolate is reusable for future operations.
-    if timeout_triggered.load(Ordering::SeqCst) || oom_triggered.load(Ordering::SeqCst) {
-        worker.js_runtime.v8_isolate().cancel_terminate_execution();
-    }
+    end_render(worker, watchdog, &timeout_triggered, oom_triggered);
 
     // Clean up JS globals to avoid leaking state across renders.
     let _ = worker.execute_script(

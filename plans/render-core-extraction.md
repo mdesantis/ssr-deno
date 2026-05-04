@@ -259,10 +259,10 @@ Run `bundle exec rake` after each extraction step.
 
 ## Verification
 
-- [ ] Add `to_js_string()` helper and use in both files
-- [ ] Extract `begin_render()` — watchdog arm + script execute + error dispatch
-- [ ] Extract `end_render()` — watchdog cancel + terminate clearance
-- [ ] Refactor `render()` to use shared helpers
-- [ ] Refactor `render_chunked()` to use shared helpers
-- [ ] `bundle exec rake` — must exit 0
-- [ ] Verify test results match pre-refactoring
+- [x] Add `to_js_string()` helper and use in both files
+- [x] Extract `begin_render()` — watchdog arm + script execute + error dispatch
+- [x] Extract `end_render()` — watchdog cancel + terminate clearance
+- [x] Refactor `render()` to use shared helpers
+- [x] Refactor `render_chunked()` to use shared helpers
+- [x] `bundle exec rake` — must exit 0
+- [x] Verify test results match pre-refactoring
