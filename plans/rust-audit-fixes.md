@@ -14,8 +14,8 @@ Both files share identical:
 - `execute_script` error dispatch (BundleNotFound vs Render)
 
 Only differences: chunked runs `drain_chunks` and cleanup, buffered does not.
-Extract shared logic into a render skeleton function that takes a per-tick
-callback.
+Extract shared watchdog + error dispatch logic into a common helper.
+→ [render-core-extraction.md](render-core-extraction.md)
 
 ### 2. `poll_render_state` — allocates `String` every 50ms tick
 
