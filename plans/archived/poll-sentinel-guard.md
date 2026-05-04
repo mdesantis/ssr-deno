@@ -82,6 +82,6 @@ end
 
 ## Verification
 
-- [ ] Implement the fix
-- [ ] `bundle exec rake` — must exit 0
-- [ ] Verify `test_render_with_corrupted_sentinel_still_returns` passes
+- [x] Implement the fix
+- [x] `bundle exec rake` — must exit 0
+- [x] Verify `test_render_with_corrupted_sentinel_still_returns` passes
