@@ -99,6 +99,10 @@ Every SSR bundle must expose `globalThis.render(argsJson)`. It receives a JSON
 string and must return an HTML string (or a Promise — the runtime detects async
 and polls the V8 microtask queue until settlement).
 
+For chunked streaming, the bundle can also push fragments via
+`globalThis.__ssr_push_chunk(string)` during render — each call delivers one
+HTML chunk to the Ruby `Enumerator`.
+
 ## Render usage
 
 ### Basic
@@ -132,6 +136,31 @@ Both directions:
 
 ```ruby
 bundle.render('{"page":"home"}', raw_input: true, raw_output: true)
+```
+
+### Event-loop render (async)
+
+Pumps the full V8 event loop (macrotasks + microtasks). Required for React 19 streaming SSR (`renderToPipeableStream`):
+
+```ruby
+bundle.render_stream({ page: 'home' })
+# or equivalently:
+bundle.render({ page: 'home' }, event_loop: true)
+```
+
+### Chunked streaming render
+
+Delivers HTML fragments incrementally as they arrive from JS. The JS bundle pushes chunks via `globalThis.__ssr_push_chunk(string)`:
+
+```ruby
+# Block form — yields each chunk
+bundle.render_stream_chunks({ page: 'home' }) do |chunk|
+  response.stream.write(chunk)
+end
+
+# Enumerator form — Rack 3 compatible response body
+body = bundle.render_stream_chunks({ page: 'home' })
+[200, { 'content-type' => 'text/html' }, body]
 ```
 
 ## Using with Vite

@@ -2,6 +2,7 @@
 
 ### Added
 - New sample: `samples/vite-react-streaming-ssr-app` — React 19 streaming SSR with `renderToPipeableStream` + Suspense, demonstrating the `render_stream` (event loop) path.
+- `Bundle#render_stream_chunks` — chunked streaming render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render_stream`.
 
 ### Fixed
 - Streaming render (`render_stream` / `event_loop: true`) now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.

@@ -84,6 +84,32 @@ module SSR
         render(data, raw_input: raw_input, raw_output: raw_output, event_loop: true)
       end
 
+      # Chunked streaming render — yields HTML chunks incrementally as they
+      # arrive from React's +renderToPipeableStream+ (or any streaming renderer
+      # that calls +globalThis.__ssr_push_chunk(string)+).
+      #
+      # Returns an +Enumerator+ when no block is given (Rack 3 compatible —
+      # usable directly as a response body). When a block IS given, yields each
+      # chunk to the block and raises on error.
+      #
+      # @param data [Hash, String] Data to pass to the render function.
+      #   When +raw_input: true+, must be a pre-serialized JSON string.
+      # @param raw_input [Boolean] Skip +JSON.generate+ — data is already a JSON string.
+      # @return [Enumerator, nil] Enumerator of HTML chunk strings (no block),
+      #   or nil (block given, chunks yielded).
+      # @raise [SSR::Deno::BundleNotFoundError] if the bundle was not loaded
+      # @raise [SSR::Deno::JsRuntimeWorkerError] if the Deno worker thread has exited
+      # @raise [SSR::Deno::RenderError] if the JavaScript render function throws
+      # @raise [SSR::Deno::JsRuntimeOutOfMemoryError] if the V8 isolate heap
+      #   exceeds the configured limit (+max_heap_size_mb+)
+      def render_stream_chunks(data = nil, raw_input: false, &)
+        reload_if_changed if @auto_reload
+
+        json_input = raw_input ? data : JSON.generate(data)
+
+        SSR::Deno.native_render_stream_chunks(@bundle_id, json_input, &)
+      end
+
       private
 
       # Delegate instrumentation to the shared Instrumenter module.

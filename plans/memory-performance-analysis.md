@@ -407,7 +407,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 - **Aggregate heap stats across all isolates.** `SSR::Deno.heap_stats` currently queries a single isolate (round-robin). Add an `SSR::Deno.heap_stats_all` that aggregates counters across all isolates, or report per-isolate stats with a label.
 
-- **Evaluate streaming SSR** (React 19's `renderToPipeableStream`). Phase 1 (event-loop render with final result) is implemented — `Bundle#render_stream` drives macrotasks via `run_up_to_duration` tick loop. Phase 2 (true chunked HTTP streaming with backpressure) remains open. Requires `ActionController::Live` integration. See [`plans/chunked-http-streaming.md`](chunked-http-streaming.md).
+- **Streaming SSR implemented** (React 19's `renderToPipeableStream`). Phase 1 (event-loop render with final result) — `Bundle#render_stream` drives macrotasks via `run_up_to_duration` tick loop. Phase 2 (chunked HTTP streaming) — `Bundle#render_stream_chunks` delivers HTML fragments incrementally via poll-based `globalThis.__ssr_push_chunk()` + `mpsc` channel. Returns an `Enumerator` compatible with Rack 3. See [`plans/chunked-http-streaming.md`](chunked-http-streaming.md).
 
 - **Evaluate dedicated SSR process pool.** Separate Ruby processes (or sidecar) handling only SSR, fronted by a load balancer. Isolates SSR failures from the main Rails app. The in-process `IsolatePool` already provides parallelism; a process pool would add fault isolation. See [`plans/archived/ssr-process-pool.md`](archived/ssr-process-pool.md).
 

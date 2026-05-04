@@ -32,7 +32,7 @@ flowchart TB
 | File | Purpose |
 |------|---------|
 | `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
-| `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result |
+| `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_stream_chunks(data)` → chunked streaming via `Enumerator` |
 | `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |
 | `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev |
@@ -45,8 +45,9 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | magnus entrypoint — registers methods on `SSR::Deno`, owns `POOL: OnceLock<IsolatePool>` and `CONFIG: Mutex<Config>` with double-checked locking |
-| `src/deno_runtime_wrapper/mod.rs` | `DenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
+| `src/deno_runtime_wrapper/mod.rs` | `SSRDenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
 | `src/deno_runtime_wrapper/call_render.rs` | `call_render` — V8 scope chain, sync/async render dispatch, promise polling. `collect_heap_stats` |
+| `src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` (Phase 1 — event-loop, final result), `render_streaming_chunked` (Phase 2 — poll-based, yields chunks via `mpsc`), `drain_chunks`, `op_ssr_push_chunk` |
 | `src/sys.rs` | `Sys` type implementing `BaseFsCanonicalize`, `BaseFsMetadata`, `BaseFsRead`, `FsOpen`, `EnvCurrentDir`, etc. for `ExtNodeSys` and `WhichSys` |
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
@@ -83,7 +84,7 @@ flowchart LR
    - `NoopModuleLoader` (or `NodeBuiltinOnlyModuleLoader` if `node_builtins_enabled`).
    - `NodeExtInitServices` (if `node_builtins_enabled`) — provides `NodeRequireLoader`, `NodeResolver`, `PackageJsonResolver` for the `deno_node` extension.
    - A `near_heap_limit_callback` registered on the V8 isolate — doubles the heap limit and terminates execution when the heap approaches `max_heap_size_mb`, preventing fatal process crash on user memory leaks.
-3. The worker thread runs a message loop processing `LoadBundle`, `Render`, and `HeapStats` messages.
+3. The worker thread runs a message loop processing `LoadBundle`, `Render`, `RenderStream`, `RenderStreamChunked`, and `HeapStats` messages.
 4. Bundles are evaluated via `MainWorker::execute_script` (synchronous V8 script execution, not module loading).
 
 ### Bundle Contract
@@ -105,7 +106,7 @@ globalThis.render = render
 
 ### SSR render modes
 
-The gem provides two render paths with different event loop behavior:
+The gem provides three render paths with different event loop behavior:
 
 #### Default render (`bundle.render(data)`)
 
@@ -133,6 +134,19 @@ event loop** including macrotask queues. Both microtasks and macrotasks fire.
 React 19's streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
 requires `MessagePort` and works only with this path. See
 [`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for details.
+
+#### Chunked streaming render (`bundle.render_stream_chunks(data)`)
+
+Pumps the full V8 event loop (same as event-loop render) but delivers HTML
+**incrementally** as chunks arrive from JS. The JS bundle pushes chunks via
+`globalThis.__ssr_push_chunk(string)` — each tick, Rust drains
+`globalThis.__ssr_chunks` and sends through an `mpsc` channel to Ruby.
+
+Returns an `Enumerator` (no block) or yields each chunk to a block. Compatible
+with Rack 3 response bodies, `ActionController::Live`, and Rack `hijack`.
+
+See [`plans/chunked-http-streaming.md`](../plans/chunked-http-streaming.md)
+for architecture details.
 
 **Recommended bundler settings (Vite example):**
 - `ssr.noExternal: true` — bundles all dependencies into a single self-contained file.
@@ -218,7 +232,8 @@ ext/ssr_deno/                                         # Rust native extension
     ├── lib.rs                                        # magnus init, CONFIG, POOL
     ├── deno_runtime_wrapper/
     │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
-    │   └── call_render.rs                            # call_render, heap_stats
+    │   ├── call_render.rs                            # call_render, heap_stats
+    │   └── render_stream.rs                          # streaming render (Phase 1 & 2), drain_chunks
     ├── sys.rs                                        # Sys type for Deno traits
     ├── nop_types.rs                                  # NOP implementations
     ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme

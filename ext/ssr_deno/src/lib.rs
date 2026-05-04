@@ -5,7 +5,8 @@ mod require_loader;
 mod sys;
 
 use deno_runtime_wrapper::{SSRDenoError, IsolatePool};
-use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
+use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
+use magnus::value::ReprValue;
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 use std::sync::{Mutex, OnceLock};
 
@@ -238,6 +239,54 @@ fn native_render_stream(bundle_id: String, args_json: String) -> Result<String, 
         .map_err(map_render_error)
 }
 
+/// Dispatches a chunked streaming render. Yields each HTML chunk to the
+/// provided block as it arrives from React's `renderToPipeableStream`.
+///
+/// If no block is given, returns an Enumerator (Ruby's standard pattern).
+/// When a block IS given, yields chunks incrementally and raises
+/// `SSR::Deno::RenderError` if the render fails mid-stream.
+///
+/// The Ruby thread blocks on each `chunk_rx.blocking_recv()` between yields.
+fn native_render_stream_chunks(
+    ruby: &Ruby,
+    rb_self: Value,
+    bundle_id: String,
+    args_json: String,
+) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+    if !ruby.block_given() {
+        return Ok(Yield::Enumerator(
+            rb_self.enumeratorize("native_render_stream_chunks", (bundle_id, args_json)),
+        ));
+    }
+
+    let (mut chunk_rx, reply_rx) = get_pool()?
+        .dispatch_render_stream_chunked(&bundle_id, &args_json)
+        .map_err(map_render_error)?;
+
+    // Yield chunks to the block until the channel closes.
+    loop {
+        match chunk_rx.blocking_recv() {
+            Some(chunk) => {
+                // yield_value uses protect internally — safe against block break.
+                let _: Value = ruby.yield_value(ruby.str_new(&chunk))?;
+            }
+            None => break,
+        }
+    }
+
+    // Channel closed — check if the render completed successfully or errored.
+    match reply_rx.blocking_recv() {
+        Ok(Ok(())) => {
+            // Success — return empty iter (block was already given all chunks).
+            Ok(Yield::Iter(std::iter::empty()))
+        }
+        Ok(Err(e)) => Err(map_render_error(e)),
+        Err(_) => Err(map_render_error(SSRDenoError::WorkerDied(
+            "Deno worker thread exited before signaling stream completion".into(),
+        ))),
+    }
+}
+
 /// The magnus init function — called when Ruby loads the native extension.
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
@@ -307,6 +356,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_get_node_builtins_enabled",
         function!(native_get_node_builtins_enabled, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_render_stream_chunks",
+        method!(native_render_stream_chunks, 2),
     )?;
     Ok(())
 }

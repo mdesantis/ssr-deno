@@ -52,6 +52,9 @@ module SSR
 
       def render_stream: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> String
 
+      def render_stream_chunks: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) -> Enumerator[String, void]
+                              | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> nil
+
       private
 
       def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
@@ -109,6 +112,8 @@ module SSR
     def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
     def self.native_render: (String bundle_id, String json) -> String
     def self.native_render_stream: (String bundle_id, String json) -> String
+    def self.native_render_stream_chunks: (String bundle_id, String json) -> Enumerator[String, void]
+                                        | (String bundle_id, String json) { (String) -> void } -> nil
     def self.native_version: () -> String
     def self.native_set_max_heap_size_mb: (Integer mb) -> nil
     def self.native_set_isolate_pool_size: (Integer size) -> nil

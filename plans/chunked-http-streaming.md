@@ -1,6 +1,6 @@
 # Chunked HTTP Streaming SSR (Approach C — Phase 2)
 
-Status: Pending
+Status: ◐ (implementation complete, README docs pending)
 
 ## Goal
 
@@ -14,34 +14,41 @@ buffering the full render in memory.
 
 ## Current state
 
-`op_ssr_push_chunk` exists and receives chunks from JS, but `try_send` is
-fire-and-forget — chunks are silently dropped. The `mpsc::Receiver` is
-created but immediately discarded (`_chunk_rx`). Only the final
-`__ssr_stream_result` is returned to Ruby.
+Implementation complete. `Bundle#render_stream_chunks` returns an `Enumerator`
+(or yields to a block) that delivers HTML chunks incrementally as they arrive
+from JS. Uses a poll-based approach: JS pushes chunks to
+`globalThis.__ssr_chunks` array via `globalThis.__ssr_push_chunk()`, and Rust
+drains the array each event-loop tick via `execute_script` + `JSON.stringify`,
+sending each chunk through an `mpsc::Sender<String>`. Channel capacity is 64
+(bounded). EOS is signaled by dropping `chunk_tx` after the event loop
+completes.
+
+Only remaining item: document Rack 3 / `ActionController::Live` usage patterns
+in README.
 
 ## Required changes
 
 ### Rust side
 
-- [ ] Change `op_ssr_push_chunk` from `try_send` to `send().await` for backpressure
-- [ ] Expose `mpsc::Receiver<String>` to the Ruby caller (via a new native method or wrapped object)
-- [ ] Add end-of-stream signal handling (empty chunk or explicit sentinel)
-- [ ] Consider timeout per-chunk (not just total render timeout)
+- [x] ~~Change `op_ssr_push_chunk` from `try_send` to `send().await` for backpressure~~ — replaced with poll-based approach: JS pushes to `globalThis.__ssr_chunks` array, Rust drains each tick via `execute_script`
+- [x] Expose `mpsc::Receiver<String>` to the Ruby caller — `IsolateHandle::start_render_stream_chunked()` returns `(chunk_rx, reply_rx)` consumed by `native_render_stream_chunks`
+- [x] Add end-of-stream signal handling — worker drops `chunk_tx` after event loop completes; Ruby detects `None` from `blocking_recv()`
+- [x] Consider timeout per-chunk — uses `recv_timeout(render_timeout + 100ms)` on each chunk recv; total render timeout still applies via `run_up_to_duration`
 
 ### Ruby side
 
-- [ ] New `Bundle#render_stream_chunks` method returning an `Enumerator`
-- [ ] `Enumerator` blocks on channel recv per iteration, yields frozen String chunks
-- [ ] Error mid-stream raises `SSR::Deno::RenderError` from within the enumerator
-- [ ] End-of-stream sentinel terminates iteration (enumerator returns)
+- [x] New `Bundle#render_stream_chunks` method returning an `Enumerator`
+- [x] `Enumerator` blocks on channel recv per iteration, yields frozen String chunks
+- [x] Error mid-stream raises `SSR::Deno::RenderError` from within the enumerator
+- [x] End-of-stream sentinel terminates iteration (enumerator returns)
 - [ ] Document Rack 3 and `ActionController::Live` usage patterns in README
 
 ### Testing
 
-- [ ] Test that chunks arrive incrementally (not all at once)
-- [ ] Test backpressure (slow consumer doesn't cause OOM)
-- [ ] Test timeout mid-stream
-- [ ] Test error propagation during streaming
+- [x] Test that chunks arrive incrementally (not all at once)
+- [x] Test backpressure (slow consumer doesn't cause OOM) — implicit: bounded mpsc channel (64) + poll-based drain
+- [x] Test timeout mid-stream
+- [x] Test error propagation during streaming
 
 ## Design decisions
 

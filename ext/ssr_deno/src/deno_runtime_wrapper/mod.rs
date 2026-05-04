@@ -83,6 +83,13 @@ enum WorkerMsg {
         chunk_tx: tokio::sync::mpsc::Sender<String>,
         reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
+    RenderStreamChunked {
+        bundle_id: String,
+        args_json: String,
+        render_timeout_ms: u64,
+        chunk_tx: tokio::sync::mpsc::Sender<String>,
+        reply: tokio::sync::oneshot::Sender<Result<(), SSRDenoError>>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +176,9 @@ impl IsolateHandle {
     ) -> Result<String, SSRDenoError> {
         let (reply_tx, reply_rx) =
             tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
+        // Phase 1 path: chunks are intentionally discarded — only the final
+        // result matters. The chunked path (start_render_stream_chunked) consumes
+        // the receiver.
         let (chunk_tx, _chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
 
         self.tx
@@ -184,6 +194,33 @@ impl IsolateHandle {
         reply_rx
             .blocking_recv()
             .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread exited before reply".into()))?
+    }
+
+    /// Sends a chunked streaming render request. Returns the chunk receiver
+    /// immediately — the caller iterates it to get chunks as they arrive.
+    /// The reply channel signals completion (Ok) or error (Err) after EOS.
+    pub fn start_render_stream_chunked(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<
+        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
+        SSRDenoError,
+    > {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Result<(), SSRDenoError>>();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
+
+        self.tx
+            .blocking_send(WorkerMsg::RenderStreamChunked {
+                bundle_id: bundle_id.to_string(),
+                args_json: args_json.to_string(),
+                render_timeout_ms: self.render_timeout_ms,
+                chunk_tx,
+                reply: reply_tx,
+            })
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
+
+        Ok((chunk_rx, reply_rx))
     }
 
     /// Queries V8 heap statistics from this isolate's thread.
@@ -271,6 +308,21 @@ impl IsolatePool {
         args_json: &str,
     ) -> Result<String, SSRDenoError> {
         self.next_handle().block_on_render_stream(bundle_id, args_json)
+    }
+
+    /// Dispatches a chunked streaming render to the next available isolate.
+    /// Returns the chunk receiver and completion channel — the caller iterates
+    /// chunks until the receiver returns `None`, then checks the completion
+    /// channel for errors.
+    pub fn dispatch_render_stream_chunked(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<
+        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
+        SSRDenoError,
+    > {
+        self.next_handle().start_render_stream_chunked(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
@@ -436,6 +488,19 @@ fn worker_thread_main(
                     reply,
                 } => {
                     let result = render_stream::render_streaming(
+                        &mut worker, &bundle_id, &args_json,
+                        render_timeout_ms, chunk_tx, &oom_triggered,
+                    ).await;
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::RenderStreamChunked {
+                    bundle_id,
+                    args_json,
+                    render_timeout_ms,
+                    chunk_tx,
+                    reply,
+                } => {
+                    let result = render_stream::render_streaming_chunked(
                         &mut worker, &bundle_id, &args_json,
                         render_timeout_ms, chunk_tx, &oom_triggered,
                     ).await;
