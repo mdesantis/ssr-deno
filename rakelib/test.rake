@@ -103,21 +103,61 @@ task test: %w[test:main test:setters test:node_builtins test:async test:env_conf
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do
   require 'simplecov'
+  require 'json'
 
   rs_path = File.join(SimpleCov.coverage_path, '.resultset.json')
+
   abort 'No coverage results — run `rake test` first' unless File.exist?(rs_path)
 
   results = SimpleCov::ResultMerger.merged_result
   stats = results.coverage_statistics
 
   line_stat = stats[:line]
-  branch_stat = stats[:branch]
-
   line_pct = line_stat&.percent
-  branch_pct = branch_stat&.percent
 
-  puts "Merged line coverage: #{line_pct.round(2)}%"
-  puts "Merged branch coverage: #{branch_pct.round(2)}%" if branch_pct
+  # SimpleCov 0.22 doesn't surface branch stats in merged_result.
+  # Compute from the raw resultset JSON instead.
+  branch_pct = stats[:branch]&.percent
+
+  unless branch_pct
+    raw = JSON.parse(File.read(rs_path))
+    merged_branches = {}
+
+    raw.each_value do |suite_data|
+      cov = suite_data['coverage']
+      cov.each do |file_path, file_cov|
+        next unless file_cov.is_a?(Hash) && file_cov['branches']
+
+        merged_branches[file_path] ||= {}
+
+        file_cov['branches'].each do |branch_key, conditions|
+          merged_branches[file_path][branch_key] ||= {}
+
+          conditions.each do |cond_key, count|
+            existing = merged_branches[file_path][branch_key][cond_key] || 0
+            merged_branches[file_path][branch_key][cond_key] = existing + count
+          end
+        end
+      end
+    end
+
+    total = 0
+    covered = 0
+
+    merged_branches.each_value do |branches|
+      branches.each_value do |conditions|
+        conditions.each_value do |count|
+          total += 1
+          covered += 1 if count.positive?
+        end
+      end
+    end
+
+    branch_pct = total.positive? ? (covered.to_f / total * 100) : nil
+  end
+
+  puts "Merged line coverage: #{line_pct&.round(2)}%"
+  puts "Merged branch coverage: #{branch_pct&.round(2)}%" if branch_pct
 
   abort "Merged line coverage #{line_pct.round(2)}% is below 100%" if line_pct && line_pct < 100.0
   abort "Merged branch coverage #{branch_pct.round(2)}% is below 100%" if branch_pct && branch_pct < 100.0

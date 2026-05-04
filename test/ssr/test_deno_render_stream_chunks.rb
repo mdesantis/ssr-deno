@@ -67,6 +67,15 @@ module SSR
       end
     end
 
+    def test_render_stream_chunks_auto_reload
+      @bundle.auto_reload = true
+      chunks = []
+
+      @bundle.render_stream_chunks({ data: { name: 'reload' } }) { |chunk| chunks << chunk }
+
+      assert_includes chunks[1], 'reload'
+    end
+
     private
 
     def with_reject_bundle
