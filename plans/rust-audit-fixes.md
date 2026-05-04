@@ -21,7 +21,7 @@ Status: Pending
 ## Correctness
 
 ### 6. `watchdog.rs` — `expect` on thread spawn can panic
-→ [watchdog-spawn-result.md](watchdog-spawn-result.md) — return `Result` instead.
+→ [watchdog-spawn-result.md](watchdog-spawn-result.md) ✅ implemented
 
 ### 7. OOM vs timeout priority ordering ✅ implemented
 
