@@ -30,8 +30,6 @@ module SSR
     end
 
     def test_render_timeout_raises_render_error
-      skip 'Needs V8 termination watchdog — sync JS cannot be interrupted by inline event-loop timeout'
-
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on hung render')
         SSR::Deno.render_timeout_ms = 200
         SSR::Deno.isolate_pool_size = 1
@@ -50,7 +48,6 @@ module SSR
     end
 
     def test_render_timeout_respects_configured_value
-      skip 'Needs V8 termination watchdog — sync JS cannot be interrupted by inline event-loop timeout'
       slow_js = <<~JS.chomp
         globalThis.render = function() {
           let end = Date.now() + 400;

@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
@@ -7,6 +8,7 @@ use tokio::sync::mpsc;
 
 use super::SSRDenoError;
 use super::render::{RenderState, poll_render_state};
+use super::watchdog::Watchdog;
 
 // ---------------------------------------------------------------------------
 // Chunked render — chunks flow through JS global array to Ruby
@@ -73,38 +75,50 @@ pub async fn render_chunked(
         bundle_id_js = bundle_id_js,
         args_json_js = args_json_js,
     );
-    worker
-        .execute_script("<ssr-deno:render-chunked-start>", script.into())
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("Bundle not found:") {
-                SSRDenoError::BundleNotFound(msg)
-            } else {
-                SSRDenoError::Render(format!("Chunked render failed to start: {msg}"))
-            }
-        })?;
+    // Arm the watchdog before execute_script — covers sync-blocking renders.
+    let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+    let timeout_triggered = Arc::new(AtomicBool::new(false));
+    let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone());
 
-    // Run the event loop -- each tick, drain __ssr_chunks and forward to Ruby.
-    let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
+    let exec_result = worker
+        .execute_script("<ssr-deno:render-chunked-start>", script.into());
 
-    let result = loop {
-        if Instant::now() >= deadline {
-            if oom_triggered.load(Ordering::SeqCst) {
-                break Err(SSRDenoError::OutOfMemory(
-                    "JS heap out of memory - the isolate reached its configured heap limit".into(),
-                ));
-            }
-            break Err(SSRDenoError::Render("Chunked render timed out".into()));
-        }
-
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let tick = std::cmp::min(remaining, Duration::from_millis(50));
-        let _ = worker.run_up_to_duration(tick).await;
+    if let Err(e) = exec_result {
+        watchdog.cancel();
 
         if oom_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            return Err(SSRDenoError::OutOfMemory(
+                "JS heap out of memory - the isolate reached its configured heap limit".into(),
+            ));
+        }
+        if timeout_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            return Err(SSRDenoError::Render("Chunked render timed out".into()));
+        }
+
+        let msg = e.to_string();
+        return if msg.contains("Bundle not found:") {
+            Err(SSRDenoError::BundleNotFound(msg))
+        } else {
+            Err(SSRDenoError::Render(format!("Chunked render failed to start: {msg}")))
+        };
+    }
+
+    // Run the event loop -- each tick, drain __ssr_chunks and forward to Ruby.
+    // The watchdog is the sole timeout authority — no separate deadline check.
+    let result = loop {
+        let _ = worker.run_up_to_duration(Duration::from_millis(50)).await;
+
+        if oom_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
             break Err(SSRDenoError::OutOfMemory(
                 "JS heap out of memory - the isolate reached its configured heap limit".into(),
             ));
+        }
+        if timeout_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            break Err(SSRDenoError::Render("Chunked render timed out".into()));
         }
 
         // Drain pending chunks from the JS array.
@@ -122,6 +136,15 @@ pub async fn render_chunked(
             }
         }
     };
+
+    watchdog.cancel();
+
+    // If the watchdog or OOM callback fired between the loop's deadline check
+    // and watchdog.cancel(), the isolate has pending termination. Clear it so
+    // the isolate is reusable for future operations.
+    if timeout_triggered.load(Ordering::SeqCst) || oom_triggered.load(Ordering::SeqCst) {
+        worker.js_runtime.v8_isolate().cancel_terminate_execution();
+    }
 
     // Clean up JS globals to avoid leaking state across renders.
     let _ = worker.execute_script(

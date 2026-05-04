@@ -117,10 +117,16 @@ Dead code removal:
 
 ## Follow-up: V8 termination watchdog
 
-Synchronous blocking JS (e.g. `while(Date.now() < end) {}`) cannot be interrupted
-by the inline event-loop timeout. A separate watchdog thread calling
-`v8::IsolateHandle::terminate_execution()` after the deadline is needed.
-Tests skipped pending this implementation:
+✅ **Implemented.** A `Watchdog` struct in `render.rs` spawns a dedicated OS thread
+per render call. It uses `std::sync::mpsc::recv_timeout` for precise, non-polling
+cancellation. On timeout, it calls `v8::IsolateHandle::terminate_execution()` from
+the watchdog thread — the only way to interrupt synchronous V8 computation.
+
+After the watchdog fires, `cancel_terminate_execution()` is called on the isolate
+to restore it for future operations. The watchdog is the sole timeout authority
+(no redundant `Instant::now() >= deadline` in the event loop).
+
+Tests now passing (previously skipped):
 - `test_render_timeout_raises_render_error`
 - `test_render_timeout_respects_configured_value`
 - `test_oom_produces_out_of_memory_error`

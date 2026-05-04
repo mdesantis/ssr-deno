@@ -55,8 +55,6 @@ module SSR
     end
 
     def test_oom_produces_out_of_memory_error
-      skip 'Needs V8 termination watchdog — OOM during sync render not detected until after execute_script returns'
-
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM')
         SSR::Deno.max_heap_size_mb = 16
         SSR::Deno.isolate_pool_size = 1

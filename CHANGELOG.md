@@ -2,12 +2,14 @@
 
 ### Added
 - `Bundle#render_stream_chunks` — chunked streaming render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render`.
+- V8 termination watchdog — a dedicated OS thread per render that calls `terminate_execution()` when the render timeout expires. Enables timeout and OOM detection for synchronous blocking JS (e.g., infinite `while` loops). Previously, only async renders (Promises) respected the timeout.
+- Branch coverage enforcement in `coverage:check` task — computes merged branch coverage from raw `.resultset.json` (works around SimpleCov 0.22 merger limitation).
 
 ### Changed
 - **BREAKING:** `Bundle#render_stream` removed — use `Bundle#render` (always runs the event loop now).
 - **BREAKING:** `render(event_loop:)` keyword argument removed — the event loop is always active. Macrotasks, timers, and Promises fire during every render.
 - `native_render` now uses the event-loop path internally (was direct V8 function call). Async renders (Promises) resolve naturally; sync renders complete on first poll tick.
-- Render timeout and OOM detection for synchronous blocking JS requires V8 termination watchdog (not yet implemented); affected tests skipped.
+- Render timeout is now enforced by the watchdog thread (sole authority). The previous inline `Instant::now() >= deadline` check has been removed — eliminates race conditions between two timeout mechanisms.
 
 ### Fixed
 - Render now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.

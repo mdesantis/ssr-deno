@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use deno_core::op2;
 use deno_core::OpState;
@@ -11,6 +12,7 @@ use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
 use super::SSRDenoError;
+use super::watchdog::Watchdog;
 
 // ---------------------------------------------------------------------------
 // Op: receive a chunk of HTML from JS during chunked streaming render
@@ -48,6 +50,11 @@ pub async fn op_ssr_push_chunk(
 /// is called with `args_json`. If it returns a Promise, the event loop runs
 /// until the Promise settles (or the timeout expires). Macrotasks like
 /// `setTimeout`, `setInterval`, and `MessageChannel` fire normally.
+///
+/// A watchdog thread monitors the render timeout. If the JS code blocks
+/// synchronously (e.g., an infinite `while` loop), the watchdog calls
+/// `terminate_execution()` from a separate thread — this is the only way to
+/// interrupt V8 execution that is stuck inside a synchronous computation.
 ///
 /// Returns the final result as a JSON-stringified value.
 pub async fn render(
@@ -98,39 +105,56 @@ pub async fn render(
         bundle_id_js = bundle_id_js,
         args_json_js = args_json_js,
     );
-    worker
-        .execute_script("<ssr-deno:render-start>", script.into())
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("Bundle not found:") {
-                SSRDenoError::BundleNotFound(msg)
-            } else {
-                SSRDenoError::Render(format!("Render failed to start: {msg}"))
-            }
-        })?;
 
-    // Run the event loop until the render completes or the timeout expires.
-    let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
+    // Arm the watchdog before execute_script — this covers sync-blocking
+    // renders that never yield back to the event loop.
+    let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+    let timeout_triggered = Arc::new(AtomicBool::new(false));
+    let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone());
 
-    loop {
-        if Instant::now() >= deadline {
-            if oom_triggered.load(Ordering::SeqCst) {
-                break Err(SSRDenoError::OutOfMemory(
-                    "JS heap out of memory - the isolate reached its configured heap limit".into(),
-                ));
-            }
-            break Err(SSRDenoError::Render("Render timed out".into()));
-        }
+    let exec_result = worker
+        .execute_script("<ssr-deno:render-start>", script.into());
 
-        // Run the event loop briefly to let macrotasks/promises progress.
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let tick = std::cmp::min(remaining, Duration::from_millis(50));
-        let _ = worker.run_up_to_duration(tick).await;
+    // If execute_script itself was terminated (sync render blocked too long),
+    // handle the termination before entering the event loop.
+    if let Err(e) = exec_result {
+        watchdog.cancel();
 
         if oom_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            return Err(SSRDenoError::OutOfMemory(
+                "JS heap out of memory - the isolate reached its configured heap limit".into(),
+            ));
+        }
+        if timeout_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            return Err(SSRDenoError::Render("Render timed out".into()));
+        }
+
+        let msg = e.to_string();
+        return if msg.contains("Bundle not found:") {
+            Err(SSRDenoError::BundleNotFound(msg))
+        } else {
+            Err(SSRDenoError::Render(format!("Render failed to start: {msg}")))
+        };
+    }
+
+    // Run the event loop until the render completes or the watchdog fires.
+    // The watchdog is the sole timeout authority — no separate deadline check
+    // here. This eliminates races between two timeout mechanisms.
+    let result = loop {
+        // Run the event loop briefly to let macrotasks/promises progress.
+        let _ = worker.run_up_to_duration(Duration::from_millis(50)).await;
+
+        if oom_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
             break Err(SSRDenoError::OutOfMemory(
                 "JS heap out of memory - the isolate reached its configured heap limit".into(),
             ));
+        }
+        if timeout_triggered.load(Ordering::SeqCst) {
+            worker.js_runtime.v8_isolate().cancel_terminate_execution();
+            break Err(SSRDenoError::Render("Render timed out".into()));
         }
 
         // Single script call per tick: checks error first, then result.
@@ -141,7 +165,18 @@ pub async fn render(
             RenderState::Error(msg) => break Err(SSRDenoError::Render(msg)),
             RenderState::Done(result) => break Ok(result),
         }
+    };
+
+    watchdog.cancel();
+
+    // If the watchdog or OOM callback fired between the loop's deadline check
+    // and watchdog.cancel(), the isolate has pending termination. Clear it so
+    // the isolate is reusable for future operations.
+    if timeout_triggered.load(Ordering::SeqCst) || oom_triggered.load(Ordering::SeqCst) {
+        worker.js_runtime.v8_isolate().cancel_terminate_execution();
     }
+
+    result
 }
 
 // ---------------------------------------------------------------------------

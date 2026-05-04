@@ -75,7 +75,7 @@ flowchart LR
 - Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/v8-oom-protection.md`](../plans/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
-- Render timeout is enforced by the event-loop deadline inside the worker. For async renders (Promises), the deadline fires between event-loop ticks. Synchronous blocking JS requires a V8 termination watchdog (planned).
+- Render timeout is enforced by a watchdog thread (`Watchdog` in `render.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the configured deadline. This interrupts both synchronous blocking JS and hung async renders. After termination, `cancel_terminate_execution()` restores the isolate for reuse.
 
 ### Worker Thread Lifecycle
 

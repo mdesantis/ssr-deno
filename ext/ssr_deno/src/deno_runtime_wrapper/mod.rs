@@ -34,6 +34,8 @@ pub(crate) mod render;
 
 pub(crate) mod render_chunked;
 
+pub(crate) mod watchdog;
+
 // ---------------------------------------------------------------------------
 // Script name interning — avoids unbounded `Box::leak` on bundle reloads
 // ---------------------------------------------------------------------------

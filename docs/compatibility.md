@@ -150,11 +150,12 @@ The two module loaders:
 
 ### Synchronous blocking JS and timeouts
 
-The render timeout is enforced between event-loop ticks. If a JS render function
-contains a synchronous blocking loop (e.g. `while(Date.now() < end) {}`), the
-timeout cannot interrupt it until the loop completes. A V8 termination watchdog
-(calling `isolate.terminate_execution()` from a separate thread) is planned to
-address this limitation.
+The render timeout is enforced by a dedicated watchdog thread (`Watchdog` in
+`render.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the
+configured deadline. This interrupts both synchronous blocking JS (e.g.,
+`while(Date.now() < end) {}`) and hung async renders (Promises that never
+resolve). After termination, `cancel_terminate_execution()` restores the isolate
+for reuse on subsequent render requests.
 
 React 19 streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
 works out of the box — the event loop runs during every render and
