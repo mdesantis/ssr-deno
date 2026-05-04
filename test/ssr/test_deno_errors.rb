@@ -50,9 +50,5 @@ module SSR
 
       assert_predicate status.exitstatus, :zero?, 'Expected JsRuntimeNotInitializedError to be raised'
     end
-
-    def test_render_when_worker_dies_raises_js_runtime_worker_error
-      skip 'No public API to terminate the Deno worker thread from Ruby'
-    end
   end
 end
