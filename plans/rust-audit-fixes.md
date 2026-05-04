@@ -4,57 +4,26 @@ Status: Pending
 
 ## Optimizations
 
-### 1. `render.rs` / `render_chunked.rs` — 90% duplicate event-loop logic
+### 1. `render.rs` / `render_chunked.rs` — event-loop duplication
+→ [archived/render-core-extraction.md](archived/render-core-extraction.md) ✅ implemented
 
-Both files share identical:
-- Watchdog setup/teardown
-- OOM check loop
-- Timeout check loop
-- Script template construction (bundle_id, args_json injection)
-- `execute_script` error dispatch (BundleNotFound vs Render)
-
-Only differences: chunked runs `drain_chunks` and cleanup, buffered does not.
-Extract shared watchdog + error dispatch logic into a common helper.
-→ [render-core-extraction.md](archived/render-core-extraction.md) ✅ implemented
-
-### 2. `poll_render_state` — allocates `String` every 50ms tick
-
-`to_rust_string_lossy` per poll call. For a render with 10 ticks, 10 allocs.
-Use `v8::String::WriteUtf8` into a reusable buffer or check prefix via
-`local_val.to_detail_string` to avoid allocation.
+### 2. `poll_render_state` — String alloc every tick
+→ [poll-string-alloc.md](poll-string-alloc.md) — analysis shows allocation is terminal-only (one per render, not per tick). Not a real problem.
 
 ### 3. `drain_chunks` — double serialization per tick
-
-JS `JSON.stringify` → Rust `serde_json::from_str`. Each tick serializes then
-deserializes. For 1-2 chunks/tick this is negligible, but direct v8 array
-iteration via `get_array_length` + index lookups would eliminate both allocs.
+→ [drain-serialization.md](drain-serialization.md) — not a hot path for SSR workloads. Low priority.
 
 ### 4. `setup_require` — 50µs busy-sleep burns CPU
+→ [require-backoff.md](require-backoff.md) — exponential backoff proposal.
 
-Poll loop spins at ~20kHz (`100ms / 50µs = 2000 iter`). Exponential backoff
-or Condvar-style blocking would reduce wakeups.
-
-### 5. `SCRIPT_NAMES` — `Mutex<Option<HashMap>>` could be `OnceLock<Mutex<HashMap>>` ✅ implemented
-
-The `Option` is `None` only before first use, then `Some` forever. Extra branch
-every access. `OnceLock<Mutex<HashMap>>` eliminates the Option layer.
+### 5. `SCRIPT_NAMES` → `OnceLock` ✅ implemented
 
 ## Correctness
 
 ### 6. `watchdog.rs` — `expect` on thread spawn can panic
+→ [watchdog-spawn-result.md](watchdog-spawn-result.md) — return `Result` instead.
 
-```rust
-.expect("failed to spawn watchdog thread")
-```
-
-OS thread creation failure (rare but real under memory pressure) causes process
-abort. Return `Result` instead — fallback to no-watchdog or bubble error.
-
-### 7. `render.rs` — OOM vs timeout priority ordering ✅ implemented
-
-In the event loop, OOM is checked first, then timeout. In the `execute_script`
-error handler, the same order is used. This is correct (OOM is more specific)
-but the implicit assumption should be documented.
+### 7. OOM vs timeout priority ordering ✅ implemented
 
 ## Bug plans (extracted)
 
