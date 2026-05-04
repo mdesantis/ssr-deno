@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use super::DenoError;
+use super::SSRDenoError;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,7 +44,7 @@ enum Phase1Outcome {
 /// Look up the render function, call it, and dispatch the result.
 /// - Non-Promise return → stringifies directly → Ok(Sync(s))
 /// - Resolved Promise → reads result in Phase 1 scope → Ok(Sync(s))
-/// - Rejected Promise → extracts error via helper → Err(DenoError)
+/// - Rejected Promise → extracts error via helper → Err(SSRDenoError)
 /// - Pending Promise → saves Global, returns Ok(Pending { promise })
 fn phase1_lookup_and_call(
     isolate: &mut v8::OwnedIsolate,
@@ -52,7 +52,7 @@ fn phase1_lookup_and_call(
     bundle_id: &str,
     args_json: &str,
     oom_triggered: &AtomicBool,
-) -> Result<Phase1Outcome, DenoError> {
+) -> Result<Phase1Outcome, SSRDenoError> {
     let result = {
         let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.as_mut().init();
@@ -61,12 +61,12 @@ fn phase1_lookup_and_call(
 
         let global = context_local.global(&mut context_scope);
 
-        let mut get_prop = |obj: v8::Local<v8::Object>, key: &str| -> Result<v8::Local<v8::Value>, DenoError> {
+        let mut get_prop = |obj: v8::Local<v8::Object>, key: &str| -> Result<v8::Local<v8::Value>, SSRDenoError> {
             let k = v8::String::new(&mut context_scope, key).unwrap();
             obj.get(&mut context_scope, k.into())
                 .filter(|v| !v.is_undefined() && !v.is_null())
                 .ok_or_else(|| {
-                    DenoError::BundleNotFound(
+                    SSRDenoError::BundleNotFound(
                         format!("Property '{key}' not found on SSR object (id: {bundle_id})"),
                     )
                 })
@@ -74,17 +74,17 @@ fn phase1_lookup_and_call(
 
         let bundles_val = get_prop(global, "__ssr_bundles")?;
         let bundles_obj: v8::Local<v8::Object> = bundles_val.try_into().map_err(|_| {
-            DenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
+            SSRDenoError::BundleNotFound(format!("__ssr_bundles is not an object (id: {bundle_id})"))
         })?;
 
         let entry_val = get_prop(bundles_obj, bundle_id)?;
         let entry_obj: v8::Local<v8::Object> = entry_val.try_into().map_err(|_| {
-            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
+            SSRDenoError::BundleNotFound(format!("Bundle '{bundle_id}' entry is not an object"))
         })?;
 
         let render_val = get_prop(entry_obj, "render")?;
         let render_fn: v8::Local<v8::Function> = render_val.try_into().map_err(|_| {
-            DenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
+            SSRDenoError::BundleNotFound(format!("Bundle '{bundle_id}' render is not a function"))
         })?;
 
         let args_v8 = v8::String::new(&mut context_scope, args_json).unwrap();
@@ -99,7 +99,7 @@ fn phase1_lookup_and_call(
             Some(v) => v,
             None => {
                 if oom_triggered.load(Ordering::SeqCst) {
-                    return Err(DenoError::OutOfMemory(
+                    return Err(SSRDenoError::OutOfMemory(
                         "JS heap out of memory — the isolate reached its configured heap limit".into(),
                     ));
                 }
@@ -107,7 +107,7 @@ fn phase1_lookup_and_call(
                     .message()
                     .map(|m| m.get(&try_catch).to_rust_string_lossy(&try_catch))
                     .unwrap_or_else(|| "`render` function threw an exception".to_string());
-                return Err(DenoError::Render(msg));
+                return Err(SSRDenoError::Render(msg));
             }
         };
 
@@ -116,7 +116,7 @@ fn phase1_lookup_and_call(
                 v8::PromiseState::Fulfilled => {
                     let resolved = promise.result(&try_catch);
                     let json_str = v8::json::stringify(&try_catch, resolved)
-                        .ok_or_else(|| DenoError::Render(
+                        .ok_or_else(|| SSRDenoError::Render(
                             "Cannot serialize render result to JSON".to_string()
                         ))?;
                     return Ok(Phase1Outcome::Sync(json_str.to_rust_string_lossy(&try_catch)));
@@ -124,12 +124,12 @@ fn phase1_lookup_and_call(
                 v8::PromiseState::Rejected => {
                     let rejection = promise.result(&try_catch);
                     if oom_triggered.load(Ordering::SeqCst) {
-                        return Err(DenoError::OutOfMemory(
+                        return Err(SSRDenoError::OutOfMemory(
                             "JS heap out of memory — the isolate reached its configured heap limit".into(),
                         ));
                     }
                     let msg = extract_rejection_msg!(try_catch, rejection);
-                    return Err(DenoError::Render(msg));
+                    return Err(SSRDenoError::Render(msg));
                 }
                 v8::PromiseState::Pending => {
                     let global_promise = v8::Global::new(try_catch.as_ref(), promise);
@@ -138,7 +138,7 @@ fn phase1_lookup_and_call(
             }
         } else {
             let json_str = v8::json::stringify(&try_catch, result).ok_or_else(|| {
-                DenoError::Render("Cannot serialize render result to JSON".to_string())
+                SSRDenoError::Render("Cannot serialize render result to JSON".to_string())
             })?;
             return Ok(Phase1Outcome::Sync(json_str.to_rust_string_lossy(&try_catch)));
         }
@@ -155,7 +155,7 @@ fn phase2_poll_and_resolve(
     promise: v8::Global<v8::Promise>,
     render_timeout_ms: u64,
     oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
+) -> Result<String, SSRDenoError> {
     let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
 
     while Instant::now() < deadline {
@@ -175,11 +175,11 @@ fn phase2_poll_and_resolve(
     let promise_ref = promise.open(isolate);
     if promise_ref.state() == v8::PromiseState::Pending {
         if oom_triggered.load(Ordering::SeqCst) {
-            return Err(DenoError::OutOfMemory(
+            return Err(SSRDenoError::OutOfMemory(
                 "JS heap out of memory — the isolate reached its configured heap limit".into(),
             ));
         }
-        return Err(DenoError::Render(
+        return Err(SSRDenoError::Render(
             format!("Async render promise did not settle within {render_timeout_ms}ms timeout"),
         ));
     }
@@ -199,11 +199,11 @@ fn phase2_poll_and_resolve(
             let json_str =
                 v8::json::stringify(&mut context_scope, resolved).ok_or_else(|| {
                     if oom_triggered.load(Ordering::SeqCst) {
-                        DenoError::OutOfMemory(
+                        SSRDenoError::OutOfMemory(
                             "JS heap out of memory — the isolate reached its configured heap limit".into(),
                         )
                     } else {
-                        DenoError::Render("Cannot serialize render result to JSON".to_string())
+                        SSRDenoError::Render("Cannot serialize render result to JSON".to_string())
                     }
                 })?;
             Ok(json_str.to_rust_string_lossy(&mut context_scope))
@@ -211,12 +211,12 @@ fn phase2_poll_and_resolve(
         v8::PromiseState::Rejected => {
             let rejection = promise_ref.result(&context_scope);
             if oom_triggered.load(Ordering::SeqCst) {
-                return Err(DenoError::OutOfMemory(
+                return Err(SSRDenoError::OutOfMemory(
                     "JS heap out of memory — the isolate reached its configured heap limit".into(),
                 ));
             }
             let msg = extract_rejection_msg!(context_scope, rejection);
-            Err(DenoError::Render(msg))
+            Err(SSRDenoError::Render(msg))
         }
         v8::PromiseState::Pending => unreachable!("timeout checked before scope chain re-entry"),
     }
@@ -228,7 +228,7 @@ pub fn call_render(
     args_json: &str,
     render_timeout_ms: u64,
     oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
+) -> Result<String, SSRDenoError> {
     let js_runtime = &mut worker.js_runtime;
     let context = js_runtime.main_context();
     let isolate = js_runtime.v8_isolate();
@@ -262,7 +262,7 @@ struct HeapStats {
     used_global_handles_size: usize,
 }
 
-pub fn collect_heap_stats(worker: &mut MainWorker) -> Result<String, DenoError> {
+pub fn collect_heap_stats(worker: &mut MainWorker) -> Result<String, SSRDenoError> {
     let js_runtime = &mut worker.js_runtime;
     let isolate = js_runtime.v8_isolate();
     let stats = isolate.get_heap_statistics();
@@ -284,5 +284,5 @@ pub fn collect_heap_stats(worker: &mut MainWorker) -> Result<String, DenoError> 
     };
 
     serde_json::to_string(&heap)
-        .map_err(|e| DenoError::HeapStatsSerialization(format!("Failed to serialize heap stats: {e}")))
+        .map_err(|e| SSRDenoError::HeapStatsSerialization(format!("Failed to serialize heap stats: {e}")))
 }

@@ -12,9 +12,9 @@ use node_resolver::errors::PackageJsonLoadError;
 /// called for Node.js built-in modules (`stream`, `buffer`, `events`, …).
 /// File-system-based loading is rejected — it should never be needed.
 #[derive(Debug, Clone)]
-pub struct DenoNodeRequireLoader;
+pub struct SSRDenoNodeRequireLoader;
 
-impl NodeRequireLoader for DenoNodeRequireLoader {
+impl NodeRequireLoader for SSRDenoNodeRequireLoader {
     fn ensure_read_permission<'a>(
         &self,
         _permissions: &mut deno_runtime::deno_permissions::PermissionsContainer,

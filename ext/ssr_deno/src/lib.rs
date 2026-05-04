@@ -4,7 +4,7 @@ mod nop_types;
 mod require_loader;
 mod sys;
 
-use deno_runtime_wrapper::{DenoError, IsolatePool};
+use deno_runtime_wrapper::{SSRDenoError, IsolatePool};
 use magnus::{function, Error, ExceptionClass, Module, Object, Ruby};
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 use std::sync::{Mutex, OnceLock};
@@ -72,15 +72,15 @@ fn heap_stats_serialization_error(msg: impl Into<String>) -> Error {
     Error::new(deno_exception_class("HeapStatsSerializationError"), msg.into())
 }
 
-fn map_render_error(e: DenoError) -> Error {
+fn map_render_error(e: SSRDenoError) -> Error {
     match e {
-        DenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
-        DenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
-        DenoError::Render(msg) => render_error(msg),
-        DenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(msg),
-        DenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
-        DenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
-        DenoError::HeapStatsSerialization(msg) => heap_stats_serialization_error(msg),
+        SSRDenoError::WorkerDied(msg) => js_runtime_worker_error(msg),
+        SSRDenoError::BundleNotFound(msg) => bundle_not_found_error(msg),
+        SSRDenoError::Render(msg) => render_error(msg),
+        SSRDenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(msg),
+        SSRDenoError::BundleLoad(msg) => js_runtime_initialization_error(msg),
+        SSRDenoError::WorkerInit(msg) => js_runtime_initialization_error(msg),
+        SSRDenoError::HeapStatsSerialization(msg) => heap_stats_serialization_error(msg),
     }
 }
 

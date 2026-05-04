@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering;
 
 /// Errors that can originate from the Deno runtime wrapper layer.
 #[derive(Debug)]
-pub enum DenoError {
+pub enum SSRDenoError {
     BundleLoad(String),
     WorkerInit(String),
     WorkerDied(String),
@@ -29,7 +29,7 @@ pub enum DenoError {
     HeapStatsSerialization(String),
 }
 
-impl std::fmt::Display for DenoError {
+impl std::fmt::Display for SSRDenoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::BundleLoad(msg)
@@ -43,7 +43,7 @@ impl std::fmt::Display for DenoError {
     }
 }
 
-impl std::error::Error for DenoError {}
+impl std::error::Error for SSRDenoError {}
 
 // ---------------------------------------------------------------------------
 // Hard cap on the number of isolates
@@ -90,15 +90,15 @@ impl Config {
 // ---------------------------------------------------------------------------
 
 /// Validates that `size` is within `[1, MAX_ISOLATES]`.
-/// Returns `Ok(())` if valid, or an appropriate `DenoError::WorkerInit` error.
-pub fn validate_pool_size(size: usize) -> Result<(), DenoError> {
+/// Returns `Ok(())` if valid, or an appropriate `SSRDenoError::WorkerInit` error.
+pub fn validate_pool_size(size: usize) -> Result<(), SSRDenoError> {
     if size == 0 {
-        return Err(DenoError::WorkerInit(
+        return Err(SSRDenoError::WorkerInit(
             "Pool size must be at least 1".into(),
         ));
     }
     if size > MAX_ISOLATES {
-        return Err(DenoError::WorkerInit(format!(
+        return Err(SSRDenoError::WorkerInit(format!(
             "Pool size {size} exceeds maximum {MAX_ISOLATES}"
         )));
     }
@@ -178,43 +178,43 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
 
     // -----------------------------------------------------------------------
-    // DenoError
+    // SSRDenoError
     // -----------------------------------------------------------------------
 
     #[test]
     fn deno_error_display_bundle_load() {
-        let e = DenoError::BundleLoad("foo".into());
+        let e = SSRDenoError::BundleLoad("foo".into());
         assert_eq!(format!("{e}"), "foo");
     }
 
     #[test]
     fn deno_error_display_worker_init() {
-        let e = DenoError::WorkerInit("bar".into());
+        let e = SSRDenoError::WorkerInit("bar".into());
         assert_eq!(format!("{e}"), "bar");
     }
 
     #[test]
     fn deno_error_display_worker_died() {
-        let e = DenoError::WorkerDied("baz".into());
+        let e = SSRDenoError::WorkerDied("baz".into());
         assert_eq!(format!("{e}"), "baz");
     }
 
     #[test]
     fn deno_error_display_bundle_not_found() {
-        let e = DenoError::BundleNotFound("qux".into());
+        let e = SSRDenoError::BundleNotFound("qux".into());
         assert_eq!(format!("{e}"), "qux");
     }
 
     #[test]
     fn deno_error_display_render() {
-        let e = DenoError::Render("err".into());
+        let e = SSRDenoError::Render("err".into());
         assert_eq!(format!("{e}"), "err");
     }
 
     #[test]
     fn deno_error_source_is_none() {
         use std::error::Error;
-        let e = DenoError::Render("x".into());
+        let e = SSRDenoError::Render("x".into());
         assert!(e.source().is_none());
     }
 
@@ -286,14 +286,14 @@ mod tests {
     #[test]
     fn validate_pool_size_rejects_zero() {
         let err = validate_pool_size(0).unwrap_err();
-        assert!(matches!(err, DenoError::WorkerInit(_)));
+        assert!(matches!(err, SSRDenoError::WorkerInit(_)));
         assert!(format!("{err}").contains("at least 1"));
     }
 
     #[test]
     fn validate_pool_size_rejects_over_max() {
         let err = validate_pool_size(MAX_ISOLATES + 1).unwrap_err();
-        assert!(matches!(err, DenoError::WorkerInit(_)));
+        assert!(matches!(err, SSRDenoError::WorkerInit(_)));
         assert!(format!("{err}").contains("exceeds maximum"));
     }
 

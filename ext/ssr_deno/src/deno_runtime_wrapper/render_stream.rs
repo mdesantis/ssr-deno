@@ -7,7 +7,7 @@ use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
-use super::DenoError;
+use super::SSRDenoError;
 
 // ---------------------------------------------------------------------------
 // Op: receive a chunk of HTML from JS during streaming render
@@ -34,7 +34,7 @@ pub async fn render_streaming(
     render_timeout_ms: u64,
     chunk_tx: mpsc::Sender<String>,
     oom_triggered: &AtomicBool,
-) -> Result<String, DenoError> {
+) -> Result<String, SSRDenoError> {
     // Register chunk_tx in OpState so op_ssr_push_chunk can find it
     worker.js_runtime.op_state().borrow_mut().put(chunk_tx);
 
@@ -50,7 +50,7 @@ pub async fn render_streaming(
     // Error handling: rejected promises store the error message in a
     // separate `__ssr_stream_error` global (not in `__ssr_stream_result`).
     // The poll loop checks `__ssr_stream_error` first and returns
-    // `DenoError::Render` when set, ensuring proper exception propagation
+    // `SSRDenoError::Render` when set, ensuring proper exception propagation
     // back to Ruby.
     let script = format!(
         r#"
@@ -78,7 +78,7 @@ pub async fn render_streaming(
     );
     worker
         .execute_script("<ssr-deno:stream-start>", script.into())
-        .map_err(|e| DenoError::Render(format!("Streaming render failed to start: {e}")))?;
+        .map_err(|e| SSRDenoError::Render(format!("Streaming render failed to start: {e}")))?;
 
     // Run the event loop until the render completes or the timeout expires.
     let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
@@ -86,11 +86,11 @@ pub async fn render_streaming(
     loop {
         if Instant::now() >= deadline {
             if oom_triggered.load(Ordering::SeqCst) {
-                return Err(DenoError::OutOfMemory(
+                return Err(SSRDenoError::OutOfMemory(
                     "JS heap out of memory — the isolate reached its configured heap limit".into(),
                 ));
             }
-            return Err(DenoError::Render("Streaming render timed out".into()));
+            return Err(SSRDenoError::Render("Streaming render timed out".into()));
         }
 
         // Run the event loop briefly to let the stream progress.
@@ -99,7 +99,7 @@ pub async fn render_streaming(
         let _ = worker.run_up_to_duration(tick).await;
 
         if oom_triggered.load(Ordering::SeqCst) {
-            return Err(DenoError::OutOfMemory(
+            return Err(SSRDenoError::OutOfMemory(
                 "JS heap out of memory — the isolate reached its configured heap limit".into(),
             ));
         }
@@ -109,7 +109,7 @@ pub async fn render_streaming(
         // "R:<json>" when the render completed successfully.
         match poll_stream_state(worker) {
             StreamState::Pending => continue,
-            StreamState::Error(msg) => return Err(DenoError::Render(msg)),
+            StreamState::Error(msg) => return Err(SSRDenoError::Render(msg)),
             StreamState::Done(result) => return Ok(result),
         }
     }

@@ -20,10 +20,10 @@ use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
 use crate::nop_types::NopPermissionDescriptorParser;
 use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;
-use crate::require_loader::DenoNodeRequireLoader;
+use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
 
-pub use ssr_deno_core::DenoError;
+pub use ssr_deno_core::SSRDenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
@@ -71,17 +71,17 @@ enum WorkerMsg {
         bundle_id: String,
         args_json: String,
         render_timeout_ms: u64,
-        reply: std::sync::mpsc::SyncSender<Result<String, DenoError>>,
+        reply: std::sync::mpsc::SyncSender<Result<String, SSRDenoError>>,
     },
     HeapStats {
-        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
+        reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
     RenderStream {
         bundle_id: String,
         args_json: String,
         render_timeout_ms: u64,
         chunk_tx: tokio::sync::mpsc::Sender<String>,
-        reply: tokio::sync::oneshot::Sender<Result<String, DenoError>>,
+        reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
 }
 
@@ -108,7 +108,7 @@ impl IsolateHandle {
         max_heap_size_mb: usize,
         render_timeout_ms: u64,
         node_builtins: bool,
-    ) -> Result<Self, DenoError> {
+    ) -> Result<Self, SSRDenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
@@ -116,15 +116,15 @@ impl IsolateHandle {
             .name(format!("deno-worker-{index}"))
             .spawn(move || worker_thread_main(rx, init_tx, max_heap_size_mb, node_builtins))
             .map_err(|e| {
-                DenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}"))
+                SSRDenoError::WorkerInit(format!("Failed to spawn isolate thread {index}: {e}"))
             })?;
 
         init_rx
             .recv()
             .map_err(|_| {
-                DenoError::WorkerInit("Isolate thread exited unexpectedly during init".into())
+                SSRDenoError::WorkerInit("Isolate thread exited unexpectedly during init".into())
             })?
-            .map_err(DenoError::WorkerInit)?;
+            .map_err(SSRDenoError::WorkerInit)?;
 
         Ok(Self {
             tx,
@@ -135,8 +135,8 @@ impl IsolateHandle {
     /// Sends a render request to this isolate's worker thread and blocks
     /// until the result arrives. Returns the result as a JSON string so any
     /// JS type survives the boundary.
-    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
-        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, DenoError>>(1);
+    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, SSRDenoError> {
+        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, SSRDenoError>>(1);
         let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
 
         self.tx
@@ -146,15 +146,15 @@ impl IsolateHandle {
                 render_timeout_ms: self.render_timeout_ms,
                 reply: reply_tx,
             })
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
         match reply_rx.recv_timeout(hang_timeout) {
             Ok(result) => result,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(DenoError::Render(format!(
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(SSRDenoError::Render(format!(
                 "Render process hung after {}ms",
                 hang_timeout.as_millis()
             ))),
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(DenoError::WorkerDied(
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(SSRDenoError::WorkerDied(
                 "Deno worker thread exited before sending a reply".into(),
             )),
         }
@@ -166,9 +166,9 @@ impl IsolateHandle {
         &self,
         bundle_id: &str,
         args_json: &str,
-    ) -> Result<String, DenoError> {
+    ) -> Result<String, SSRDenoError> {
         let (reply_tx, reply_rx) =
-            tokio::sync::oneshot::channel::<Result<String, DenoError>>();
+            tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
         let (chunk_tx, _chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
 
         self.tx
@@ -179,31 +179,31 @@ impl IsolateHandle {
                 chunk_tx,
                 reply: reply_tx,
             })
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
         reply_rx
             .blocking_recv()
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread exited before reply".into()))?
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread exited before reply".into()))?
     }
 
     /// Queries V8 heap statistics from this isolate's thread.
-    pub fn block_on_heap_stats(&self) -> Result<String, DenoError> {
+    pub fn block_on_heap_stats(&self) -> Result<String, SSRDenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         self.tx
             .blocking_send(WorkerMsg::HeapStats { reply: reply_tx })
-            .map_err(|_| DenoError::WorkerDied("Deno worker thread has exited".into()))?;
+            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
         reply_rx.blocking_recv().map_err(|_| {
-            DenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
+            SSRDenoError::WorkerDied("Deno worker thread exited before sending a reply".into())
         })?
     }
 
     /// Low-level send of a WorkerMsg. Used by IsolatePool for bundle broadcast.
-    fn blocking_send(&self, msg: WorkerMsg) -> Result<(), DenoError> {
+    fn blocking_send(&self, msg: WorkerMsg) -> Result<(), SSRDenoError> {
         self.tx
             .blocking_send(msg)
-            .map_err(|_| DenoError::WorkerDied("Isolate worker has exited".into()))
+            .map_err(|_| SSRDenoError::WorkerDied("Isolate worker has exited".into()))
     }
 }
 
@@ -228,7 +228,7 @@ impl IsolatePool {
         max_heap_size_mb: usize,
         render_timeout_ms: u64,
         node_builtins: bool,
-    ) -> Result<Self, DenoError> {
+    ) -> Result<Self, SSRDenoError> {
         validate_pool_size(size)?;
 
         let mut handles = Vec::with_capacity(size);
@@ -260,7 +260,7 @@ impl IsolatePool {
 
     /// Dispatches a render request to the next available isolate.
     /// Blocks until the result arrives.
-    pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, DenoError> {
+    pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, SSRDenoError> {
         self.next_handle().block_on_render(bundle_id, args_json)
     }
 
@@ -269,25 +269,25 @@ impl IsolatePool {
         &self,
         bundle_id: &str,
         args_json: &str,
-    ) -> Result<String, DenoError> {
+    ) -> Result<String, SSRDenoError> {
         self.next_handle().block_on_render_stream(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
-    pub fn heap_stats(&self) -> Result<String, DenoError> {
+    pub fn heap_stats(&self) -> Result<String, SSRDenoError> {
         self.next_handle().block_on_heap_stats()
     }
 
     /// Loads a bundle into **every** isolate by broadcasting the bundle code.
     /// Path resolution (canonicalize, symlink check) is done once — all
     /// isolates receive the same code and script name.
-    pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), DenoError> {
+    pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), SSRDenoError> {
         let bundle_name = std::path::Path::new(bundle_path)
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("(unknown)");
         let canonical = std::fs::canonicalize(bundle_path).map_err(|e| {
-            DenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}"))
+            SSRDenoError::BundleLoad(format!("Cannot resolve bundle path '{bundle_name}': {e}"))
         })?;
 
         // Reject symlink escapes: the resolved path must stay within the
@@ -297,15 +297,15 @@ impl IsolatePool {
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(std::path::Path::new("."));
         let canonical_parent = std::fs::canonicalize(original_parent)
-            .map_err(|e| DenoError::BundleLoad(format!("Cannot resolve bundle directory: {e}")))?;
+            .map_err(|e| SSRDenoError::BundleLoad(format!("Cannot resolve bundle directory: {e}")))?;
         if !canonical.starts_with(&canonical_parent) {
-            return Err(DenoError::BundleLoad(format!(
+            return Err(SSRDenoError::BundleLoad(format!(
                 "Bundle file '{bundle_name}' escapes its directory via symlink"
             )));
         }
 
         let bundle_code = std::fs::read_to_string(bundle_path).map_err(|e| {
-            DenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}"))
+            SSRDenoError::BundleLoad(format!("Cannot read bundle file '{bundle_name}': {e}"))
         })?;
 
         let bundle_code: Arc<str> = bundle_code.into();
@@ -340,8 +340,8 @@ impl IsolatePool {
         for reply_rx in reply_rxs {
             reply_rx
                 .blocking_recv()
-                .map_err(|_| DenoError::WorkerDied("Isolate worker exited before reply".into()))?
-                .map_err(DenoError::BundleLoad)?;
+                .map_err(|_| SSRDenoError::WorkerDied("Isolate worker exited before reply".into()))?
+                .map_err(SSRDenoError::BundleLoad)?;
         }
 
         Ok(())
@@ -582,7 +582,7 @@ fn build_node_services(node_builtins: bool) -> Option<NodeServices> {
     use deno_runtime::deno_fs::sync::MaybeArc;
     use deno_runtime::deno_node::{NodeResolver, NodeRequireLoaderRc};
 
-    let loader: NodeRequireLoaderRc = std::rc::Rc::new(DenoNodeRequireLoader);
+    let loader: NodeRequireLoaderRc = std::rc::Rc::new(SSRDenoNodeRequireLoader);
 
     let pkg_json_resolver = MaybeArc::new(
         PackageJsonResolver::new(Sys, None),
