@@ -1,11 +1,16 @@
 ## Unreleased
 
 ### Added
-- New sample: `samples/vite-react-streaming-ssr-app` — React 19 streaming SSR with `renderToPipeableStream` + Suspense, demonstrating the `render_stream` (event loop) path.
-- `Bundle#render_stream_chunks` — chunked streaming render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render_stream`.
+- `Bundle#render_stream_chunks` — chunked streaming render that yields HTML fragments incrementally as they arrive from JS. Returns an `Enumerator` when no block is given (Rack 3 compatible as response body); yields each chunk to the block when one IS given. JS bundles push chunks via `globalThis.__ssr_push_chunk(string)`. Error and timeout semantics match `render`.
+
+### Changed
+- **BREAKING:** `Bundle#render_stream` removed — use `Bundle#render` (always runs the event loop now).
+- **BREAKING:** `render(event_loop:)` keyword argument removed — the event loop is always active. Macrotasks, timers, and Promises fire during every render.
+- `native_render` now uses the event-loop path internally (was direct V8 function call). Async renders (Promises) resolve naturally; sync renders complete on first poll tick.
+- Render timeout and OOM detection for synchronous blocking JS requires V8 termination watchdog (not yet implemented); affected tests skipped.
 
 ### Fixed
-- Streaming render (`render_stream` / `event_loop: true`) now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.
+- Render now correctly raises `SSR::Deno::RenderError` when the JS render function returns a rejected Promise. Previously, rejections were silently returned as a successful result string.
 
 ### Changed
 - Bundle identifiers now use `<basename>#<object_id>` format (e.g. `entry-server.js#47278032594620`) instead of bare `object_id`. Improves readability in instrumentation events, error messages, and logs.

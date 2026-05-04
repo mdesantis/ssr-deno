@@ -31,7 +31,7 @@ in README.
 ### Rust side
 
 - [x] ~~Change `op_ssr_push_chunk` from `try_send` to `send().await` for backpressure~~ — replaced with poll-based approach: JS pushes to `globalThis.__ssr_chunks` array, Rust drains each tick via `execute_script`
-- [x] Expose `mpsc::Receiver<String>` to the Ruby caller — `IsolateHandle::start_render_stream_chunked()` returns `(chunk_rx, reply_rx)` consumed by `native_render_stream_chunks`
+- [x] Expose `mpsc::Receiver<String>` to the Ruby caller — `IsolateHandle::start_render_chunked()` returns `(chunk_rx, reply_rx)` consumed by `native_render_stream_chunks`
 - [x] Add end-of-stream signal handling — worker drops `chunk_tx` after event loop completes; Ruby detects `None` from `blocking_recv()`
 - [x] Consider timeout per-chunk — uses `recv_timeout(render_timeout + 100ms)` on each chunk recv; total render timeout still applies via `run_up_to_duration`
 
@@ -52,18 +52,16 @@ in README.
 
 ## Design decisions
 
-### Q1: Should `render_stream_chunks` coexist with `render_stream`, or replace it?
+### Q1: Should `render_stream_chunks` coexist with `render`, or replace it?
 
 **Answer: Coexist — as a fully separate method, not another `render` keyword flag.**
 
-`render_stream` (Phase 1) is syntactic sugar for `render(event_loop: true)`. That works because nothing changes for the caller — you call a method, get a string, use it in your template. The event loop is an internal implementation detail.
-
-`render_stream_chunks` (Phase 2) changes the caller's entire control flow — they need `ActionController::Live`, a streaming response, an `ensure` block to close the stream, and mid-iteration error handling. That's a different programming model, not a configuration flag.
+`render` returns a single buffered result. `render_stream_chunks` changes the caller's entire control flow — they need `ActionController::Live`, a streaming response, an `ensure` block to close the stream, and mid-iteration error handling. That's a different programming model, not a configuration flag.
 
 Why it can't be a `render` keyword arg:
 
-| Aspect | `render` / `render_stream` | `render_stream_chunks` |
-|--------|---------------------------|------------------------|
+| Aspect | `render` | `render_stream_chunks` |
+|--------|----------|------------------------|
 | Return type | Single value (String/Hash) | Lazy `Enumerator` yielding N strings |
 | Blocking | Blocks until complete | Returns immediately; blocks during iteration |
 | Error timing | Before any bytes sent → can set HTTP 500 | Mid-stream → bytes already flushed, status committed |
@@ -93,15 +91,14 @@ def render_stream_chunks(data = nil, raw_input: false)
 end
 ```
 
-No `raw_output` param (chunks are always raw HTML fragments). No `event_loop` flag (always true by definition). Clean separate method with its own docs, RBS signature, and error semantics.
+No `raw_output` param (chunks are always raw HTML fragments). Clean separate method with its own docs, RBS signature, and error semantics.
 
 Full method hierarchy:
 
-| Method | Returns | Sugar for | Use case |
-|--------|---------|-----------|----------|
-| `render` | String/Hash | — | Sync render, no event loop |
-| `render_stream` | String | `render(event_loop: true)` | Async render (Suspense), buffered result |
-| `render_stream_chunks` | `Enumerator` | — (standalone) | Chunked HTTP streaming, minimal TTFB |
+| Method | Returns | Use case |
+|--------|---------|----------|
+| `render` | String/Hash | Buffered render (event loop always active) |
+| `render_stream_chunks` | `Enumerator` | Chunked HTTP streaming, minimal TTFB |
 
 ### Q2: What's the chunk granularity?
 
@@ -114,7 +111,7 @@ React's `renderToPipeableStream` determines chunk boundaries:
 
 The gem's role is purely pass-through: each `pipe.write(chunk)` call in JS → `Deno.core.ops.op_ssr_push_chunk(chunk)` → `mpsc::Sender` → Ruby enumerator yields chunk. No aggregation, no splitting, no reframing.
 
-The JS entry-server controls when `pipe()` is called (e.g., `onShellReady` vs `onAllReady`). If the user calls `pipe()` on `onAllReady`, they get a single large chunk (equivalent to `render_stream`). If they call it on `onShellReady`, they get progressive chunks. This is a user-side decision baked into their entry-server code — the gem stays agnostic.
+The JS entry-server controls when `pipe()` is called (e.g., `onShellReady` vs `onAllReady`). If the user calls `pipe()` on `onAllReady`, they get a single large chunk (equivalent to buffered `render`). If they call it on `onShellReady`, they get progressive chunks. This is a user-side decision baked into their entry-server code — the gem stays agnostic.
 
 ### Q3: Should we support Rack 3 streaming directly?
 
@@ -170,7 +167,7 @@ sequenceDiagram
     participant React as React renderToPipeableStream
 
     Ruby->>Handle: native_render_stream_chunks(bundle_id, json)
-    Handle->>Worker: WorkerMsg::RenderStreamChunked
+    Handle->>Worker: WorkerMsg::RenderChunked
     Worker->>React: execute_script (kick off render)
     React->>Worker: pipe.write(shell_chunk)
     Worker->>Worker: op_ssr_push_chunk → chunk_tx.send().await
@@ -197,7 +194,7 @@ sequenceDiagram
 
 - **`chunk_rx` exposed to Ruby via blocking recv loop**: The native method
   `native_render_stream_chunks` does NOT wait for the full render. It sends
-  `WorkerMsg::RenderStreamChunked`, then immediately enters a loop:
+  `WorkerMsg::RenderChunked`, then immediately enters a loop:
   `chunk_rx.blocking_recv()` → yield to Ruby → repeat until EOS or error.
 
 - **End-of-stream protocol**: After the render promise resolves (or rejects), the
@@ -216,5 +213,4 @@ sequenceDiagram
   threads to proceed while this one waits for the next chunk.
 
 - **Isolate occupancy**: The isolate is occupied for the entire streaming render
-  duration (not just per-chunk). This is the same as `render_stream` Phase 1 — the
-  round-robin pool mitigates this. A slow consumer holds an isolate for longer.
+  duration (not just per-chunk). The round-robin pool mitigates this. A slow consumer holds an isolate for longer.

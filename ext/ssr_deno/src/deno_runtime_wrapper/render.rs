@@ -13,13 +13,16 @@ use tokio::sync::mpsc;
 use super::SSRDenoError;
 
 // ---------------------------------------------------------------------------
-// Op: receive a chunk of HTML from JS during streaming render
+// Op: receive a chunk of HTML from JS during chunked streaming render
 // ---------------------------------------------------------------------------
 
 /// Pushes an HTML chunk from JS to the Rust channel. Async for backpressure:
 /// when the channel buffer (64 slots) is full, the JS call awaits until the
 /// Ruby consumer drains a slot. This prevents OOM from fast-producing React +
 /// slow-consuming client.
+///
+/// Registered globally in the extension but only active when `chunk_tx` is
+/// placed in OpState (i.e., during `render_chunked` execution).
 ///
 /// JS usage: `await Deno.core.ops.op_ssr_push_chunk(chunkString)`
 #[op2]
@@ -38,34 +41,39 @@ pub async fn op_ssr_push_chunk(
 }
 
 // ---------------------------------------------------------------------------
-// Render streaming (Phase 1 — event-loop, final result)
+// Render — event-loop based, returns final result as JSON string
 // ---------------------------------------------------------------------------
 
-pub async fn render_streaming(
+/// Runs a render with the full Deno event loop. The bundle's `render` function
+/// is called with `args_json`. If it returns a Promise, the event loop runs
+/// until the Promise settles (or the timeout expires). Macrotasks like
+/// `setTimeout`, `setInterval`, and `MessageChannel` fire normally.
+///
+/// Returns the final result as a JSON-stringified value.
+pub async fn render(
     worker: &mut MainWorker,
     bundle_id: &str,
     args_json: &str,
     render_timeout_ms: u64,
-    chunk_tx: mpsc::Sender<String>,
     oom_triggered: &AtomicBool,
 ) -> Result<String, SSRDenoError> {
-    // Register chunk_tx in OpState so op_ssr_push_chunk can find it
-    worker.js_runtime.op_state().borrow_mut().put(chunk_tx);
-
     // Use serde_json for bundle_id injection — produces a guaranteed-valid JS
     // string literal regardless of special characters in the filename.
     let bundle_id_js = serde_json::to_string(bundle_id)
         .unwrap_or_else(|_| format!("\"{}\"", bundle_id));
 
     // Kick off the render. The bundle's render function is stored at
-    // globalThis.__ssr_bundles[bundle_id].render. It returns a Promise
-    // that resolves with the final HTML when streaming completes.
+    // globalThis.__ssr_bundles[bundle_id].render. It receives the args as a
+    // JSON string (same contract as the direct V8 API call path).
     //
     // Error handling: rejected promises store the error message in a
     // separate `__ssr_stream_error` global (not in `__ssr_stream_result`).
     // The poll loop checks `__ssr_stream_error` first and returns
     // `SSRDenoError::Render` when set, ensuring proper exception propagation
     // back to Ruby.
+    let args_json_js = serde_json::to_string(args_json)
+        .unwrap_or_else(|_| format!("\"{}\"", args_json));
+
     let script = format!(
         r#"
         if (typeof globalThis.__SSR_STREAM_SENTINEL === 'undefined') {{
@@ -77,7 +85,7 @@ pub async fn render_streaming(
         if (!__bundle || typeof __bundle.render !== 'function') {{
             throw new Error('Bundle not found: ' + {bundle_id_js});
         }}
-        var __result = __bundle.render({args_json});
+        var __result = __bundle.render({args_json_js});
         if (__result && typeof __result.then === 'function') {{
             __result.then(
                 (html) => {{ globalThis.__ssr_stream_result = html; }},
@@ -88,70 +96,72 @@ pub async fn render_streaming(
         }}
         "#,
         bundle_id_js = bundle_id_js,
-        args_json = args_json,
+        args_json_js = args_json_js,
     );
     worker
-        .execute_script("<ssr-deno:stream-start>", script.into())
-        .map_err(|e| SSRDenoError::Render(format!("Streaming render failed to start: {e}")))?;
+        .execute_script("<ssr-deno:render-start>", script.into())
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Bundle not found:") {
+                SSRDenoError::BundleNotFound(msg)
+            } else {
+                SSRDenoError::Render(format!("Render failed to start: {msg}"))
+            }
+        })?;
 
     // Run the event loop until the render completes or the timeout expires.
     let deadline = Instant::now() + Duration::from_millis(render_timeout_ms);
 
-    let result = loop {
+    loop {
         if Instant::now() >= deadline {
             if oom_triggered.load(Ordering::SeqCst) {
                 break Err(SSRDenoError::OutOfMemory(
-                    "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                    "JS heap out of memory - the isolate reached its configured heap limit".into(),
                 ));
             }
-            break Err(SSRDenoError::Render("Streaming render timed out".into()));
+            break Err(SSRDenoError::Render("Render timed out".into()));
         }
 
-        // Run the event loop briefly to let the stream progress.
+        // Run the event loop briefly to let macrotasks/promises progress.
         let remaining = deadline.saturating_duration_since(Instant::now());
         let tick = std::cmp::min(remaining, Duration::from_millis(50));
         let _ = worker.run_up_to_duration(tick).await;
 
         if oom_triggered.load(Ordering::SeqCst) {
             break Err(SSRDenoError::OutOfMemory(
-                "JS heap out of memory — the isolate reached its configured heap limit".into(),
+                "JS heap out of memory - the isolate reached its configured heap limit".into(),
             ));
         }
 
         // Single script call per tick: checks error first, then result.
         // Returns null when still pending, "E:<msg>" on error, or
         // "R:<json>" when the render completed successfully.
-        match poll_stream_state(worker) {
-            StreamState::Pending => continue,
-            StreamState::Error(msg) => break Err(SSRDenoError::Render(msg)),
-            StreamState::Done(result) => break Ok(result),
+        match poll_render_state(worker) {
+            RenderState::Pending => continue,
+            RenderState::Error(msg) => break Err(SSRDenoError::Render(msg)),
+            RenderState::Done(result) => break Ok(result),
         }
-    };
-
-    // Remove the sender from OpState to avoid stale state on isolate reuse.
-    drop(worker.js_runtime.op_state().borrow_mut().take::<mpsc::Sender<String>>());
-
-    result
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Stream state polling — shared by Phase 1 and Phase 2 (render_stream_chunked)
+// Render state polling — shared by render and render_chunked
 // ---------------------------------------------------------------------------
 
-pub(super) enum StreamState {
+pub(super) enum RenderState {
     Pending,
     Error(String),
     Done(String),
 }
 
 /// Checks both `__ssr_stream_error` and `__ssr_stream_result` in a single
-/// `execute_script` call. Returns the stream state as a tagged string:
-/// - `null` / undefined → still pending
-/// - starts with `E:` → promise rejected, rest is the error message
-/// - starts with `R:` → render complete, rest is the JSON result
-pub(super) fn poll_stream_state(worker: &mut MainWorker) -> StreamState {
+/// `execute_script` call. Returns the render state as a tagged string:
+/// - `null` / undefined - still pending
+/// - starts with `E:` - promise rejected, rest is the error message
+/// - starts with `R:` - render complete, rest is the JSON result
+pub(super) fn poll_render_state(worker: &mut MainWorker) -> RenderState {
     let Ok(global_val) = worker.execute_script(
-        "<ssr-deno:stream-poll>",
+        "<ssr-deno:render-poll>",
         "globalThis.__ssr_stream_error \
          ? ('E:' + globalThis.__ssr_stream_error) \
          : (globalThis.__ssr_stream_result === globalThis.__SSR_STREAM_SENTINEL \
@@ -162,7 +172,7 @@ pub(super) fn poll_stream_state(worker: &mut MainWorker) -> StreamState {
     ) else {
         // Script execution failed — treat as pending (next tick will retry
         // or the timeout will fire).
-        return StreamState::Pending;
+        return RenderState::Pending;
     };
 
     let context = worker.js_runtime.main_context();
@@ -175,17 +185,17 @@ pub(super) fn poll_stream_state(worker: &mut MainWorker) -> StreamState {
     let local_val = v8::Local::new(&mut context_scope, &global_val);
 
     if local_val.is_null_or_undefined() {
-        return StreamState::Pending;
+        return RenderState::Pending;
     }
 
     let s = local_val.to_rust_string_lossy(&mut context_scope);
 
     if let Some(err_msg) = s.strip_prefix("E:") {
-        StreamState::Error(err_msg.to_string())
+        RenderState::Error(err_msg.to_string())
     } else if let Some(result) = s.strip_prefix("R:") {
-        StreamState::Done(result.to_string())
+        RenderState::Done(result.to_string())
     } else {
         // Unexpected format — shouldn't happen, but treat as pending.
-        StreamState::Pending
+        RenderState::Pending
     }
 }

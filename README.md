@@ -140,12 +140,10 @@ bundle.render('{"page":"home"}', raw_input: true, raw_output: true)
 
 ### Event-loop render (async)
 
-Pumps the full V8 event loop (macrotasks + microtasks). Required for React 19 streaming SSR (`renderToPipeableStream`):
+The V8 event loop always runs during render (macrotasks + microtasks fire). This means React 19 streaming SSR (`renderToPipeableStream`) works out of the box:
 
 ```ruby
-bundle.render_stream({ page: 'home' })
-# or equivalently:
-bundle.render({ page: 'home' }, event_loop: true)
+bundle.render({ page: 'home' })
 ```
 
 ### Chunked streaming render

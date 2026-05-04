@@ -6,7 +6,7 @@ Status: Evaluated — poll-based confirmed as default
 
 ## Context
 
-`render_stream_chunked.rs` uses a **poll-based** design: JS pushes chunks to a
+`render_chunked.rs` uses a **poll-based** design: JS pushes chunks to a
 `globalThis.__ssr_chunks` array, Rust drains it each event-loop tick via
 `execute_script`. This avoids needing `Deno.core.ops` (hidden post-bootstrap in
 deno_runtime 0.254+).
@@ -53,7 +53,7 @@ Extension registration (in `mod.rs`):
 ```rust
 deno_runtime::deno_core::Extension {
     name: "ssr_stream",
-    ops: Cow::Owned(vec![render_stream::op_ssr_push_chunk()]),
+    ops: Cow::Owned(vec![render::op_ssr_push_chunk()]),
     js_files: Cow::Owned(vec![
         deno_core::ExtensionFileSource {
             specifier: "ext:ssr_stream/init.js",
@@ -92,8 +92,8 @@ Minimal — `op_ssr_push_chunk` already exists as an async op with
 `send().await` for backpressure. The only change is:
 
 - Remove `drain_chunks` and the `globalThis.__ssr_chunks` array setup from
-  `render_stream_chunked.rs`
-- Register `chunk_tx` in `OpState` (same pattern Phase 1 uses)
+  `render_chunked.rs`
+- Register `chunk_tx` in `OpState` (same pattern the buffered render uses)
 - Keep the event-loop tick for the render promise to resolve, but chunks flow
   through the op instead of array polling
 
@@ -153,7 +153,7 @@ Keep poll-based as default. Consider op-based as an opt-in mode (e.g.,
 emerges — likely untrusted bundles or sub-ms latency requirements.
 
 If implemented, both modes share the same Ruby API (`Enumerator` / block yield).
-The difference is purely internal: which Rust function the `RenderStreamChunked`
+The difference is purely internal: which Rust function the `RenderChunked`
 worker message dispatches to.
 
 ## Dependencies

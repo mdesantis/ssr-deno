@@ -29,20 +29,20 @@ module SSR
       skip 'React Streaming SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
     end
 
-    def test_render_stream_produces_valid_html
+    def test_render_produces_valid_html
       bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
 
-      html = bundle.render_stream({ data: { name: 'Streaming' } })
+      html = bundle.render({ data: { name: 'Streaming' } })
 
       assert_match(%r{<html>.*</html>}m, html)
       assert_includes html, 'Streaming'
       assert_includes html, '<div id="root">'
     end
 
-    def test_render_stream_includes_streamed_content
+    def test_render_includes_streamed_content
       bundle = SSR::Deno::Bundle.new(BUNDLE_PATH)
 
-      html = bundle.render_stream({ data: { name: 'StreamTest' } })
+      html = bundle.render({ data: { name: 'StreamTest' } })
 
       assert_includes html, 'Streamed content for StreamTest'
     end

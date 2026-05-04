@@ -213,6 +213,7 @@ fn native_load_bundle(bundle_id: String, bundle_path: String) -> Result<(), Erro
 }
 
 /// Dispatches a render request to the next available isolate.
+/// Runs the full Deno event loop (macrotasks, timers fire).
 /// Returns the result as a JSON string so any JS type survives the boundary.
 fn native_render(bundle_id: String, args_json: String) -> Result<String, Error> {
     get_pool()?
@@ -232,15 +233,8 @@ fn native_heap_stats() -> Result<String, Error> {
         .map_err(map_render_error)
 }
 
-/// Dispatches a streaming render to the next available isolate.
-fn native_render_stream(bundle_id: String, args_json: String) -> Result<String, Error> {
-    get_pool()?
-        .dispatch_render_stream(&bundle_id, &args_json)
-        .map_err(map_render_error)
-}
-
-/// Dispatches a chunked streaming render. Yields each HTML chunk to the
-/// provided block as it arrives from React's `renderToPipeableStream`.
+/// Dispatches a chunked render. Yields each HTML chunk to the provided block
+/// as it arrives from React's `renderToPipeableStream`.
 ///
 /// If no block is given, returns an Enumerator (Ruby's standard pattern).
 /// When a block IS given, yields chunks incrementally and raises
@@ -260,7 +254,7 @@ fn native_render_stream_chunks(
     }
 
     let (mut chunk_rx, reply_rx) = get_pool()?
-        .dispatch_render_stream_chunked(&bundle_id, &args_json)
+        .dispatch_render_chunked(&bundle_id, &args_json)
         .map_err(map_render_error)?;
 
     // Yield chunks to the block until the channel closes.
@@ -348,10 +342,6 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_get_render_timeout_ms",
         function!(native_get_render_timeout_ms, 0),
-    )?;
-    deno_module.define_singleton_method(
-        "native_render_stream",
-        function!(native_render_stream, 2),
     )?;
     deno_module.define_singleton_method(
         "native_get_node_builtins_enabled",

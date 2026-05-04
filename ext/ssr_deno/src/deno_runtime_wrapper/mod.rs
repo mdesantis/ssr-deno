@@ -27,15 +27,12 @@ pub use ssr_deno_core::SSRDenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
-pub(crate) mod call_render;
-use self::call_render::call_render;
-
 pub(crate) mod heap_stats;
 use self::heap_stats::collect_heap_stats;
 
-pub(crate) mod render_stream;
+pub(crate) mod render;
 
-pub(crate) mod render_stream_chunked;
+pub(crate) mod render_chunked;
 
 // ---------------------------------------------------------------------------
 // Script name interning — avoids unbounded `Box::leak` on bundle reloads
@@ -76,24 +73,17 @@ enum WorkerMsg {
         bundle_id: String,
         args_json: String,
         render_timeout_ms: u64,
-        reply: std::sync::mpsc::SyncSender<Result<String, SSRDenoError>>,
-    },
-    HeapStats {
         reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
-    RenderStream {
-        bundle_id: String,
-        args_json: String,
-        render_timeout_ms: u64,
-        chunk_tx: tokio::sync::mpsc::Sender<String>,
-        reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
-    },
-    RenderStreamChunked {
+    RenderChunked {
         bundle_id: String,
         args_json: String,
         render_timeout_ms: u64,
         chunk_tx: tokio::sync::mpsc::Sender<String>,
         reply: tokio::sync::oneshot::Sender<Result<(), SSRDenoError>>,
+    },
+    HeapStats {
+        reply: tokio::sync::oneshot::Sender<Result<String, SSRDenoError>>,
     },
 }
 
@@ -145,11 +135,11 @@ impl IsolateHandle {
     }
 
     /// Sends a render request to this isolate's worker thread and blocks
-    /// until the result arrives. Returns the result as a JSON string so any
-    /// JS type survives the boundary.
+    /// until the result arrives. Runs the full Deno event loop (macrotasks,
+    /// timers, I/O all fire). Returns the result as a JSON string.
     pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, SSRDenoError> {
-        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel::<Result<String, SSRDenoError>>(1);
-        let hang_timeout = Duration::from_millis(self.render_timeout_ms + 100);
+        let (reply_tx, reply_rx) =
+            tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
 
         self.tx
             .blocking_send(WorkerMsg::Render {
@@ -160,51 +150,15 @@ impl IsolateHandle {
             })
             .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        match reply_rx.recv_timeout(hang_timeout) {
-            Ok(result) => result,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(SSRDenoError::Render(format!(
-                "Render process hung after {}ms",
-                hang_timeout.as_millis()
-            ))),
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(SSRDenoError::WorkerDied(
-                "Deno worker thread exited before sending a reply".into(),
-            )),
-        }
-    }
-
-    /// Sends a streaming render request and returns the final result.
-    /// The worker thread runs the V8 event loop during the render.
-    pub fn block_on_render_stream(
-        &self,
-        bundle_id: &str,
-        args_json: &str,
-    ) -> Result<String, SSRDenoError> {
-        let (reply_tx, reply_rx) =
-            tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
-        // Phase 1 path: chunks are intentionally discarded — only the final
-        // result matters. The chunked path (start_render_stream_chunked) consumes
-        // the receiver.
-        let (chunk_tx, _chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
-
-        self.tx
-            .blocking_send(WorkerMsg::RenderStream {
-                bundle_id: bundle_id.to_string(),
-                args_json: args_json.to_string(),
-                render_timeout_ms: self.render_timeout_ms,
-                chunk_tx,
-                reply: reply_tx,
-            })
-            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
-
         reply_rx
             .blocking_recv()
             .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread exited before reply".into()))?
     }
 
-    /// Sends a chunked streaming render request. Returns the chunk receiver
+    /// Sends a chunked render request. Returns the chunk receiver
     /// immediately — the caller iterates it to get chunks as they arrive.
     /// The reply channel signals completion (Ok) or error (Err) after EOS.
-    pub fn start_render_stream_chunked(
+    pub fn start_render_chunked(
         &self,
         bundle_id: &str,
         args_json: &str,
@@ -216,7 +170,7 @@ impl IsolateHandle {
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
 
         self.tx
-            .blocking_send(WorkerMsg::RenderStreamChunked {
+            .blocking_send(WorkerMsg::RenderChunked {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
                 render_timeout_ms: self.render_timeout_ms,
@@ -306,20 +260,11 @@ impl IsolatePool {
         self.next_handle().block_on_render(bundle_id, args_json)
     }
 
-    /// Dispatches a streaming render request to the next available isolate.
-    pub fn dispatch_render_stream(
-        &self,
-        bundle_id: &str,
-        args_json: &str,
-    ) -> Result<String, SSRDenoError> {
-        self.next_handle().block_on_render_stream(bundle_id, args_json)
-    }
-
-    /// Dispatches a chunked streaming render to the next available isolate.
+    /// Dispatches a chunked render to the next available isolate.
     /// Returns the chunk receiver and completion channel — the caller iterates
     /// chunks until the receiver returns `None`, then checks the completion
     /// channel for errors.
-    pub fn dispatch_render_stream_chunked(
+    pub fn dispatch_render_chunked(
         &self,
         bundle_id: &str,
         args_json: &str,
@@ -327,7 +272,7 @@ impl IsolatePool {
         (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
         SSRDenoError,
     > {
-        self.next_handle().start_render_stream_chunked(bundle_id, args_json)
+        self.next_handle().start_render_chunked(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
@@ -476,39 +421,27 @@ fn worker_thread_main(
                     render_timeout_ms,
                     reply,
                 } => {
-                    let result = call_render(
-                        &mut worker, &bundle_id, &args_json, render_timeout_ms, &oom_triggered,
-                    );
+                    let result = render::render(
+                        &mut worker, &bundle_id, &args_json,
+                        render_timeout_ms, &oom_triggered,
+                    ).await;
+                    let _ = reply.send(result);
+                }
+                WorkerMsg::RenderChunked {
+                    bundle_id,
+                    args_json,
+                    render_timeout_ms,
+                    chunk_tx,
+                    reply,
+                } => {
+                    let result = render_chunked::render_chunked(
+                        &mut worker, &bundle_id, &args_json,
+                        render_timeout_ms, chunk_tx, &oom_triggered,
+                    ).await;
                     let _ = reply.send(result);
                 }
                 WorkerMsg::HeapStats { reply } => {
                     let result = collect_heap_stats(&mut worker);
-                    let _ = reply.send(result);
-                }
-                WorkerMsg::RenderStream {
-                    bundle_id,
-                    args_json,
-                    render_timeout_ms,
-                    chunk_tx,
-                    reply,
-                } => {
-                    let result = render_stream::render_streaming(
-                        &mut worker, &bundle_id, &args_json,
-                        render_timeout_ms, chunk_tx, &oom_triggered,
-                    ).await;
-                    let _ = reply.send(result);
-                }
-                WorkerMsg::RenderStreamChunked {
-                    bundle_id,
-                    args_json,
-                    render_timeout_ms,
-                    chunk_tx,
-                    reply,
-                } => {
-                    let result = render_stream_chunked::render_streaming_chunked(
-                        &mut worker, &bundle_id, &args_json,
-                        render_timeout_ms, chunk_tx, &oom_triggered,
-                    ).await;
                     let _ = reply.send(result);
                 }
             }
@@ -741,7 +674,7 @@ fn build_worker(
         extensions: vec![
             deno_runtime::deno_core::Extension {
                 name: "ssr_stream",
-                ops: Cow::Owned(vec![render_stream::op_ssr_push_chunk()]),
+                ops: Cow::Owned(vec![render::op_ssr_push_chunk()]),
                 ..Default::default()
             },
         ],

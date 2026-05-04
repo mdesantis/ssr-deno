@@ -46,10 +46,9 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 |------|---------|
 | `src/lib.rs` | magnus entrypoint — registers methods on `SSR::Deno`, owns `POOL: OnceLock<IsolatePool>` and `CONFIG: Mutex<Config>` with double-checked locking |
 | `src/deno_runtime_wrapper/mod.rs` | `SSRDenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
-| `src/deno_runtime_wrapper/call_render.rs` | `call_render` — V8 scope chain, sync/async render dispatch, promise polling |
+| `src/deno_runtime_wrapper/render.rs` | `render` — event-loop render (buffered final result), `poll_render_state`, `RenderState` enum |
+| `src/deno_runtime_wrapper/render_chunked.rs` | `render_chunked` — event-loop render (poll-based, yields chunks via `mpsc`), `drain_chunks` |
 | `src/deno_runtime_wrapper/heap_stats.rs` | `collect_heap_stats` — V8 heap statistics serialization |
-| `src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` (Phase 1 — event-loop, final result), `poll_stream_state`, `op_ssr_push_chunk` |
-| `src/deno_runtime_wrapper/render_stream_chunked.rs` | `render_streaming_chunked` (Phase 2 — poll-based, yields chunks via `mpsc`), `drain_chunks` |
 | `src/sys.rs` | `Sys` type implementing `BaseFsCanonicalize`, `BaseFsMetadata`, `BaseFsRead`, `FsOpen`, `EnvCurrentDir`, etc. for `ExtNodeSys` and `WhichSys` |
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
@@ -76,7 +75,7 @@ flowchart LR
 - Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/v8-oom-protection.md`](../plans/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
-- Render timeout is enforced via `SyncSender::recv_timeout` on the Ruby side.
+- Render timeout is enforced by the event-loop deadline inside the worker. For async renders (Promises), the deadline fires between event-loop ticks. Synchronous blocking JS requires a V8 termination watchdog (planned).
 
 ### Worker Thread Lifecycle
 
@@ -86,7 +85,7 @@ flowchart LR
    - `NoopModuleLoader` (or `NodeBuiltinOnlyModuleLoader` if `node_builtins_enabled`).
    - `NodeExtInitServices` (if `node_builtins_enabled`) — provides `NodeRequireLoader`, `NodeResolver`, `PackageJsonResolver` for the `deno_node` extension.
    - A `near_heap_limit_callback` registered on the V8 isolate — doubles the heap limit and terminates execution when the heap approaches `max_heap_size_mb`, preventing fatal process crash on user memory leaks.
-3. The worker thread runs a message loop processing `LoadBundle`, `Render`, `RenderStream`, `RenderStreamChunked`, and `HeapStats` messages.
+3. The worker thread runs a message loop processing `LoadBundle`, `Render`, `RenderChunked`, and `HeapStats` messages.
 4. Bundles are evaluated via `MainWorker::execute_script` (synchronous V8 script execution, not module loading).
 
 ### Bundle Contract
@@ -108,34 +107,20 @@ globalThis.render = render
 
 ### SSR render modes
 
-The gem provides three render paths with different event loop behavior:
+The gem provides two render paths. Both run the full V8 event loop
+(macrotasks, timers, Promises all fire):
 
-#### Default render (`bundle.render(data)`)
+#### Buffered render (`bundle.render(data)`)
 
-Runs `execute_script` + `perform_microtask_checkpoint` only. The V8 event
-loop is **not** pumped. Only **microtasks** fire; **macrotasks** are queued
-but never executed.
-
-| Category | APIs that work | APIs that silently never fire |
-|---|---|---|
-| **Microtasks** | `Promise.then`, `queueMicrotask`, `async/await` | — |
-| **Macrotasks** | — | `setTimeout`, `setInterval`, `MessagePort`, `fetch`, `requestAnimationFrame` |
-
-Vue 3 async SSR works because it uses only Promises (microtasks).
-
-#### Event-loop render (`bundle.render(data, event_loop: true)` / `bundle.render_stream(data)`)
-
-Runs `MainWorker::run_up_to_duration` in a loop, which **pumps the full V8
-event loop** including macrotask queues. Both microtasks and macrotasks fire.
+Runs `MainWorker::run_up_to_duration` in a loop until the render function
+returns (sync) or its Promise resolves (async). Returns the final HTML string.
 
 | Category | APIs that work |
 |---|---|
 | **Microtasks** | `Promise.then`, `queueMicrotask`, `async/await` |
 | **Macrotasks** | `setTimeout`, `setInterval`, `MessagePort` |
 
-React 19's streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
-requires `MessagePort` and works only with this path. See
-[`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for details.
+Vue 3, React 19, and any framework's async SSR works out of the box.
 
 #### Chunked streaming render (`bundle.render_stream_chunks(data)`)
 
@@ -234,10 +219,9 @@ ext/ssr_deno/                                         # Rust native extension
     ├── lib.rs                                        # magnus init, CONFIG, POOL
     ├── deno_runtime_wrapper/
     │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
-    │   ├── call_render.rs                            # call_render (sync + async dispatch)
     │   ├── heap_stats.rs                             # collect_heap_stats, HeapStats struct
-    │   ├── render_stream.rs                          # Phase 1 streaming, poll_stream_state
-    │   └── render_stream_chunked.rs                  # Phase 2 chunked streaming, drain_chunks
+    │   ├── render.rs                                 # Buffered render, poll_render_state
+    │   └── render_chunked.rs                         # Chunked streaming, drain_chunks
     ├── sys.rs                                        # Sys type for Deno traits
     ├── nop_types.rs                                  # NOP implementations
     ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme

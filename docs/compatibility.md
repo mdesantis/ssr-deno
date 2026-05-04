@@ -10,24 +10,21 @@ in an embedded V8 isolate.
 | Framework | SSR method | Status | Notes |
 |---|---|---|---|
 | React 19 | `renderToString` | ✅ | Synchronous, fully supported |
-| React 19 | `renderToPipeableStream` | ⚠️ | Event loop runs with `render(event_loop: true)`, but JS-side streaming plumbing (Writable, pipe, chunk collection) must be added to the bundle |
-| React 19 | `renderToReadableStream` | ⚠️ | Same as `renderToPipeableStream` |
+| React 19 | `renderToPipeableStream` | ✅ | Full event loop support — JS-side streaming plumbing (Writable, pipe, chunk collection) must be added to the bundle |
+| React 19 | `renderToReadableStream` | ✅ | Same as `renderToPipeableStream` |
 | Vue 3 | `renderToString` | ✅ | Async (Promise-based), works via microtask polling |
 | Preact | `renderToString` | ✅ | Synchronous, fully supported |
 | Svelte 5 | `renderToString` | ✅ | Synchronous, fully supported |
 | SolidJS | `renderToString` | ✅ | Synchronous (returns string) |
 | Plain JS/TS | `globalThis.render()` | ✅ | Any function returning a string or Promise |
-| Any | `Bundle#render(event_loop: true)` | ✅ | Runs the V8 event loop during render. Supports `setTimeout`, `MessagePort`, and macrotask-based APIs. Alias: `Bundle#render_stream`. |
+| Any | `Bundle#render` | ✅ | Always runs the V8 event loop. Supports `setTimeout`, `MessagePort`, and macrotask-based APIs. |
 
 If your framework is not listed, it works if it:
 - Exposes a synchronous JS function that returns an HTML string, or
 - Returns a `Promise` that resolves to an HTML string
 
-**Macrotasks:** `setTimeout` and `MessagePort` work with
-`Bundle#render(event_loop: true)` (or its alias `render_stream`) but NOT by
-default (`event_loop: false`). See the
-[Macrotask-based APIs](#macrotask-based-apis-without-eventloop-true)
-section for details.
+**Macrotasks:** `setTimeout` and `MessagePort` always work — the event loop
+runs during every render.
 
 It does NOT work if it depends on:
 - `fetch` — network permissions denied regardless of event loop
@@ -68,32 +65,26 @@ It does NOT work if it depends on:
 | `structuredClone` | ✅ | |
 | `atob` / `btoa` | ✅ | Base64 encoding |
 
-### Macrotask-based APIs (without `event_loop: true`)
+### Macrotask-based APIs
 
-`Bundle#render` with default `event_loop: false` uses `execute_script` + `perform_microtask_checkpoint`
-and never runs the V8 event loop. Macrotask callbacks are silently queued and
-never executed in the default path.
-
-**Use `Bundle#render(event_loop: true)` (or its alias `Bundle#render_stream`) to
-enable macrotask dispatch.** This runs the V8 event loop during rendering,
-allowing `setTimeout`, `setInterval`, and `MessagePort` callbacks to fire.
+The V8 event loop runs during every render, so macrotasks dispatch normally.
 `setImmediate` is a special case — it's wired to a libuv check watcher that is
-not available in our tokio-based embedding, so its callbacks never fire even
-with the event loop. Use `setTimeout(fn, 0)` as a replacement.
+not available in our tokio-based embedding, so its callbacks never fire.
+Use `setTimeout(fn, 0)` as a replacement.
 
 See [`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for the
 architectural details.
 
 | API | Supported | Notes |
 |---|---|---|
-| `setTimeout` / `clearTimeout` | ⚠️ | Macrotask — works with `render(event_loop: true)`, not with `render` (default) |
-| `setInterval` / `clearInterval` | ⚠️ | Macrotask — same limitation as `setTimeout` |
+| `setTimeout` / `clearTimeout` | ✅ | Macrotask — fires during render |
+| `setInterval` / `clearInterval` | ✅ | Macrotask — fires during render |
 | `fetch` | ❌ | I/O op — network permissions denied regardless |
-| `MessagePort` / `postMessage` | ⚠️ | Macrotask — works with `render(event_loop: true)`. React 19 streaming uses this internally but also needs JS-side streaming setup. |
+| `MessagePort` / `postMessage` | ✅ | Macrotask — fires during render. React 19 streaming uses this internally. |
 | `requestAnimationFrame` | ❌ | Macrotask — browser-only anyway |
-| `setImmediate` / `clearImmediate` | ❌ | Macrotask — wired to libuv check watcher, not available in our tokio-based embedding. Even the event loop can't dispatch these. Use `setTimeout(fn, 0)` for a similar pattern. |
+| `setImmediate` / `clearImmediate` | ❌ | Macrotask — wired to libuv check watcher, not available in our tokio-based embedding. Use `setTimeout(fn, 0)` for a similar pattern. |
 | `process.nextTick` | ❌ | Not available in Web API context |
-| `WebSocket` | ❌ | Requires event loop |
+| `WebSocket` | ❌ | Requires network permissions |
 | `createServer` / `http` / `https` | ❌ | Network I/O |
 
 ### Deno-specific APIs (NOT available)
@@ -157,24 +148,17 @@ The two module loaders:
 | `NoopModuleLoader` | `node_builtins: false` (default) | Nothing — bundles must not use `import`/`require` at runtime |
 | `NodeBuiltinOnlyModuleLoader` | `node_builtins: true` | `node:` scheme specifiers only (stream, buffer, events, etc.) |
 
-### Macrotask starvation (without `event_loop: true`)
+### Synchronous blocking JS and timeouts
 
-`setTimeout`, `setInterval`, `MessagePort`, and `fetch` callbacks never fire
-in `Bundle#render` with default `event_loop: false` (which uses `execute_script` +
-`perform_microtask_checkpoint` only). Only microtasks (`Promise.then`,
-`queueMicrotask`, `async/await`) are dispatched.
-
-**Partial fix:** `Bundle#render(event_loop: true)` runs the V8 event loop during
-rendering, which dispatches macrotasks like `setTimeout`, `setInterval`, and
-`MessagePort`. Use `render(event_loop: true)` (or its alias `render_stream`)
-when your SSR code depends on timers or async scheduling. `fetch` is still not
-supported (network permissions denied regardless of event loop).
+The render timeout is enforced between event-loop ticks. If a JS render function
+contains a synchronous blocking loop (e.g. `while(Date.now() < end) {}`), the
+timeout cannot interrupt it until the loop completes. A V8 termination watchdog
+(calling `isolate.terminate_execution()` from a separate thread) is planned to
+address this limitation.
 
 React 19 streaming SSR (`renderToPipeableStream`, `renderToReadableStream`)
-requires the event loop and uses `MessagePort` internally. With
-`render(event_loop: true)`, the event loop runs, but the JS-side streaming
-plumbing (Writable, pipe, chunk collection) must be set up in the bundle. See
-[`plans/event-loop-approach-c.md`](../plans/event-loop-approach-c.md).
+works out of the box — the event loop runs during every render and
+`MessagePort` dispatches naturally.
 
 ### Bundle code footprint
 
@@ -205,7 +189,7 @@ approaches the limit:
 
 1. V8 GC runs a last-resort mark-compact
 2. The near-heap-limit callback fires, doubles the limit, and terminates JS
-3. `call_render` maps the termination to `DenoError::OutOfMemory`
+3. The render function detects the OOM flag and maps it to `SSRDenoError::OutOfMemory`
 4. Ruby receives `SSR::Deno::JsRuntimeOutOfMemoryError`
 
 The process does NOT crash with `SIGTRAP` (unlike a bare V8 embedding without

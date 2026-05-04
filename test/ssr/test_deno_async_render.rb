@@ -53,7 +53,7 @@ module SSR
         bundle.render({})
       end
 
-      assert_includes error.message, 'promise did not settle'
+      assert_includes error.message, 'Render timed out'
     end
   end
 end
