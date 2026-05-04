@@ -14,7 +14,7 @@ Findings from a general codebase audit. Ordered by priority.
 
 ### MEDIUM
 
-- [ ] **mod.rs — cache `Box::leak`'d script names**
+- [x] **mod.rs — cache `Box::leak`'d script names**
   Every `load_bundle` leaks a `&'static str`. Auto-reload in dev → unbounded leak per
   mtime change. Fix: static `Mutex<HashMap<String, &'static str>>` cache + `intern_script_name` helper.
 

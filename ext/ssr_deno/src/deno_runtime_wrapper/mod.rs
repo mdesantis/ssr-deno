@@ -1,7 +1,8 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
@@ -29,6 +30,30 @@ pub(crate) mod call_render;
 use self::call_render::{call_render, collect_heap_stats};
 
 pub(crate) mod render_stream;
+
+// ---------------------------------------------------------------------------
+// Script name interning — avoids unbounded `Box::leak` on bundle reloads
+// ---------------------------------------------------------------------------
+
+/// Cache of leaked script name strings. `MainWorker::execute_script` requires
+/// `&'static str`, so we must leak — but we intern by value so each unique
+/// filename is leaked at most once regardless of how many reloads occur.
+static SCRIPT_NAMES: Mutex<Option<HashMap<String, &'static str>>> = Mutex::new(None);
+
+/// Returns a `&'static str` for the given script name, reusing a previously
+/// interned value if available. At most one leak per unique filename.
+fn intern_script_name(name: &str) -> &'static str {
+    let mut guard = SCRIPT_NAMES.lock().unwrap();
+    let map = guard.get_or_insert_with(HashMap::new);
+
+    if let Some(&cached) = map.get(name) {
+        return cached;
+    }
+
+    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
+    map.insert(name.to_owned(), leaked);
+    leaked
+}
 
 // ---------------------------------------------------------------------------
 // Wire protocol between the Ruby thread and each Deno worker thread
@@ -283,11 +308,12 @@ impl IsolatePool {
         })?;
 
         // `MainWorker::execute_script` requires `&'static str` for the script
-        // name. One bounded leak per bundle load (shared by all isolates).
+        // name. Interned so each unique filename is leaked at most once,
+        // regardless of how many reloads occur in development.
         let script_name: &'static str = canonical
             .file_name()
             .and_then(|s| s.to_str())
-            .map(|s| Box::leak(s.to_owned().into_boxed_str()) as &'static str)
+            .map(intern_script_name)
             .unwrap_or("main.js");
 
         // Broadcast to all isolates (sequential — keeps things simple for v1).
