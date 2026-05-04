@@ -28,7 +28,10 @@ pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
 pub(crate) mod call_render;
-use self::call_render::{call_render, collect_heap_stats};
+use self::call_render::call_render;
+
+pub(crate) mod heap_stats;
+use self::heap_stats::collect_heap_stats;
 
 pub(crate) mod render_stream;
 

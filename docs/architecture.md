@@ -46,7 +46,8 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 |------|---------|
 | `src/lib.rs` | magnus entrypoint — registers methods on `SSR::Deno`, owns `POOL: OnceLock<IsolatePool>` and `CONFIG: Mutex<Config>` with double-checked locking |
 | `src/deno_runtime_wrapper/mod.rs` | `SSRDenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
-| `src/deno_runtime_wrapper/call_render.rs` | `call_render` — V8 scope chain, sync/async render dispatch, promise polling. `collect_heap_stats` |
+| `src/deno_runtime_wrapper/call_render.rs` | `call_render` — V8 scope chain, sync/async render dispatch, promise polling |
+| `src/deno_runtime_wrapper/heap_stats.rs` | `collect_heap_stats` — V8 heap statistics serialization |
 | `src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` (Phase 1 — event-loop, final result), `render_streaming_chunked` (Phase 2 — poll-based, yields chunks via `mpsc`), `drain_chunks`, `op_ssr_push_chunk` |
 | `src/sys.rs` | `Sys` type implementing `BaseFsCanonicalize`, `BaseFsMetadata`, `BaseFsRead`, `FsOpen`, `EnvCurrentDir`, etc. for `ExtNodeSys` and `WhichSys` |
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
@@ -232,7 +233,8 @@ ext/ssr_deno/                                         # Rust native extension
     ├── lib.rs                                        # magnus init, CONFIG, POOL
     ├── deno_runtime_wrapper/
     │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
-    │   ├── call_render.rs                            # call_render, heap_stats
+    │   ├── call_render.rs                            # call_render (sync + async dispatch)
+    │   ├── heap_stats.rs                             # collect_heap_stats, HeapStats struct
     │   └── render_stream.rs                          # streaming render (Phase 1 & 2), drain_chunks
     ├── sys.rs                                        # Sys type for Deno traits
     ├── nop_types.rs                                  # NOP implementations
