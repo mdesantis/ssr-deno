@@ -48,7 +48,8 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | `src/deno_runtime_wrapper/mod.rs` | `SSRDenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
 | `src/deno_runtime_wrapper/call_render.rs` | `call_render` — V8 scope chain, sync/async render dispatch, promise polling |
 | `src/deno_runtime_wrapper/heap_stats.rs` | `collect_heap_stats` — V8 heap statistics serialization |
-| `src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` (Phase 1 — event-loop, final result), `render_streaming_chunked` (Phase 2 — poll-based, yields chunks via `mpsc`), `drain_chunks`, `op_ssr_push_chunk` |
+| `src/deno_runtime_wrapper/render_stream.rs` | `render_streaming` (Phase 1 — event-loop, final result), `poll_stream_state`, `op_ssr_push_chunk` |
+| `src/deno_runtime_wrapper/render_stream_chunked.rs` | `render_streaming_chunked` (Phase 2 — poll-based, yields chunks via `mpsc`), `drain_chunks` |
 | `src/sys.rs` | `Sys` type implementing `BaseFsCanonicalize`, `BaseFsMetadata`, `BaseFsRead`, `FsOpen`, `EnvCurrentDir`, etc. for `ExtNodeSys` and `WhichSys` |
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
@@ -235,7 +236,8 @@ ext/ssr_deno/                                         # Rust native extension
     │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
     │   ├── call_render.rs                            # call_render (sync + async dispatch)
     │   ├── heap_stats.rs                             # collect_heap_stats, HeapStats struct
-    │   └── render_stream.rs                          # streaming render (Phase 1 & 2), drain_chunks
+    │   ├── render_stream.rs                          # Phase 1 streaming, poll_stream_state
+    │   └── render_stream_chunked.rs                  # Phase 2 chunked streaming, drain_chunks
     ├── sys.rs                                        # Sys type for Deno traits
     ├── nop_types.rs                                  # NOP implementations
     ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme

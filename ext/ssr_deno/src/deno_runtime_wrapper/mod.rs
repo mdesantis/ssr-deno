@@ -35,6 +35,8 @@ use self::heap_stats::collect_heap_stats;
 
 pub(crate) mod render_stream;
 
+pub(crate) mod render_stream_chunked;
+
 // ---------------------------------------------------------------------------
 // Script name interning — avoids unbounded `Box::leak` on bundle reloads
 // ---------------------------------------------------------------------------
@@ -503,7 +505,7 @@ fn worker_thread_main(
                     chunk_tx,
                     reply,
                 } => {
-                    let result = render_stream::render_streaming_chunked(
+                    let result = render_stream_chunked::render_streaming_chunked(
                         &mut worker, &bundle_id, &args_json,
                         render_timeout_ms, chunk_tx, &oom_triggered,
                     ).await;
