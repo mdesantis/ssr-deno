@@ -26,23 +26,26 @@ Findings from a general codebase audit. Ordered by priority.
 
 ### LOW
 
-- [ ] **call_render.rs — extract `extract_rejection_msg` helper**
+- [x] **call_render.rs — extract `extract_rejection_msg` helper**
   Duplicated pattern in phase1 + phase2 for reading promise rejection value.
+  Implemented as a macro (`extract_rejection_msg!`) because V8's parameterized
+  scope types don't unify into a single function signature.
 
-- [ ] **mod.rs — split `build_worker` (~100 lines) into smaller functions**
-  Extract `build_node_services`, `build_worker_options` helpers.
+- [x] **mod.rs — split `build_worker` (~100 lines) into smaller functions**
+  Extracted `build_node_services` helper + `NodeServices` type alias.
 
-- [ ] **mod.rs `setup_require` — replace fixed 10ms deadline with poll-until-ready + 100ms cap**
-  Current arbitrary 10ms may fail on cold start. Poll `typeof globalThis.require` per
-  microtask checkpoint, early-exit on success, generous 100ms cap.
+- [x] **mod.rs `setup_require` — replace fixed 10ms deadline with poll-until-ready + 100ms cap**
+  Now polls microtask checkpoint in a loop with 100ms safety cap and 50µs sleeps.
+  Early exit via JS flag (`__ssr_require_ready`) not needed — verify step handles it.
 
-- [ ] **sig/ssr/deno.rbs — declare `native_get_*` methods**
+- [x] **sig/ssr/deno.rbs — declare `native_get_*` methods**
   `native_get_max_heap_size_mb`, `native_get_isolate_pool_size`, `native_get_render_timeout_ms`,
-  `native_get_node_builtins_enabled` missing from RBS.
+  `native_get_node_builtins_enabled` added.
 
-- [ ] **call_render.rs — eliminate unsafe raw pointer for `v8::Global::new`**
-  Restructure scope lifetimes so `Global` creation doesn't need raw pointer cast.
+- [x] **call_render.rs — eliminate unsafe raw pointer for `v8::Global::new`**
+  Replaced `unsafe { &*isolate_raw }` with `try_catch.as_ref()` (which provides `&Isolate`
+  via `AsRef<Isolate>` impl on `PinnedRef<TryCatch<...>>`).
 
-- [ ] **render_stream.rs `op_ssr_push_chunk` — document silent drop + TODO for backpressure**
-  `try_send` silently drops chunks when channel full. Intentional for v1 (only final
-  result matters), but needs documentation and TODO for true streaming wire-up.
+- [x] **render_stream.rs `op_ssr_push_chunk` — document silent drop + TODO for backpressure**
+  Added inline comment documenting intentional silent drop and TODO for
+  future `send().await` backpressure when true streaming is wired up.

@@ -16,6 +16,9 @@ use super::DenoError;
 #[op2(fast)]
 pub fn op_ssr_push_chunk(#[string] chunk: String, state: &mut OpState) -> Result<(), CoreError> {
     let tx = state.borrow::<mpsc::Sender<String>>();
+    // TODO: When true streaming (chunked HTTP response) is wired up, replace
+    // try_send with send().await for backpressure. Currently chunks are unused
+    // — only the final __ssr_stream_result matters. Silent drop is intentional.
     let _ = tx.try_send(chunk);
     Ok(())
 }

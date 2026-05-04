@@ -6,6 +6,32 @@ use std::time::{Duration, Instant};
 use super::DenoError;
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Extracts a human-readable error message from a rejected Promise's result value.
+/// Handles string rejections, object rejections (JSON-serialized), and other types.
+///
+/// This is a macro rather than a function because V8's scope types are
+/// parameterized differently (TryCatch vs ContextScope) and the API functions
+/// (`to_rust_string_lossy`, `v8::json::stringify`) accept `&PinScope` via blanket
+/// Deref impls that don't unify into a single function signature easily.
+macro_rules! extract_rejection_msg {
+    ($scope:expr, $rejection:expr) => {{
+        let rejection = $rejection;
+        if rejection.is_string() {
+            rejection.to_rust_string_lossy(&$scope)
+        } else if rejection.is_object() {
+            v8::json::stringify(&$scope, rejection)
+                .map(|s| s.to_rust_string_lossy(&$scope))
+                .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
+        } else {
+            "Promise rejected".to_string()
+        }
+    }};
+}
+
+// ---------------------------------------------------------------------------
 // call_render (sync + async) — orchestration
 // ---------------------------------------------------------------------------
 
@@ -26,8 +52,6 @@ fn phase1_lookup_and_call(
     args_json: &str,
     oom_triggered: &AtomicBool,
 ) -> Result<Phase1Outcome, DenoError> {
-    let isolate_raw: *const v8::Isolate = &**isolate as *const v8::Isolate;
-
     let result = {
         let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.as_mut().init();
@@ -103,19 +127,11 @@ fn phase1_lookup_and_call(
                             "JS heap out of memory — the isolate reached its configured heap limit".into(),
                         ));
                     }
-                    let msg = if rejection.is_string() {
-                        rejection.to_rust_string_lossy(&try_catch)
-                    } else if rejection.is_object() {
-                        v8::json::stringify(&try_catch, rejection)
-                            .map(|s| s.to_rust_string_lossy(&try_catch))
-                            .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
-                    } else {
-                        "Promise rejected".to_string()
-                    };
+                    let msg = extract_rejection_msg!(try_catch, rejection);
                     return Err(DenoError::Render(msg));
                 }
                 v8::PromiseState::Pending => {
-                    let global_promise = v8::Global::new(unsafe { &*isolate_raw }, promise);
+                    let global_promise = v8::Global::new(try_catch.as_ref(), promise);
                     Ok(Phase1Outcome::Pending { promise: global_promise })
                 }
             }
@@ -198,15 +214,7 @@ fn phase2_poll_and_resolve(
                     "JS heap out of memory — the isolate reached its configured heap limit".into(),
                 ));
             }
-            let msg = if rejection.is_string() {
-                rejection.to_rust_string_lossy(&mut context_scope)
-            } else if rejection.is_object() {
-                v8::json::stringify(&mut context_scope, rejection)
-                    .map(|s| s.to_rust_string_lossy(&mut context_scope))
-                    .unwrap_or_else(|| "Promise rejected (non-serializable value)".to_string())
-            } else {
-                "Promise rejected".to_string()
-            };
+            let msg = extract_rejection_msg!(context_scope, rejection);
             Err(DenoError::Render(msg))
         }
         v8::PromiseState::Pending => unreachable!("timeout checked before scope chain re-entry"),

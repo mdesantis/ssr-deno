@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
+use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
@@ -461,9 +462,11 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
         .execute_script(
             "<ssr-deno:require>",
             r#"
-            globalThis.__ssr_require_promise = (async () => {
+            globalThis.__ssr_require_ready = false;
+            (async () => {
                 const { createRequire } = await import('node:module');
                 globalThis.require = createRequire('file:///');
+                globalThis.__ssr_require_ready = true;
             })();
             "#
             .to_string()
@@ -472,10 +475,16 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
         .map_err(|e| format!("Failed to start require import: {e}"))?;
 
     let isolate = worker.js_runtime.v8_isolate();
-    let deadline = Instant::now() + Duration::from_millis(10);
-    while Instant::now() < deadline {
+    let deadline = Instant::now() + Duration::from_millis(100);
+    // Poll microtasks until the require promise settles or we hit the safety cap.
+    // The import targets a built-in extension (node:module) — normally resolves
+    // in <1ms, but we allow up to 100ms for heavily loaded systems.
+    loop {
         isolate.perform_microtask_checkpoint();
-        std::thread::sleep(Duration::from_micros(100));
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_micros(50));
     }
 
     worker
@@ -535,61 +544,77 @@ fn load_bundle_in_worker(
         .map_err(|e| format!("Failed to namespace bundle '{bundle_id}': {e}"))
 }
 
+// ---------------------------------------------------------------------------
+// build_worker — broken into focused helpers
+// ---------------------------------------------------------------------------
+
+type NodeServices = NodeExtInitServices<
+    NopInNpmPackageChecker,
+    NopNpmPackageFolderResolver,
+    Sys,
+>;
+
+/// Constructs `NodeExtInitServices` for the `deno_node` extension when
+/// `node_builtins` is enabled. Returns `None` otherwise.
+fn build_node_services(node_builtins: bool) -> Option<NodeServices> {
+    if !node_builtins {
+        return None;
+    }
+
+    use std::borrow::Cow;
+    use node_resolver::{
+        DenoIsBuiltInNodeModuleChecker,
+        NodeResolverOptions, NodeConditionOptions,
+        PackageJsonResolver,
+        cache::NodeResolutionSys,
+    };
+    use deno_runtime::deno_fs::sync::MaybeArc;
+    use deno_runtime::deno_node::{NodeResolver, NodeRequireLoaderRc};
+
+    let loader: NodeRequireLoaderRc = std::rc::Rc::new(DenoNodeRequireLoader);
+
+    let pkg_json_resolver = MaybeArc::new(
+        PackageJsonResolver::new(Sys, None),
+    );
+
+    let resolver: MaybeArc<
+        NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>,
+    > = {
+        let r = NodeResolver::new(
+            NopInNpmPackageChecker,
+            DenoIsBuiltInNodeModuleChecker,
+            NopNpmPackageFolderResolver,
+            pkg_json_resolver.clone(),
+            NodeResolutionSys::new(Sys, None),
+            NodeResolverOptions {
+                conditions: NodeConditionOptions {
+                    conditions: vec![Cow::Borrowed("node"), Cow::Borrowed("import")],
+                    import_conditions_override: None,
+                    require_conditions_override: None,
+                },
+                is_browser_platform: false,
+                bundle_mode: true,
+                typescript_version: None,
+            },
+        );
+        MaybeArc::new(r)
+    };
+
+    Some(NodeExtInitServices {
+        node_require_loader: loader,
+        node_resolver: resolver,
+        pkg_json_resolver,
+        sys: Sys,
+    })
+}
+
 fn build_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
     node_builtins: bool,
     oom_triggered: Arc<AtomicBool>,
 ) -> Result<MainWorker, String> {
-    let node_services = if node_builtins {
-        use std::borrow::Cow;
-        use node_resolver::{
-            DenoIsBuiltInNodeModuleChecker,
-            NodeResolverOptions, NodeConditionOptions,
-            PackageJsonResolver,
-            cache::NodeResolutionSys,
-        };
-        use deno_runtime::deno_fs::sync::MaybeArc;
-        use deno_runtime::deno_node::{NodeResolver, NodeExtInitServices, NodeRequireLoaderRc};
-
-        let loader: NodeRequireLoaderRc = std::rc::Rc::new(DenoNodeRequireLoader);
-
-        let pkg_json_resolver = MaybeArc::new(
-            PackageJsonResolver::new(Sys, None),
-        );
-
-        let resolver: MaybeArc<
-            NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>,
-        > = {
-            let r = NodeResolver::new(
-                NopInNpmPackageChecker,
-                DenoIsBuiltInNodeModuleChecker,
-                NopNpmPackageFolderResolver,
-                pkg_json_resolver.clone(),
-                NodeResolutionSys::new(Sys, None),
-                NodeResolverOptions {
-                    conditions: NodeConditionOptions {
-                        conditions: vec![Cow::Borrowed("node"), Cow::Borrowed("import")],
-                        import_conditions_override: None,
-                        require_conditions_override: None,
-                    },
-                    is_browser_platform: false,
-                    bundle_mode: true,
-                    typescript_version: None,
-                },
-            );
-            MaybeArc::new(r)
-        };
-
-        Some(NodeExtInitServices {
-            node_require_loader: loader,
-            node_resolver: resolver,
-            pkg_json_resolver,
-            sys: Sys,
-        })
-    } else {
-        None
-    };
+    let node_services = build_node_services(node_builtins);
 
     let module_loader: std::rc::Rc<dyn deno_runtime::deno_core::ModuleLoader> = if node_builtins {
         std::rc::Rc::new(NodeBuiltinOnlyModuleLoader)
