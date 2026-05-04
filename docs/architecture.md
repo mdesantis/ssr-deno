@@ -240,9 +240,9 @@ sig/ssr/deno.rbs                                      # RBS type signatures
 
 test/
 ├── test_helper.rb                                    # SimpleCov, pool config
-├── ssr/test_deno*.rb                                 # Unit tests (Bundle, errors, etc.)
-├── ssr/test_integration_samples.rb                   # Integration tests (all samples)
-└── ssr/test_integration_node_builtins.rb             # node_builtins integration test
+├── ssr/*_test.rb                                     # Unit tests (Bundle, errors, etc.)
+├── ssr/integration_samples_test.rb                   # Integration tests (all samples)
+└── ssr/integration_node_builtins_test.rb             # node_builtins integration test
 
 rakelib/
 ├── cargo.rake                                        # cargo:test

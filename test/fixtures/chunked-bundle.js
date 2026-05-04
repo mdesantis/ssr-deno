@@ -1,5 +1,5 @@
 // Chunked bundle that pushes HTML chunks via __ssr_push_chunk.
-// Used by test_deno_render_chunks.rb to verify chunked delivery.
+// Used by deno_render_chunks_test.rb to verify chunked delivery.
 globalThis.render = function(data) {
   var parsed = typeof data === 'string' ? JSON.parse(data) : data;
   var name = (parsed.data && parsed.data.name) || 'world';

@@ -3,7 +3,7 @@
 require 'test_helper'
 
 # Tests that require Node built-in support (stream, buffer, events, etc.)
-# must go in test/ssr/test_integration_node_builtins.rb instead,
+# must go in test/ssr/integration_node_builtins_test.rb instead,
 # which runs with SSR::Deno.node_builtins_enabled = true.
 # Example: TestIntegrationReactMuiDashboardSSR (vite-react-emotion-mui-dashboard-ssr-app)
 module SSR

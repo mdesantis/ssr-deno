@@ -21,14 +21,11 @@ tmp = File.join(root, 'tmp')
 
 desc 'Run tests without Node.js builtin support (default config)'
 task 'test:main' do
-  files = Dir.glob(File.join(test_dir, '**', 'test_*.rb'))
-             # *_test.rb glob: Minitest convention, currently unused
-             .concat(Dir.glob(File.join(test_dir, '**', '*_test.rb')))
-             .reject { |f| f.include?('test_integration_node_builtins') }
-             .reject { |f| f.include?('test_deno_async_render') }
-             .reject { |f| f.include?('test_deno_setters') }
-             .reject { |f| f.include?('test_deno_env_config') }
-             .reject { |f| f.include?('test_helper') }
+  files = Dir.glob(File.join(test_dir, '**', '*_test.rb'))
+             .reject { |f| f.include?('integration_node_builtins_test') }
+             .reject { |f| f.include?('deno_async_render_test') }
+             .reject { |f| f.include?('deno_setters_test') }
+             .reject { |f| f.include?('deno_env_config_test') }
   runner = <<~RUBY
     require '#{helper}'
     SSR::Deno.isolate_pool_size = 1
@@ -40,7 +37,7 @@ end
 
 desc 'Run tests that require Node.js builtin support (node_builtins_enabled)'
 task 'test:node_builtins' do
-  node_test = File.join(test_dir, 'ssr', 'test_integration_node_builtins.rb')
+  node_test = File.join(test_dir, 'ssr', 'integration_node_builtins_test.rb')
   runner = <<~RUBY
     require '#{helper}'
     SSR::Deno.isolate_pool_size = 1
@@ -56,7 +53,7 @@ end
 
 desc 'Run setter API tests (must run before pool init)'
 task 'test:setters' do
-  setter_test = File.join(test_dir, 'ssr', 'test_deno_setters.rb')
+  setter_test = File.join(test_dir, 'ssr', 'deno_setters_test.rb')
   runner = <<~RUBY
     require '#{helper}'
     SSR::Deno.max_heap_size_mb = 128
@@ -72,7 +69,7 @@ end
 
 desc 'Run async render tests with short timeout (render_timeout_ms=100)'
 task 'test:async' do
-  async_test = File.join(test_dir, 'ssr', 'test_deno_async_render.rb')
+  async_test = File.join(test_dir, 'ssr', 'deno_async_render_test.rb')
   runner = <<~RUBY
     require '#{helper}'
     SSR::Deno.isolate_pool_size = 1
@@ -87,7 +84,7 @@ end
 
 desc 'Run env var config tests'
 task 'test:env_config' do
-  env_config_test = File.join(test_dir, 'ssr', 'test_deno_env_config.rb')
+  env_config_test = File.join(test_dir, 'ssr', 'deno_env_config_test.rb')
   runner = <<~RUBY
     require '#{helper}'
     require '#{env_config_test}'

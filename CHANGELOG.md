@@ -61,7 +61,7 @@
 - `SSR::Deno.node_builtins_enabled=` config option (default: `false`) — enables Node.js built-in module support for bundles that call `require()` for `stream`, `buffer`, `events`, etc. Required for `@emotion/server` and similar packages. Adds ~50ms to worker init. Disabled by default.
 - `AGENTS.md` renamed from `CLAUDE.md` (OpenCode canonical name).
 - Refactored `Rakefile` — task namespaces extracted to `rakelib/` (`cargo.rake`, `samples.rake`, `test.rake`).
-- Renamed `test_integration_vite_ssr.rb` to `test_integration_samples.rb`.
+- Renamed `test_integration_vite_ssr.rb` to `integration_samples_test.rb`.
 - Split test suite: `test:main` (52 tests, no node_builtins) and `test:node_builtins` (1 test, node_builtins enabled). Merged coverage validated at 100%.
 - `/.opencode/` added to `.gitignore`.
 - Rails config: `node_builtins_enabled` option added to generator template.
