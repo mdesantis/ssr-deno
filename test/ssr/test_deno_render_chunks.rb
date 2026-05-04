@@ -76,7 +76,41 @@ module SSR
       assert_includes chunks[1], 'reload'
     end
 
+    def test_render_chunks_after_consumer_disconnect
+      bundle = with_dual_mode_bundle(count: 20)
+
+      count = 0
+      bundle.render_chunks({}) do |_chunk|
+        count += 1
+        break if count >= 3
+      end
+
+      result = bundle.render({})
+
+      assert_includes result, '<done>'
+    end
+
     private
+
+    def with_dual_mode_bundle(count:)
+      dir = Dir.mktmpdir
+      path = File.join(dir, 'dual-mode-bundle.js')
+      File.write(path, <<~JS)
+        globalThis.render = function() {
+          return new Promise(function(resolve) {
+            setTimeout(function() {
+              if (typeof globalThis.__ssr_push_chunk === 'function') {
+                for (var i = 0; i < #{count}; i++) {
+                  globalThis.__ssr_push_chunk('<chunk>' + i + '</chunk>');
+                }
+              }
+              resolve('<done></done>');
+            }, 10);
+          });
+        };
+      JS
+      SSR::Deno::Bundle.new(path)
+    end
 
     def with_reject_bundle
       dir = Dir.mktmpdir

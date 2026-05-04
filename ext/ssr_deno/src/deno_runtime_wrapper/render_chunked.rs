@@ -195,8 +195,12 @@ async fn drain_chunks(worker: &mut MainWorker, chunk_tx: &mpsc::Sender<String>) 
     // Parse the JSON array of chunk strings.
     if let Ok(chunks) = serde_json::from_str::<Vec<String>>(&json_str) {
         for chunk in chunks {
-            // send().await: cannot use blocking_send inside async context.
-            let _ = chunk_tx.send(chunk).await;
+            if chunk_tx.send(chunk).await.is_err() {
+                // Consumer disconnected (Ruby block raised or was interrupted).
+                // Stop sending — the render promise will settle normally and
+                // completion/error is communicated via reply_rx in lib.rs.
+                break;
+            }
         }
     }
 }
