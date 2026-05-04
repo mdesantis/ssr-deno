@@ -119,6 +119,6 @@ Already covered by existing tests. Not adding a new one.
 
 ## Verification
 
-- [ ] Implement the fix
-- [ ] `bundle exec rake` — must exit 0
-- [ ] Verify `test_render_after_failed_render_still_works` passes
+- [x] Implement the fix
+- [x] `bundle exec rake` — must exit 0
+- [x] Verify `test_render_after_failed_execute_script` passes

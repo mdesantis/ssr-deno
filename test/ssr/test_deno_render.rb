@@ -54,6 +54,22 @@ module SSR
       assert_includes result, '<h1>recovery</h1>'
     end
 
+    def test_render_with_corrupted_sentinel
+      dir = Dir.mktmpdir
+      path = File.join(dir, 'corrupt-sentinel.js')
+      File.write(path, <<~JS)
+        globalThis.render = function() {
+          globalThis.__SSR_DENO_SENTINEL = 42;
+          return '<html/>';
+        };
+      JS
+      bundle = SSR::Deno::Bundle.new(path)
+
+      result = bundle.render({})
+
+      assert_includes result, '<html/>'
+    end
+
     private
 
     def with_reject_bundle
