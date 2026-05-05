@@ -17,7 +17,7 @@ module SSR
       # max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
       # total process budget. Each isolate independently gets this limit,
       # regardless of pool size. This ensures workloads calibrated for a
-      # single isolate don't break when the pool auto-detects more cores.
+      # single isolate don't break when the pool size is increased.
       #
       # Default: 64 MB — sensible for typical SSR workloads (~20 MB baseline +
       # bundle + render peak + headroom). Set to 0 for unlimited (V8 built-in
