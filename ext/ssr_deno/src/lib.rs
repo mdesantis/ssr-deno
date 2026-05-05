@@ -166,6 +166,8 @@ fn native_get_node_builtins_enabled() -> bool {
 //   POOL_INIT_LOCK prevents duplicate pool creation during the init window.
 // ---------------------------------------------------------------------------
 
+// Note: get_or_try_init (https://github.com/rust-lang/rust/issues/109737) is still unstable in Rust 1.95.
+// The manual double-check pattern below is the correct approach.
 fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     if let Some(p) = POOL.get() {
         return Ok(p);
