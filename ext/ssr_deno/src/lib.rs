@@ -160,12 +160,12 @@ fn native_get_node_builtins_enabled() -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Pool initialization (OnceLock + init mutex)
 //   OnceLock provides lock-free reads after init.
 //   POOL_INIT_LOCK prevents duplicate pool creation during the init window.
 // ---------------------------------------------------------------------------
 
-// TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
 fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     if let Some(p) = POOL.get() {
         return Ok(p);

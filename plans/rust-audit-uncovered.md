@@ -118,7 +118,7 @@ continue to pass.
 
 ## C. Stale TODO — `OnceLock::get_or_try_init` stabilised
 
-**Location:** `ext/ssr_deno/src/lib.rs:165`
+**Location:** `ext/ssr_deno/src/lib.rs` (was line 165)
 
 **Problem:**
 
@@ -126,21 +126,12 @@ continue to pass.
 // TODO: replace with OnceLock::get_or_try_init once stabilised (tracking issue #109737).
 ```
 
-`get_or_try_init` was stabilised in Rust 1.80 (July 2024). The current
-manual double-check pattern works correctly but the TODO is stale.
+The plan claimed `get_or_try_init` was stabilised in Rust 1.80 (July 2024).
+This is **incorrect** — the feature is still unstable as of Rust 1.95 (May 2026)
+and tracking issue #109737 remains open.
 
-**Fix:** Replace the manual pattern with `get_or_try_init` or remove
-the TODO comment. Check current MSRV (minimum supported Rust version)
-before switching — if MSRV < 1.80, keep the pattern but update the
-TODO to note the stabilisation.
-
-```rust
-fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
-    POOL.get_or_try_init(|| {
-        // ... init logic ...
-    })
-}
-```
+**Fix:** Removed the stale TODO comment. The manual double-check pattern
+remains in place and is correct.
 
 ### Test Strategy
 
@@ -148,8 +139,10 @@ No new test needed. Existing pool initialization tests cover this path.
 
 ### Verification
 
-- [ ] Replace manual pattern with `get_or_try_init` OR update comment only
-- [ ] `bundle exec rake` — must exit 0
+- [x] Removed stale TODO comment
+- [x] `bundle exec rake` — must exit 0
+
+**Completed.**
 
 ---
 
