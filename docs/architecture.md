@@ -13,13 +13,13 @@ flowchart TB
     end
     Dist -->|loaded by| RubyProcess
     subgraph RubyProcess["Ruby Process"]
-        RubyApp["Ruby App"] --> Bundle["Bundle.new(path).render(data)"]
-        Bundle --> NativeExt["Ruby Native Extension (magnus)"]
+        RubyApp["Ruby App"] --> SSRBundle["SSR::Deno::Bundle.new(path).render(data)"]
+        SSRBundle --> NativeExt["Ruby Native Extension (magnus)"]
         NativeExt -->|JSON bridge| Pool["IsolatePool<br/>(up to 8 isolates, round-robin)"]
         Pool --> Isolate["V8 Isolate<br/>deno_runtime::MainWorker<br/>globalThis.render()<br/>HTML string out"]
         Isolate --> NativeExt
-        NativeExt --> Bundle
-        Bundle --> RubyApp
+        NativeExt --> SSRBundle
+        SSRBundle --> RubyApp
     end
 ```
 
@@ -32,7 +32,7 @@ flowchart TB
 | File | Purpose |
 |------|---------|
 | `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
-| `lib/ssr/deno/bundle.rb` | `Bundle.new(path)` → loads bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator` |
+| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator` |
 | `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |
 | `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev |
@@ -60,7 +60,7 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 ```mermaid
 flowchart LR
     subgraph RubyThread["Ruby Thread"]
-        Bundle["bundle.render(data)"] --> Pick["round-robin pick"]
+        SSRBundle["SSR::Deno::Bundle#render(data)"] --> Pick["round-robin pick"]
     end
     Pick --> H1["IsolateHandle 0"]
     Pick --> H2["IsolateHandle 1"]

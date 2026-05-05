@@ -66,12 +66,12 @@ size defaults to `1`. Multiple isolates only benefit Ractor-based concurrency
 (thread-based Rails apps see no throughput gain due to GVL serialization).
 
 ```ruby
-bundle.auto_reload = true  # Reload bundle from disk when file mtime changes
+bundle.auto_reload = true  # Reload SSR bundle from disk when file mtime changes
 ```
 
 ### Node.js builtins
 
-Enable when your bundle or its dependencies call `require()` for `stream`,
+Enable when your SSR bundle or its dependencies call `require()` for `stream`,
 `buffer`, `events`, etc. (e.g. `@emotion/server`). Adds ~50ms to worker init.
 Must be set before pool init.
 
@@ -92,9 +92,9 @@ See [`docs/compatibility.md`](docs/compatibility.md) for detailed tables of:
 
 - **Framework support** — which SSR frameworks and APIs work (React, Vue, Svelte, etc.)
 - **JS API compatibility** — which standard, Web, and Node.js builtins are available
-- **Known limitations** — macrotask starvation, bundle footprint, heap limits, OOM behavior
+- **Known limitations** — macrotask starvation, SSR bundle footprint, heap limits, OOM behavior
 
-## Bundle contract
+## SSR bundle contract
 
 Every SSR bundle must expose `globalThis.render(argsJson)`. It receives a JSON
 string and must return an HTML string (or a Promise — the runtime detects async
