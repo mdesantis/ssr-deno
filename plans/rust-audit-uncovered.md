@@ -109,10 +109,15 @@ Document the opportunity and close.
 No new test needed — behavior is identical. Existing exceptions tests
 continue to pass.
 
+### Verdict
+
+Rejected — negligible hot-path impact (const_get on error path).
+Revisit if profiling shows `deno_exception_class` in a flame graph.
+
 ### Verification
 
-- [ ] Implement caching (macro or OnceLock per class)
-- [ ] `bundle exec rake` — must exit 0
+- [~] Implement caching (macro or OnceLock per class) — rejected
+- [~] `bundle exec rake` — must exit 0
 
 ---
 
