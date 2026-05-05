@@ -2,6 +2,7 @@
 
 require_relative 'bundle/registry'
 require_relative 'instrumenter'
+require_relative 'manifest'
 
 module SSR
   module Deno
@@ -13,11 +14,21 @@ module SSR
       @registry = Registry.new
 
       # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
-      def initialize(bundle_path)
+      # @param manifest_path [String, nil] Path to Vite client manifest
+      #   (.vite/manifest.json). When provided, enables asset discovery
+      #   via the +assets+ method.
+      # @param client_entry [String, nil] Source entry key in the manifest
+      #   (e.g., "src/entry-client.ts"). Required when manifest_path is given.
+      def initialize(bundle_path, manifest_path: nil, client_entry: nil)
         @bundle_path = bundle_path.to_s
         @bundle_id = "#{File.basename(@bundle_path)}##{object_id}"
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
+
+        if manifest_path
+          @manifest = Manifest.new(manifest_path)
+          @client_entry = client_entry || raise(ArgumentError, 'client_entry required when manifest_path is provided')
+        end
 
         instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
           load
@@ -92,6 +103,47 @@ module SSR
         json_input = raw_input ? data : JSON.generate(data)
 
         SSR::Deno.native_render_chunks(@bundle_id, json_input, &)
+      end
+
+      # Returns a hash of all discovered client-side assets when a
+      # Vite manifest is configured. Returns an empty hash otherwise.
+      #
+      # @param prefix [String] URL prefix for asset paths (default: "/")
+      # @return [Hash] Asset info with keys: :css_tags, :client_js_tag, :asset_urls
+      def assets(prefix: '/')
+        return {} unless @manifest
+
+        @manifest.assets(@client_entry, prefix:)
+      end
+
+      # Returns HTML `<link>` tags for all CSS files.
+      #
+      # @param prefix [String] URL prefix (default: "/")
+      # @return [String] HTML `<link>` tags, or empty string if no manifest
+      def css_tags(prefix: '/')
+        return '' unless @manifest
+
+        @manifest.css_tags(@client_entry, prefix:)
+      end
+
+      # Returns the `<script>` tag for the client JS entry point.
+      #
+      # @param prefix [String] URL prefix (default: "/")
+      # @return [String] HTML `<script type="module">` tag, or empty string
+      def client_js_tag(prefix: '/')
+        return '' unless @manifest
+
+        @manifest.client_js_tag(@client_entry, prefix:)
+      end
+
+      # Returns URLs for all static asset files (images, fonts, etc.).
+      #
+      # @param prefix [String] URL prefix (default: "/")
+      # @return [Array<String>] Asset URL paths, or empty array
+      def asset_urls(prefix: '/')
+        return [] unless @manifest
+
+        @manifest.asset_urls(@client_entry, prefix:)
       end
 
       private

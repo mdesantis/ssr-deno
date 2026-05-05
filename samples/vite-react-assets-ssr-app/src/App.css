@@ -1,0 +1,61 @@
+.app {
+  font-family: system-ui, -apple-system, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.app-header {
+  text-align: center;
+  padding: 2rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.app-logo {
+  width: 80px;
+  height: 80px;
+}
+
+.app-title {
+  color: #333;
+  margin: 1rem 0;
+}
+
+.app-main {
+  padding: 2rem 0;
+}
+
+.asset-demo {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.asset-demo ul {
+  list-style: none;
+  padding: 0;
+}
+
+.asset-demo li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.asset-demo li:last-child {
+  border-bottom: none;
+}
+
+.asset-demo code {
+  background: #e9ecef;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.app-footer {
+  text-align: center;
+  padding: 2rem 0;
+  border-top: 1px solid #eee;
+  color: #666;
+}

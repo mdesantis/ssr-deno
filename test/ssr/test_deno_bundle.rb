@@ -105,4 +105,74 @@ module SSR
       assert_equal 'yielded', result
     end
   end
+
+  class TestDenoBundleWithManifest < Minitest::Test
+    include TestFixturePaths
+
+    MANIFEST_PATH = File.join(FIXTURES_DIR, 'vite-manifest.json').freeze
+
+    def setup
+      @bundle = SSR::Deno::Bundle.new(
+        MINIMAL_BUNDLE,
+        manifest_path: MANIFEST_PATH,
+        client_entry: 'src/entry-client.ts'
+      )
+    end
+
+    def test_assets_returns_structured_hash
+      result = @bundle.assets
+
+      assert_kind_of Hash, result
+      assert_includes result.keys, :css_tags
+      assert_includes result.keys, :client_js_tag
+      assert_includes result.keys, :asset_urls
+    end
+
+    def test_css_tags_returns_link_elements
+      tags = @bundle.css_tags
+
+      assert_includes tags, '<link rel="stylesheet" href="/assets/index-def456.css">'
+      assert_includes tags, '<link rel="stylesheet" href="/assets/vendor-mno345.css">'
+    end
+
+    def test_css_tags_with_custom_prefix
+      tags = @bundle.css_tags(prefix: 'https://cdn.example.com/')
+
+      assert_includes tags, 'https://cdn.example.com/assets/'
+    end
+
+    def test_client_js_tag_returns_module_script
+      tag = @bundle.client_js_tag
+
+      assert_includes tag, '<script type="module" src="/assets/entry-client-abc123.js">'
+    end
+
+    def test_asset_urls_returns_asset_paths
+      urls = @bundle.asset_urls
+
+      assert_includes urls, '/assets/logo-ghi789.svg'
+      assert_includes urls, '/assets/font-pqr678.woff2'
+    end
+
+    def test_bundle_without_manifest_returns_empty_assets
+      bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
+
+      assert_equal({}, bundle.assets)
+      assert_equal '', bundle.css_tags
+      assert_equal '', bundle.client_js_tag
+      assert_equal [], bundle.asset_urls
+    end
+
+    def test_raises_when_manifest_given_without_client_entry
+      assert_raises(ArgumentError) do
+        SSR::Deno::Bundle.new(MINIMAL_BUNDLE, manifest_path: MANIFEST_PATH)
+      end
+    end
+
+    def test_render_still_works_with_manifest
+      html = @bundle.render({ data: { name: 'WithAssets' } })
+
+      assert_includes html, 'WithAssets'
+    end
+  end
 end

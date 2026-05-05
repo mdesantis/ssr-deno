@@ -1,0 +1,27 @@
+{
+  "src/entry-mixed.ts": {
+    "file": "assets/entry-mixed-abc.js",
+    "css": ["assets/main.css"],
+    "assets": ["assets/logo.svg"],
+    "imports": ["_with-css.js", "_no-css.js", "_no-file.js"]
+  },
+  "_with-css.js": {
+    "file": "assets/with-css.js",
+    "css": ["assets/with-css.css"]
+  },
+  "_no-css.js": {
+    "file": "assets/no-css.js"
+  },
+  "_no-file.js": {
+    "css": ["assets/orphan.css"]
+  },
+  "src/entry-bad-import.ts": {
+    "file": "assets/entry-bad.js",
+    "imports": ["_missing.js"]
+  },
+  "src/entry-bad-asset-import.ts": {
+    "file": "assets/entry-bad-asset.js",
+    "assets": ["assets/real.svg"],
+    "imports": ["_missing-asset.js"]
+  }
+}

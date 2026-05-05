@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Added
+- `SSR::Deno::Manifest` — Vite manifest parser that discovers client-side assets (JS, CSS, static files) from `.vite/manifest.json`. Provides methods for generating `<link>` and `<script>` tags, and collecting asset URLs.
+- `Bundle#initialize` now accepts `manifest_path:` and `client_entry:` keywords. When provided, enables asset discovery via `#assets`, `#css_tags`, `#client_js_tag`, and `#asset_urls` methods.
+- New sample: `samples/vite-react-assets-ssr-app` — React 19 SSR with Vite client + server builds, demonstrating CSS imports, image imports, manifest-based asset injection, and static file serving.
+
 ### Changed
 - **BREAKING:** `isolate_pool_size` default changed from `0` (auto-detect from CPU count) to `1`. Performance benchmarks show that Ruby threads do not benefit from multiple isolates due to GVL serialization — only Ractors achieve true parallelism. Users with Ractor-based concurrency should explicitly set `isolate_pool_size` to match their pool needs.
 ## [0.1.0-alpha.5] - 2026-05-04

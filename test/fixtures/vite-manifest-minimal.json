@@ -1,0 +1,17 @@
+{
+  "src/entry-simple.ts": {
+    "file": "assets/entry-simple-xyz789.js",
+    "src": "src/entry-simple.ts",
+    "isEntry": true
+  },
+  "src/entry-with-imports.ts": {
+    "file": "assets/entry-with-imports-abc123.js",
+    "src": "src/entry-with-imports.ts",
+    "isEntry": true,
+    "css": ["assets/main-def456.css"],
+    "imports": ["_shared-jkl012.js"]
+  },
+  "_shared-jkl012.js": {
+    "file": "assets/_shared-jkl012.js"
+  }
+}

@@ -32,17 +32,48 @@ module SSR
       def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
     end
 
+    class Manifest
+      @manifest_path: String
+      @data: Hash[String, untyped]
+
+      def initialize: (String manifest_path) -> void
+
+      def data: () -> Hash[String, untyped]
+
+      def css_files: (String source) -> Array[String]
+
+      def js_files: (String source) -> Array[String]
+
+      def asset_files: (String source) -> Array[String]
+
+      def css_tags: (String source, ?prefix: String) -> String
+
+      def client_js_tag: (String source, ?prefix: String) -> String
+
+      def all_js_tags: (String source, ?prefix: String) -> String
+
+      def asset_urls: (String source, ?prefix: String) -> Array[String]
+
+      def assets: (String source, ?prefix: String) -> Hash[Symbol, untyped]
+
+      private
+
+      def collect_from_entry: (untyped entry, untyped field) -> Array[untyped]
+    end
+
     class Bundle
       @bundle_path: String
       @bundle_id: String
       @mtime: Time
       @auto_reload: bool
+      @manifest: Manifest?
+      @client_entry: String?
 
       self.@registry: Registry
 
       def self.registry: () -> Registry
 
-      def initialize: (String bundle_path) -> void
+      def initialize: (String bundle_path, ?manifest_path: String?, ?client_entry: String?) -> void
 
       attr_writer auto_reload: bool
 
@@ -52,6 +83,14 @@ module SSR
 
       def render_chunks: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) -> Enumerator[String, void]
                         | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> nil
+
+      def assets: (?prefix: String) -> Hash[Symbol, untyped]
+
+      def css_tags: (?prefix: String) -> String
+
+      def client_js_tag: (?prefix: String) -> String
+
+      def asset_urls: (?prefix: String) -> Array[String]
 
       private
 
