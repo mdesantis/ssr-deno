@@ -54,7 +54,7 @@ No subprocess, no HTTP bridge. Vite SSR bundles loaded directly into V8 isolates
   - Test files — stale run instructions, wrong file paths in comments
   - Sample files — comments referencing old crate names or APIs
   - Sample directories — when adding/renaming/deleting samples, walk the non-vendor, non-generated parts of the repo with `rg` to catch every stale path reference: `README.md`, `docs/architecture.md`, `CHANGELOG.md`, `rakelib/samples.rake`, `test/ssr/test_*.rb`, `.vscode/settings.json`, `plans/*.md`, and any other file referencing a sample directory by name
-  - `.vscode/settings.json` — add or remove sample paths in `deno.enablePaths`. Skip this for Node.js-only samples (no Deno).
+  - `.vscode/settings.json` — add or remove sample paths in `deno.enablePaths`. Skip this for Node.js-only samples (no Deno). **This file is gitignored but must still be committed** — use `git add -f .vscode/settings.json` when changes are staged.
   Do not consider the changeset complete until this audit passes.
 
 - **When fixing RuboCop offenses, try auto-correct first.** If a RuboCop offense is marked `[Correctable]`, run `bundle exec rubocop -a <file>` (safe auto-correct) or `bundle exec rubocop -A <file>` (all auto-correct) instead of manually editing. Only fix manually if auto-correct fails or is unavailable.
