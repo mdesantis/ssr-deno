@@ -77,7 +77,7 @@ pub(super) fn begin_render(
     let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     let timeout_triggered = Arc::new(AtomicBool::new(false));
     let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone())
-        .map_err(|e| SSRDenoError::Render(e))?;
+        .map_err(SSRDenoError::Render)?;
 
     let exec_result = worker.execute_script(script_name, startup_script.into());
 
@@ -243,16 +243,16 @@ pub(super) fn poll_render_state(worker: &mut MainWorker) -> RenderState {
     let isolate = worker.js_runtime.v8_isolate();
     let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
     let mut scope = scope_storage.as_mut().init();
-    let context_local = v8::Local::new(&mut scope, &context);
-    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+    let context_local = v8::Local::new(&scope, &context);
+    let context_scope = v8::ContextScope::new(&mut scope, context_local);
 
-    let local_val = v8::Local::new(&mut context_scope, &global_val);
+    let local_val = v8::Local::new(&context_scope, &global_val);
 
     if local_val.is_null_or_undefined() {
         return RenderState::Pending;
     }
 
-    let s = local_val.to_rust_string_lossy(&mut context_scope);
+    let s = local_val.to_rust_string_lossy(&context_scope);
 
     if let Some(err_msg) = s.strip_prefix("E:") {
         RenderState::Error(err_msg.to_string())

@@ -22,10 +22,10 @@ impl ModuleLoader for NodeBuiltinOnlyModuleLoader {
     ) -> Result<ModuleSpecifier, JsErrorBox> {
         if specifier.starts_with("node:") {
             return ModuleSpecifier::parse(specifier)
-                .map_err(|e| JsErrorBox::from_err(e));
+                .map_err(JsErrorBox::from_err);
         }
         // Allow relative/absolute resolution (used by polyfill internal imports)
-        resolve_import(specifier, referrer).map_err(|e| JsErrorBox::from_err(e))
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 
     fn load(

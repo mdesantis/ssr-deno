@@ -4,9 +4,9 @@ mod nop_types;
 mod require_loader;
 mod sys;
 
-use deno_runtime_wrapper::{SSRDenoError, IsolatePool};
-use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
+use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
+use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 use std::sync::{Mutex, OnceLock};
 
@@ -66,11 +66,17 @@ fn render_error(msg: impl Into<String>) -> Error {
 }
 
 fn js_runtime_out_of_memory_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exception_class("JsRuntimeOutOfMemoryError"), msg.into())
+    Error::new(
+        deno_exception_class("JsRuntimeOutOfMemoryError"),
+        msg.into(),
+    )
 }
 
 fn heap_stats_serialization_error(msg: impl Into<String>) -> Error {
-    Error::new(deno_exception_class("HeapStatsSerializationError"), msg.into())
+    Error::new(
+        deno_exception_class("HeapStatsSerializationError"),
+        msg.into(),
+    )
 }
 
 fn map_render_error(e: SSRDenoError) -> Error {
@@ -126,10 +132,7 @@ fn native_set_isolate_pool_size(size: usize) -> Result<(), Error> {
 /// Validates that `ms` is within [100, 300000].
 fn native_set_render_timeout_ms(ms: u64) -> Result<(), Error> {
     if let Err(msg) = validate_render_timeout_ms(ms) {
-        return Err(Error::new(
-            Ruby::get().unwrap().exception_arg_error(),
-            msg,
-        ));
+        return Err(Error::new(Ruby::get().unwrap().exception_arg_error(), msg));
     }
     check_not_initialized()?;
     CONFIG.lock().unwrap().render_timeout_ms = ms;
@@ -183,9 +186,13 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     let render_timeout_ms = config.render_timeout_ms;
     let node_builtins = config.node_builtins;
 
-    let pool =
-        IsolatePool::new(pool_size, max_heap_size_mb, render_timeout_ms, node_builtins)
-            .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
+    let pool = IsolatePool::new(
+        pool_size,
+        max_heap_size_mb,
+        render_timeout_ms,
+        node_builtins,
+    )
+    .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
     let _ = POOL.set(pool);
     let _ = INITIALIZED.set(());
     Ok(POOL.get().unwrap())
@@ -228,9 +235,7 @@ fn native_version() -> String {
 
 /// Queries V8 heap statistics from the isolate pool.
 fn native_heap_stats() -> Result<String, Error> {
-    get_pool()?
-        .heap_stats()
-        .map_err(map_render_error)
+    get_pool()?.heap_stats().map_err(map_render_error)
 }
 
 /// Dispatches a chunked render. Yields each HTML chunk to the provided block
@@ -258,14 +263,9 @@ fn native_render_chunks(
         .map_err(map_render_error)?;
 
     // Yield chunks to the block until the channel closes.
-    loop {
-        match chunk_rx.blocking_recv() {
-            Some(chunk) => {
-                // yield_value uses protect internally — safe against block break.
-                let _: Value = ruby.yield_value(ruby.str_new(&chunk))?;
-            }
-            None => break,
-        }
+    while let Some(chunk) = chunk_rx.blocking_recv() {
+        // yield_value uses protect internally — safe against block break.
+        let _: Value = ruby.yield_value(ruby.str_new(&chunk))?;
     }
 
     // Channel closed — check if the render completed successfully or errored.
@@ -323,10 +323,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "native_set_render_timeout_ms",
         function!(native_set_render_timeout_ms, 1),
     )?;
-    deno_module.define_singleton_method(
-        "native_heap_stats",
-        function!(native_heap_stats, 0),
-    )?;
+    deno_module.define_singleton_method("native_heap_stats", function!(native_heap_stats, 0))?;
     deno_module.define_singleton_method(
         "native_set_node_builtins_enabled",
         function!(native_set_node_builtins_enabled, 1),
@@ -347,9 +344,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "native_get_node_builtins_enabled",
         function!(native_get_node_builtins_enabled, 0),
     )?;
-    deno_module.define_singleton_method(
-        "native_render_chunks",
-        method!(native_render_chunks, 2),
-    )?;
+    deno_module
+        .define_singleton_method("native_render_chunks", method!(native_render_chunks, 2))?;
     Ok(())
 }

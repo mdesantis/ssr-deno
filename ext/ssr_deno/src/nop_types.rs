@@ -68,7 +68,8 @@ impl node_resolver::NpmPackageFolderResolver for NopNpmPackageFolderResolver {
                 node_resolver::errors::PackageNotFoundError {
                     package_name: _specifier.to_string(),
                     referrer: node_resolver::UrlOrPath::Url(
-                        deno_runtime::deno_core::url::Url::parse("file:///dev/null").unwrap(),
+                        deno_runtime::deno_core::url::Url::from_file_path("/dev/null")
+                            .expect("Valid file path"),
                     ),
                     referrer_extra: None,
                 },
@@ -136,7 +137,7 @@ impl PermissionDescriptorParser for NopPermissionDescriptorParser {
         text: &str,
     ) -> Result<AllowRunDescriptorParseResult, RunDescriptorParseError> {
         let cwd = std::env::current_dir().map_err(PathResolveError::CwdResolve)?;
-        Ok(AllowRunDescriptor::parse(text, &cwd, &Sys).map_err(RunDescriptorParseError::Which)?)
+        AllowRunDescriptor::parse(text, &cwd, &Sys).map_err(RunDescriptorParseError::Which)
     }
 
     fn parse_deny_run_descriptor(&self, text: &str) -> Result<DenyRunDescriptor, PathResolveError> {

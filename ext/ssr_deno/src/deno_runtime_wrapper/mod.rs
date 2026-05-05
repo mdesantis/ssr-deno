@@ -27,6 +27,12 @@ pub use ssr_deno_core::SSRDenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
 // MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
 
+/// Chunk receiver and completion channel returned by chunked render.
+type ChunkedRenderResult = (
+    tokio::sync::mpsc::Receiver<String>,
+    tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>,
+);
+
 pub(crate) mod heap_stats;
 use self::heap_stats::collect_heap_stats;
 
@@ -43,6 +49,12 @@ pub(crate) mod watchdog;
 /// Cache of leaked script name strings. `MainWorker::execute_script` requires
 /// `&'static str`, so we must leak — but we intern by value so each unique
 /// filename is leaked at most once regardless of how many reloads occur.
+///
+/// In Vite dev mode, content-hashed filenames produce new unique names across
+/// rebuilds, causing unbounded map growth over the session. This is a deliberate
+/// tradeoff: each leaked string is ~100 bytes, and even a thousand rebuilds
+/// costs ~100KB — negligible for a dev session. A bounded LRU cache would add
+/// complexity without meaningful benefit.
 static SCRIPT_NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
 
 /// Returns a `&'static str` for the given script name, reusing a previously
@@ -164,10 +176,7 @@ impl IsolateHandle {
         &self,
         bundle_id: &str,
         args_json: &str,
-    ) -> Result<
-        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
-        SSRDenoError,
-    > {
+    ) -> Result<ChunkedRenderResult, SSRDenoError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Result<(), SSRDenoError>>();
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
 
@@ -270,10 +279,7 @@ impl IsolatePool {
         &self,
         bundle_id: &str,
         args_json: &str,
-    ) -> Result<
-        (tokio::sync::mpsc::Receiver<String>, tokio::sync::oneshot::Receiver<Result<(), SSRDenoError>>),
-        SSRDenoError,
-    > {
+    ) -> Result<ChunkedRenderResult, SSRDenoError> {
         self.next_handle().start_render_chunked(bundle_id, args_json)
     }
 
@@ -492,6 +498,12 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
     // Poll microtasks until the require promise settles or we hit the safety cap.
     // The import targets a built-in extension (node:module) — normally resolves
     // in <1ms, but we allow up to 100ms for heavily loaded systems.
+    //
+    // No active timeout watchdog — a hung import could block the worker forever.
+    // This is acceptable because the import target is a local built-in extension
+    // (not network I/O); if it hangs, the entire V8 isolate is already broken.
+    // See archived plans/require-backoff.md for exponential backoff analysis
+    // (closed: low priority, not worth the churn for exceptional-case safety).
     loop {
         isolate.perform_microtask_checkpoint();
         if Instant::now() >= deadline {

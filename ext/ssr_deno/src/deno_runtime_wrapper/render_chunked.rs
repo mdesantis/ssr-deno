@@ -145,22 +145,25 @@ async fn drain_chunks(worker: &mut MainWorker, chunk_tx: &mpsc::Sender<String>) 
     let isolate = worker.js_runtime.v8_isolate();
     let mut scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
     let mut scope = scope_storage.as_mut().init();
-    let context_local = v8::Local::new(&mut scope, &context);
-    let mut context_scope = v8::ContextScope::new(&mut scope, context_local);
+    let context_local = v8::Local::new(&scope, &context);
+    let context_scope = v8::ContextScope::new(&mut scope, context_local);
 
-    let local_val = v8::Local::new(&mut context_scope, &global_val);
+    let local_val = v8::Local::new(&context_scope, &global_val);
 
     if local_val.is_null_or_undefined() {
         return;
     }
 
-    let json_str = local_val.to_rust_string_lossy(&mut context_scope);
+    let json_str = local_val.to_rust_string_lossy(&context_scope);
 
-    // Drop the scope before sending -- v8 handles can't cross await points.
     drop(context_scope);
-    drop(scope);
 
     // Parse the JSON array of chunk strings.
+    // On error the if-let silently falls through — V8's JSON.stringify cannot
+    // produce invalid JSON for a well-formed array, so this is unreachable in
+    // practice. A corrupt V8 heap is the only theoretical path here, and logging
+    // from within deno_core Ops is impractical. We accept the silent drop rather
+    // than adding error-handling plumbing for an unreachable edge case.
     if let Ok(chunks) = serde_json::from_str::<Vec<String>>(&json_str) {
         for chunk in chunks {
             if chunk_tx.send(chunk).await.is_err() {

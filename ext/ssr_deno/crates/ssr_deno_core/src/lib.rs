@@ -136,7 +136,7 @@ pub fn resolve_pool_size(cfg: Config) -> usize {
             .unwrap_or(2)
             .saturating_sub(1) // leave one core for Ruby
     };
-    std::cmp::max(1, std::cmp::min(raw, MAX_ISOLATES))
+    raw.clamp(1, MAX_ISOLATES)
 }
 
 // ---------------------------------------------------------------------------
