@@ -62,7 +62,6 @@ pub const MAX_ISOLATES: usize = 8;
 #[derive(Clone, Copy)]
 pub struct Config {
     pub max_heap_size_mb: usize,
-    /// 0 = auto-detect from CPU count
     pub isolate_pool_size: usize,
     pub render_timeout_ms: u64,
     /// Enable Node.js built-in module support (stream, buffer, events, etc.).
@@ -73,12 +72,12 @@ pub struct Config {
 }
 
 impl Config {
-    /// Returns the default configuration: 64 MB heap, auto-detect pool size,
+    /// Returns the default configuration: 64 MB heap, 1 isolate pool,
     /// 500ms render timeout, no Node.js builtins.
     pub const fn default() -> Self {
         Self {
             max_heap_size_mb: 64,
-            isolate_pool_size: 0,
+            isolate_pool_size: 1,
             render_timeout_ms: 500,
             node_builtins: false,
         }
@@ -124,19 +123,9 @@ pub fn validate_render_timeout_ms(ms: u64) -> Result<(), String> {
 // Pool size resolution
 // ---------------------------------------------------------------------------
 
-/// Resolves the effective pool size from config.
-/// - `0` (default) → auto-detect from CPU count, capped at `MAX_ISOLATES`
-/// - `> 0`         → as-is, capped at `MAX_ISOLATES`
+/// Resolves the effective pool size from config, clamped to `[1, MAX_ISOLATES]`.
 pub fn resolve_pool_size(cfg: Config) -> usize {
-    let raw = if cfg.isolate_pool_size > 0 {
-        cfg.isolate_pool_size
-    } else {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(2)
-            .saturating_sub(1) // leave one core for Ruby
-    };
-    raw.clamp(1, MAX_ISOLATES)
+    cfg.isolate_pool_size.clamp(1, MAX_ISOLATES)
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +241,7 @@ mod tests {
     #[test]
     fn config_default_pool_size() {
         let cfg = Config::default();
-        assert_eq!(cfg.isolate_pool_size, 0);
+        assert_eq!(cfg.isolate_pool_size, 1);
     }
 
     #[test]
@@ -345,17 +334,9 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pool_size_minimum_is_one() {
+    fn resolve_pool_size_zero_clamps_to_one() {
         let size = resolve_pool_size(make_cfg(0));
-        assert!(size >= 1, "pool size {size} should be >= 1");
-        assert!(size <= MAX_ISOLATES, "pool size {size} should be <= {MAX_ISOLATES}");
-    }
-
-    #[test]
-    fn resolve_pool_size_auto_detect_is_sensible() {
-        let size = resolve_pool_size(make_cfg(0));
-        assert!(size >= 1);
-        assert!(size <= MAX_ISOLATES);
+        assert_eq!(size, 1);
     }
 
     // -----------------------------------------------------------------------

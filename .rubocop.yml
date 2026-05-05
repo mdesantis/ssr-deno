@@ -8,6 +8,7 @@ AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
   Exclude:
+    - 'bench/**/*'
     - 'ext/ssr_deno/target/**/*'
     - 'plans/**/*'
     - 'samples/**/*'

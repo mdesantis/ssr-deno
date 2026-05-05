@@ -31,10 +31,11 @@ module SSR
       # Set the number of V8 isolates in the pool before initializing the runtime.
       # Must be called before any Bundle.new call (triggers pool init).
       #
-      # Default: 0 = auto-detect from CPU count (capped at 8, minus one for
-      # the Ruby thread). A pool of 2–4 is typical for concurrent SSR.
+      # Default: 1. Multiple isolates only benefit Ractor-based concurrency
+      # (bypasses the GVL); thread-based Rails apps see no throughput gain
+      # from larger pools due to GVL serialization.
       #
-      # @param size [Integer] isolate count (0 = auto-detect, min 1, max 8)
+      # @param size [Integer] isolate count (min 1, max 8)
       def isolate_pool_size=(size)
         native_set_isolate_pool_size(size.to_i)
       end

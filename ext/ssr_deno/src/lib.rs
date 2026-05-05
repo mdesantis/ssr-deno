@@ -14,7 +14,7 @@ static POOL: OnceLock<IsolatePool> = OnceLock::new();
 static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
 static INITIALIZED: OnceLock<()> = OnceLock::new();
 
-// Defaults: 64 MB heap, 0 = auto-detect pool size from CPU count.
+// Defaults: 64 MB heap, 1 isolate pool.
 static CONFIG: Mutex<Config> = Mutex::new(Config::default());
 
 /// Returns an error if the runtime has already been initialized.
@@ -181,9 +181,9 @@ fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
     let pool_size = ssr_deno_core::resolve_pool_size(config);
     // max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
     // total budget. Each isolate independently gets the configured limit so
-    // that workloads calibrated for the single-isolate case don't break when
-    // the pool auto-detects more cores. Users with tight memory can reduce
-    // the per-isolate limit explicitly.
+    // that workloads calibrated for a single isolate don't break when the
+    // pool size is increased. Users with tight memory can reduce the per-isolate
+    // limit explicitly.
     let max_heap_size_mb = config.max_heap_size_mb;
     let render_timeout_ms = config.render_timeout_ms;
     let node_builtins = config.node_builtins;

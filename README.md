@@ -40,7 +40,7 @@ Set **before** creating any `Bundle` instance:
 
 ```ruby
 SSR::Deno.max_heap_size_mb = 128   # Per-isolate V8 heap (default: 64 MB)
-SSR::Deno.isolate_pool_size = 4    # V8 isolate count (0 = auto-detect)
+SSR::Deno.isolate_pool_size = 4    # V8 isolate count (default: 1)
 SSR::Deno.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, max 300000)
 SSR::Deno.node_builtins_enabled = true  # Node.js built-in modules (default: false)
 ```
@@ -53,7 +53,7 @@ which act as **defaults** — explicit setter calls override them.
 | Env var | Setting | Type | Default |
 |---|---|---|---|
 | `SSR_DENO_MAX_HEAP_SIZE_MB` | `max_heap_size_mb` | Integer (MB) | 64 |
-| `SSR_DENO_ISOLATE_POOL_SIZE` | `isolate_pool_size` | Integer | 0 (auto) |
+| `SSR_DENO_ISOLATE_POOL_SIZE` | `isolate_pool_size` | Integer | 1 |
 | `SSR_DENO_RENDER_TIMEOUT_MS` | `render_timeout_ms` | Integer (ms) | 500 |
 | `SSR_DENO_NODE_BUILTINS_ENABLED` | `node_builtins_enabled` | Boolean | false |
 
@@ -62,7 +62,8 @@ anything else is treated as false. Invalid integer formats print a warning
 and are skipped. Env vars are read once at `require 'ssr/deno'` time.
 
 The isolate pool distributes renders across V8 isolates in round-robin. Pool
-size defaults to `CPU_cores - 1` (capped at 8), leaving one core for Ruby.
+size defaults to `1`. Multiple isolates only benefit Ractor-based concurrency
+(thread-based Rails apps see no throughput gain due to GVL serialization).
 
 ```ruby
 bundle.auto_reload = true  # Reload bundle from disk when file mtime changes

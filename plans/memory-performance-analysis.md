@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 - **IsolatePool** ([`mod.rs:216`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:216)): owns N `IsolateHandle`s, dispatches renders via round-robin (`next_handle`, [`mod.rs:256`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:256)). Initialized lazily on first [`Bundle.new`](../lib/ssr/deno/bundle.rb:16).
-- **Pool size**: auto-detected from CPU count (minus 1 for Ruby), min 1, max 8 ([`resolve_pool_size`](../ext/ssr_deno/crates/ssr_deno_core/src/lib.rs:130)). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
+- **Pool size**: default `1`, configurable up to `8` ([`resolve_pool_size`](../ext/ssr_deno/crates/ssr_deno_core/src/lib.rs)). Multiple isolates only benefit Ractor-based concurrency. Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
 - **Per-isolate worker** ([`IsolateHandle::spawn`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:106)): dedicated OS thread `deno-worker-{index}` with its own tokio runtime, `LocalSet`, and V8 isolate. No `MainWorker` leaves its thread — no `unsafe` needed.
 - **Per-isolate channel**: `tokio::sync::mpsc::channel(1)` — buffer depth of 1 per handle.
 - **Bundle loading broadcasts** to all isolates ([`IsolatePool::load_bundle`](../ext/ssr_deno/src/deno_runtime_wrapper/mod.rs:284)). Path resolution and code reading are done once; all isolates receive the same `Arc<str>` (zero-copy broadcast).
@@ -119,7 +119,7 @@ Memory grows linearly with pool size:
 
 ### 2.6 Memory Concerns
 
-- **Pool size × everything.** The dominant concern: total memory = `pool_size × (isolate_idle + bundles_compiled)`. The auto-detect default (`CPU-1`) can produce large pools on high-core machines. Override `isolate_pool_size` when memory is tight.
+- **Pool size × everything.** The dominant concern: total memory = `pool_size × (isolate_idle + bundles_compiled)`. Default pool size of `1` keeps memory predictable; increase only for Ractor-based concurrency.
 
 - **No per-request isolation within an isolate.** All renders sharing a given isolate share the same V8 context. A memory-leaking component (accumulating event listeners, growing caches) affects all renders targeting that isolate until V8 GC runs. Other isolates are unaffected.
 
@@ -252,13 +252,13 @@ Ractors provide true parallelism (separate GVL) but hit the same `IsolatePool` b
 - 4 Puma workers, 3 threads each
 - 1 SSR bundle (`:application`), ~50 components + UI library, 25 ms render
 - 50% of requests use SSR, 50% are API/static
-- 4-core machine → `pool_size = 3` (auto-detect: 4−1)
+- `pool_size = 1` (default)
 - Bundle source ~500 KB (React + app + UI lib) → ~8 MB compiled per isolate
 
 | Metric | Per Worker | Total (4 workers) |
 |---|---|---|
-| V8 isolates (3, idle ~20 MB each) | ~60 MB | ~240 MB |
-| Bundle code (3 × 8 MB) | ~24 MB | ~96 MB |
+| V8 isolates (1, idle ~20 MB each) | ~20 MB | ~80 MB |
+| Bundle code (1 × 8 MB) | ~8 MB | ~32 MB |
 | **SSR memory overhead** | **~84 MB** | **~336 MB** |
 | Rails baseline RSS | ~150 MB | ~600 MB |
 | **Total RSS with SSR** | **~234 MB** | **~936 MB** |
@@ -306,7 +306,7 @@ For a more memory-efficient deployment, `pool_size = 2` would give: ~56 MB overh
 | SSR throughput (1 isolate × 25 req/s) | ~25 req/s | ~50 req/s |
 | SSR P95 latency | ~55 ms | ~55 ms |
 
-Same as the single-isolate baseline — a 2-core machine auto-detects `pool_size = 1`.
+Same as the single-isolate baseline — default `pool_size = 1`.
 
 ### 4.4 Cost Comparison: SSR vs CSR
 
@@ -397,7 +397,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 ✅ **V8 heap size limit** — `SSR::Deno.max_heap_size_mb=` (default 64 MB per isolate). Per-isolate `max_old_generation_size_in_bytes` cap.
 
-✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: auto-detect, max 8). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
+✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: 1, max 8). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
 
 ✅ **V8 OOM protection** — `near_heap_limit_callback` + `terminate_execution` prevents fatal SIGTRAP when a user SSR component exceeds `max_heap_size_mb`. OOM raises `SSR::Deno::JsRuntimeOutOfMemoryError` (dedicated exception class, sibling of `RenderError`). See [`plans/archived/v8-oom-protection.md`](archived/v8-oom-protection.md).
 
@@ -413,7 +413,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 ### 6.3 Long Term
 
-- **Pool size tuning guide.** Document recommended `pool_size` based on thread count, memory budget, and expected concurrency. The auto-detect default (`CPU-1`) is aggressive on high-core machines.
+- **Pool size tuning guide.** Document recommended `pool_size` based on Ractor count, memory budget, and expected concurrency. Default `1` is optimal for thread-based Rails; increase only for Ractor-based setups.
 
 - **Per-isolate heap monitoring.** Expose per-isolate heap stats with an isolate index label so operators can detect uneven load or isolate-specific memory leaks.
 
@@ -425,7 +425,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 | Aspect | Verdict |
 |---|---|
-| **Memory overhead** | pool_size × (~20 MB idle + ~3–15 MB per bundle compiled) per Puma worker. Default auto-detect can be aggressive (e.g., ~160 MB idle on 8 core, plus bundle code) — tune `isolate_pool_size` for your budget |
+| **Memory overhead** | pool_size × (~20 MB idle + ~3–15 MB per bundle compiled) per Puma worker. Default pool size of 1 keeps memory predictable (~20 MB idle + bundle code per worker) |
 | **Per-render latency** | ~5–50 ms — competitive with Node.js SSR. Round-robin dispatch adds negligible overhead |
 | **Throughput** | pool_size × 20–200 req/s per worker. Puma threads CAN benefit up to pool_size |
 | **Scaling strategy** | Scale Puma threads up to pool_size for parallelism; scale workers (processes) for linear throughput |

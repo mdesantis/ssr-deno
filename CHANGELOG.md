@@ -1,5 +1,7 @@
 ## Unreleased
 
+### Changed
+- **BREAKING:** `isolate_pool_size` default changed from `0` (auto-detect from CPU count) to `1`. Performance benchmarks show that Ruby threads do not benefit from multiple isolates due to GVL serialization — only Ractors achieve true parallelism. Users with Ractor-based concurrency should explicitly set `isolate_pool_size` to match their pool needs.
 ## [0.1.0-alpha.5] - 2026-05-04
 
 ### Added
