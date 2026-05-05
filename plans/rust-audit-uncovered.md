@@ -3,7 +3,7 @@
 Status: Pending
 
 Items found during the May 2026 audit that were not covered by the
-original [rust-audit-fixes.md](rust-audit-fixes.md) (now Closed) or
+original [rust-audit-fixes.md](archived/rust-audit-fixes.md) (now Closed) or
 its child plans.
 
 ---

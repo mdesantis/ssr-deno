@@ -70,7 +70,7 @@ flowchart LR
     H3 --> W3["deno-worker-N<br/>MainWorker + V8"]
 ```
 
-- Pool size defaults to `CPU_cores - 1` (capped at 8), reserving one core for Ruby.
+- Pool size defaults to `1` isolate (override via `isolate_pool_size` config).
 - Each isolate has its own V8 heap (configured by `max_heap_size_mb`).
 - Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/v8-oom-protection.md`](../plans/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
