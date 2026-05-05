@@ -24,9 +24,10 @@
   "rust-analyzer.linkedProjects": [
     "ext/ssr_deno/Cargo.toml"
   ],
-  // Exclude the rusty_v8 submodule from rust-analyzer analysis to avoid
-  // errors from generated files that don't exist until build time.
-  "rust-analyzer.files.excludeDirs": [
+  "rust-analyzer.files.exclude": [
     "vendor/rusty_v8"
-  ]
+  ],
+  "search.exclude": {
+    "vendor/**/*": true
+  },
 }
