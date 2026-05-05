@@ -253,7 +253,7 @@ impl IsolatePool {
 
     /// Returns the number of live isolates in the pool.
     /// Currently unused externally — will be needed by heap_stats_all
-    /// for per-isolate metrics reporting (see v8-heap-metrics.md).
+    /// for per-isolate metrics reporting (see plans/archived/v8-heap-metrics.md).
     #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.handles.len()
@@ -688,7 +688,7 @@ fn build_worker(
         extensions: vec![
             deno_runtime::deno_core::Extension {
                 name: "ssr_deno_ops",
-                ops: Cow::Owned(vec![render::op_ssr_push_chunk()]),
+                ops: Cow::Owned(vec![]),
                 ..Default::default()
             },
         ],

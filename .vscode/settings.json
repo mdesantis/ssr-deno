@@ -1,6 +1,9 @@
 {
   // Enable Deno for all SSR sample directories
   "deno.enablePaths": [
+    "samples/barebone-ssr-app",
+    "samples/deno-native-react-ssr-app",
+    "samples/deno-native-ssr-app",
     "samples/vite-preact-ssr-app",
     "samples/vite-react-ssr-app",
     "samples/vite-react-mui-ssr-app",
@@ -10,6 +13,7 @@
     "samples/vite-vue-ssr-app",
     "samples/vite-svelte-ssr-app",
     "samples/vite-react-streaming-ssr-app",
+    "samples/webpack-react-ssr-app",
     "samples/webpack-ssr-app"
   ],
   // Use the Deno language server for .ts files in the samples directory

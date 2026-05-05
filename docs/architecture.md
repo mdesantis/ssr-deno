@@ -72,7 +72,7 @@ flowchart LR
 
 - Pool size defaults to `1` isolate (override via `isolate_pool_size` config).
 - Each isolate has its own V8 heap (configured by `max_heap_size_mb`).
-- Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/v8-oom-protection.md`](../plans/v8-oom-protection.md)).
+- Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/archived/v8-oom-protection.md`](../plans/archived/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
 - Render timeout is enforced by a watchdog thread (`Watchdog` in `render.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the configured deadline. This interrupts both synchronous blocking JS and hung async renders. After termination, `cancel_terminate_execution()` restores the isolate for reuse.
@@ -132,7 +132,7 @@ Pumps the full V8 event loop (same as event-loop render) but delivers HTML
 Returns an `Enumerator` (no block) or yields each chunk to a block. Compatible
 with Rack 3 response bodies, `ActionController::Live`, and Rack `hijack`.
 
-See [`plans/chunked-http-streaming.md`](../plans/chunked-http-streaming.md)
+See [`plans/archived/chunked-http-streaming.md`](../plans/archived/chunked-http-streaming.md)
 for architecture details.
 
 **Recommended bundler settings (Vite example):**

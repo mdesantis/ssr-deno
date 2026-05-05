@@ -46,9 +46,9 @@ No new test needed — removal should not change behavior.
 
 ### Verification
 
-- [ ] Remove `op_ssr_push_chunk` from `render.rs`
-- [ ] Remove op registration from `mod.rs`
-- [ ] `bundle exec rake` — must exit 0
+- [x] Remove `op_ssr_push_chunk` from `render.rs`
+- [x] Remove op registration from `mod.rs`
+- [x] `bundle exec rake` — must exit 0
 
 ---
 

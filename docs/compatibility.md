@@ -72,7 +72,7 @@ The V8 event loop runs during every render, so macrotasks dispatch normally.
 not available in our tokio-based embedding, so its callbacks never fire.
 Use `setTimeout(fn, 0)` as a replacement.
 
-See [`plans/macrotasks-in-ssr.md`](../plans/macrotasks-in-ssr.md) for the
+See [`plans/archived/macrotasks-in-ssr.md`](../plans/archived/macrotasks-in-ssr.md) for the
 architectural details.
 
 | API | Supported | Notes |

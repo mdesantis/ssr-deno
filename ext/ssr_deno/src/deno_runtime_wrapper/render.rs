@@ -1,46 +1,12 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use deno_core::op2;
-use deno_core::OpState;
-use deno_error::JsErrorBox;
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
-use tokio::sync::mpsc;
 
 use super::SSRDenoError;
 use super::watchdog::Watchdog;
-
-// ---------------------------------------------------------------------------
-// Op: receive a chunk of HTML from JS during chunked render
-// ---------------------------------------------------------------------------
-
-/// Pushes an HTML chunk from JS to the Rust channel. Async for backpressure:
-/// when the channel buffer (64 slots) is full, the JS call awaits until the
-/// Ruby consumer drains a slot. This prevents OOM from fast-producing React +
-/// slow-consuming client.
-///
-/// Registered globally in the extension but only active when `chunk_tx` is
-/// placed in OpState (i.e., during `render_chunked` execution).
-///
-/// JS usage: `await Deno.core.ops.op_ssr_push_chunk(chunkString)`
-#[op2]
-pub async fn op_ssr_push_chunk(
-    #[string] chunk: String,
-    state: Rc<RefCell<OpState>>,
-) -> Result<(), JsErrorBox> {
-    let tx = {
-        let op_state = state.borrow();
-        op_state.borrow::<mpsc::Sender<String>>().clone()
-    };
-
-    tx.send(chunk).await.map_err(|_| {
-        JsErrorBox::generic("op_ssr_push_chunk: channel closed")
-    })
-}
 
 // ---------------------------------------------------------------------------
 // Render — event-loop based, returns final result as JSON string
