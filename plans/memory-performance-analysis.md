@@ -46,7 +46,7 @@ Each isolate is created with these parameters, fixed at pool init:
 
 Defaults defined at [`ssr_deno_core/src/lib.rs:78-84`](../ext/ssr_deno/crates/ssr_deno_core/src/lib.rs:78).
 
-`max_heap_size_mb` is a **per-isolate** V8 `CreateParams` constraint — it is NOT a total process budget. Each isolate independently gets the configured limit so workloads calibrated for a single isolate don't break when the pool auto-detects more cores.
+`max_heap_size_mb` is a **per-isolate** V8 `CreateParams` constraint — it is NOT a total process budget. Each isolate independently gets the configured limit, regardless of pool size.
 
 ---
 
@@ -115,7 +115,7 @@ Memory grows linearly with pool size:
 | **Total (1 small bundle, peak)** | — | **~200–300 MB** |
 | **Total (1 large bundle, peak)** | — | **~260–360 MB** |
 
-**Note:** On a 16-core machine with default `pool_size = CPU-1 = 15` (capped at 8 by `MAX_ISOLATES`), the idle SSR overhead alone is ~160 MB for 8 isolates. On a typical 4-core machine, pool_size = 3 → ~60 MB idle overhead. The `max_heap_size_mb=64` per isolate is a *cap*, not the actual RSS — idle isolates use less.
+**Note:** With default `pool_size = 1`, each Puma worker uses ~20 MB idle V8 overhead. Increasing `pool_size` for Ractor-based concurrency multiplies this cost. The `max_heap_size_mb=64` per isolate is a *cap*, not the actual RSS — idle isolates use less.
 
 ### 2.6 Memory Concerns
 
@@ -273,20 +273,20 @@ For comparison, `pool_size = 1` (explicit override) would give: ~28 MB overhead,
 - 8 Puma workers, 5 threads each
 - 2 SSR bundles (`:application`, `:admin`), ~15 components each, no heavy UI lib, 10 ms render
 - 70% of requests use SSR
-- 8-core machine → `pool_size = 7` (capped at MAX_ISOLATES=8, auto: 8−1)
+- `pool_size = 4` (explicit for Ractor-based concurrency)
 - Bundle source ~200 KB each → ~4 MB compiled per isolate, ~8 MB total for 2 bundles
 
 | Metric | Per Worker | Total (8 workers) |
 |---|---|---|
-| V8 isolates (7, idle ~20 MB each) | ~140 MB | ~1.1 GB |
-| Bundle code (7 × 8 MB for 2 bundles) | ~56 MB | ~448 MB |
-| **SSR memory overhead** | **~196 MB** | **~1.5 GB** |
+| V8 isolates (4, idle ~20 MB each) | ~80 MB | ~640 MB |
+| Bundle code (4 × 8 MB for 2 bundles) | ~32 MB | ~256 MB |
+| **SSR memory overhead** | **~112 MB** | **~896 MB** |
 | Rails baseline RSS | ~200 MB | ~1.6 GB |
-| **Total RSS with SSR** | **~396 MB** | **~3.1 GB** |
-| SSR throughput (7 isolates × 100 req/s) | ~700 req/s | ~5,600 req/s |
+| **Total RSS with SSR** | **~312 MB** | **~2.5 GB** |
+| SSR throughput (4 isolates × 100 req/s) | ~400 req/s | ~3,200 req/s |
 | SSR P95 latency | ~15 ms | ~15 ms |
 
-For a more memory-efficient deployment, `pool_size = 2` would give: ~56 MB overhead, ~200 req/s per worker.
+For a more memory-efficient deployment, `pool_size = 1` (default) would give: ~28 MB overhead, ~100 req/s per worker.
 
 ### 4.3 Scenario: Content Site (Blog/Docs)
 
@@ -294,7 +294,7 @@ For a more memory-efficient deployment, `pool_size = 2` would give: ~56 MB overh
 - 2 Puma workers, 2 threads each
 - 1 SSR bundle, ~100 components (MDX), 40 ms render
 - 90% of requests use SSR
-- 2-core machine → `pool_size = 1` (auto: 2−1)
+- `pool_size = 1` (default)
 
 | Metric | Per Worker | Total (2 workers) |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Plan: Default pool size → 1
 
-**Status:** Pending
+**Status:** Completed
 
 **Rationale:** Performance report (`plans/performance-report.md`) confirms
 threads don't scale (GVL serialization). Auto-detect wastes ~10MB/isolate
