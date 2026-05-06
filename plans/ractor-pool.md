@@ -10,15 +10,8 @@ SSR that Puma users can drop in without touching Ractor API.
 
 ### 1. Remove MAX_ISOLATES cap
 
-`ssr_deno_core` hard-caps pool at 8 isolates. Remove it. Memory is the real
-limit — let users decide.
-
-| File | Change |
-|------|--------|
-| `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs` | Remove `MAX_ISOLATES` constant and `clamp(1, MAX_ISOLATES)` in `resolve_pool_size`. Clamp to `[1, usize::MAX]`. |
-| | `validate_pool_size` only rejects 0. |
-| | Update tests: remove `max_isolates_is_eight`, check clamp rejects zero. |
-| `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs` | `IsolatePool::new` allocates exactly `pool_size` workers. Remove upper-bound check. |
+Extracted to [remove-max-isolates-cap.md](remove-max-isolates-cap.md). Focused
+plan, implement first.
 
 ### 2. RactorPool class
 
@@ -118,7 +111,7 @@ Ractor count. No extra config needed.
 
 ## Tasks
 
-- [ ] Remove MAX_ISOLATES cap in ssr_deno_core
+- [ ] Remove MAX_ISOLATES cap — see [separate plan](remove-max-isolates-cap.md)
 - [ ] Implement `SSR::Deno::RactorPool` in `lib/ssr/deno/ractor_pool.rb`
 - [ ] Wire `isolate_pool_size = size` in constructor
 - [ ] Add `render` + `render_chunks` delegation
