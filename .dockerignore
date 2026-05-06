@@ -34,6 +34,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Vendor (rusty_v8 submodule)
+vendor/
+
 # Ruby
 .bundle/
 *.gem
