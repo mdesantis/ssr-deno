@@ -1,6 +1,9 @@
 # Rust build artifacts (21G)
 ext/ssr_deno/target/
 
+# Vendored Rust toolchain in V8 source (1.4G) — not needed, we install via rustup
+vendor/rusty_v8/third_party/rust-toolchain/
+
 # Temp files (28G)
 tmp/
 
@@ -33,9 +36,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-
-# Vendor submodule (rusty_v8)
-vendor/rusty_v8
 
 # Ruby
 .bundle/
