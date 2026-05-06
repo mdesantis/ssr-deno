@@ -6,8 +6,27 @@ test_dir = File.join(root, 'test')
 helper = File.join(test_dir, 'test_helper.rb')
 tmp = File.join(root, 'tmp')
 
-desc 'Check performance regression (via test:perf)'
-task 'perf:check' => 'test:perf'
+desc 'Run ad-hoc benchmark for a sample (env: SAMPLE, POOL, MODE, ITERATIONS, WARMUP, TIMEOUT, NODE_BUILTINS)
+
+Examples:
+  rake perf:sample                            # minimal, pool=4
+  rake perf:sample SAMPLE=react POOL=1        # React, single isolate
+  rake perf:sample SAMPLE=mui-emotion NODE_BUILTINS=1 TIMEOUT=5000
+  rake perf:sample SAMPLE=minimal MODE=ractors ITERATIONS=100'
+task 'perf:sample' do
+  sample = ENV.fetch('SAMPLE', 'minimal')
+  pool = ENV.fetch('POOL', '4')
+  mode = ENV.fetch('MODE', nil)
+  iters = ENV.fetch('ITERATIONS', '500')
+  warmup = ENV.fetch('WARMUP', '20')
+
+  args = %W[--bundle #{sample} --pool-size #{pool} --iterations #{iters} --warmup #{warmup}]
+  args += %W[--mode #{mode}] if mode
+  args += %W[--node-builtins] if ENV['NODE_BUILTINS']
+  args += %W[--timeout #{ENV['TIMEOUT']}] if ENV['TIMEOUT']
+
+  ruby 'bench/performance.rb', *args
+end
 
 desc 'Update performance baselines in test/fixtures/perf-baselines.yml'
 task 'perf:baseline:update' do
