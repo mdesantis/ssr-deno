@@ -16,9 +16,10 @@ end
 
 # Task files in rakelib/:
 #   cargo.rake   — cargo:test, cargo:clippy
+#   perf.rake    — perf:check, perf:baseline:update
 #   samples.rake — samples:build, samples:build:<name>
 #   test.rake    — test:main, test:setters, test:node_builtins, test:async, test:env_config
 
 RuboCop::RakeTask.new
 
-task default: %i[compile cargo:test cargo:clippy samples:build test coverage:check rubocop rbs]
+task default: %i[compile cargo:test cargo:clippy samples:build test coverage:check perf:check rubocop rbs]

@@ -36,6 +36,7 @@ FIXTURES_DIR = File.join(BENCH_ROOT, 'test', 'fixtures').freeze
 TMP_DIR = File.join(BENCH_ROOT, 'tmp').freeze
 MINIMAL_BUNDLE = File.join(FIXTURES_DIR, 'minimal-bundle.js').freeze
 REACT_BUNDLE = File.join(TMP_DIR, 'react-ssr-bundle.js').freeze
+MUI_EMOTION_BUNDLE = File.join(TMP_DIR, 'react-mui-emotion-ssr-bundle.js').freeze
 MUI_DASHBOARD_BUNDLE = File.join(TMP_DIR, 'react-mui-dashboard-ssr-bundle.js').freeze
 SAMPLES_DIR = File.join(BENCH_ROOT, 'samples').freeze
 
@@ -46,6 +47,7 @@ SAMPLES_DIR = File.join(BENCH_ROOT, 'samples').freeze
 BUNDLE_ALIASES = {
   'minimal' => MINIMAL_BUNDLE,
   'react' => REACT_BUNDLE,
+  'mui-emotion' => MUI_EMOTION_BUNDLE,
   'mui-dashboard' => MUI_DASHBOARD_BUNDLE,
 }.freeze
 
@@ -53,6 +55,10 @@ BUNDLE_ALIASES = {
 SAMPLE_SOURCES = {
   'react' => {
     dir: File.join(SAMPLES_DIR, 'vite-react-ssr-app'),
+    build_out: 'dist/server/entry-server.js',
+  },
+  'mui-emotion' => {
+    dir: File.join(SAMPLES_DIR, 'vite-react-mui-emotion-ssr-app'),
     build_out: 'dist/server/entry-server.js',
   },
   'mui-dashboard' => {
