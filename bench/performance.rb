@@ -13,11 +13,11 @@
 # (gitignored). Requires: `deno task build` prerequisites (see samples/).
 #
 # Usage:
-#   ruby bench/performance.rb                     # all pool sizes
-#   ruby bench/performance.rb --pool-size 4       # single config
-#   ruby bench/performance.rb --mode threads      # single mode
-#   ruby bench/performance.rb --bundle react      # React SSR bundle
-#   ruby bench/performance.rb --bundle mui-dashboard --node-builtins --timeout 30000
+#   ruby bench/performance.rb                                # vite-react-ssr-app, pool=1, single
+#   ruby bench/performance.rb --sample vite-react-ssr-app    # explicit sample
+#   ruby bench/performance.rb --bundle minimal               # using alias
+#   ruby bench/performance.rb --pool-size 4 --mode threads   # different config
+#   ruby bench/performance.rb --sample vite-svelte-ssr-app   # different sample
 #
 # Requires: compiled native extension (bundle exec rake compile)
 # ---------------------------------------------------------------------------
@@ -26,6 +26,8 @@ require 'json'
 require 'optparse'
 require 'etc'
 require 'fileutils'
+
+Warning[:experimental] = false
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -51,31 +53,15 @@ BUNDLE_ALIASES = {
   'mui-dashboard' => MUI_DASHBOARD_BUNDLE,
 }.freeze
 
-# Source samples for auto-build.
-SAMPLE_SOURCES = {
-  'react' => {
-    dir: File.join(SAMPLES_DIR, 'vite-react-ssr-app'),
-    build_out: 'dist/server/entry-server.js',
-  },
-  'mui-emotion' => {
-    dir: File.join(SAMPLES_DIR, 'vite-react-mui-emotion-ssr-app'),
-    build_out: 'dist/server/entry-server.js',
-  },
-  'mui-dashboard' => {
-    dir: File.join(SAMPLES_DIR, 'vite-react-emotion-mui-dashboard-ssr-app'),
-    build_out: 'dist/server/entry-server.js',
-  },
-}.freeze
-
 options = {
-  iterations: 1_000,
-  warmup: 50,
+  iterations: 200,
+  warmup: 10,
   thread_count: 4,
   ractor_count: 4,
-  pool_sizes: [1, 4, 0],
-  mode: nil,
-  subprocess: false,
-  bundle: 'minimal',
+  pool_size: 1,
+  mode: :single,
+  bundle: nil,
+  sample: nil,
   node_builtins: false,
   timeout_ms: nil,
 }
@@ -99,8 +85,8 @@ OptionParser.new do |opts|
     options[:ractor_count] = n
   end
 
-  opts.on('-p', '--pool-size N', Integer, 'Run single pool size') do |n|
-    options[:pool_sizes] = [n]
+  opts.on('-p', '--pool-size N', Integer, 'Isolate pool size (default: 1)') do |n|
+    options[:pool_size] = n
   end
 
   opts.on('--mode MODE', %w[single threads ractors], 'Run only one mode') do |m|
@@ -116,43 +102,57 @@ OptionParser.new do |opts|
   end
 
   opts.on('--bundle NAME',
-          "Bundle: #{BUNDLE_ALIASES.keys.join(' / ')} or file path (default: minimal)") do |b|
+          "Bundle: #{BUNDLE_ALIASES.keys.join(' / ')} or file path") do |b|
     options[:bundle] = b
   end
 
-  opts.on('--subprocess', 'Internal: run as a subprocess') do
-    options[:subprocess] = true
+  opts.on('--sample NAME', "Sample directory under samples/ (e.g. vite-react-ssr-app)") do |s|
+    options[:sample] = s
   end
 end.parse!
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Bundle resolution: --sample takes precedence, then --bundle, then default
 # ---------------------------------------------------------------------------
 
-def ensure_bundle(bundle_alias, bundle_path)
-  return if File.exist?(bundle_path)
+if options[:sample]
+  sample_dir = File.join(SAMPLES_DIR, options[:sample])
+  bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
 
-  src = SAMPLE_SOURCES[bundle_alias]
-  unless src
-    raise "Bundle '#{bundle_alias}' not found at #{bundle_path}. " \
-          "Build it first: cd #{File.join(SAMPLES_DIR, bundle_alias)} && deno task build"
+  unless File.exist?(sample_dir)
+    abort "Sample not found: #{options[:sample]}. Available: #{Dir.glob("#{SAMPLES_DIR}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
   end
 
-  sample_dir = src[:dir]
-  build_out = File.join(sample_dir, src[:build_out])
-
-  unless File.exist?(build_out)
-    puts "  Building #{bundle_alias} bundle..."
+  unless File.exist?(bundle_path)
+    puts "  Building #{options[:sample]}..."
     success = system('deno', 'task', 'build', chdir: sample_dir)
-    abort "#{bundle_alias} build failed" unless success
-    unless File.exist?(build_out)
-      abort "Build succeeded but #{build_out} not found"
-    end
+    abort "Build failed for #{options[:sample]}" unless success
+    abort "#{bundle_path} not found after build" unless File.exist?(bundle_path)
   end
 
-  FileUtils.cp(build_out, bundle_path)
-  puts "  Copied #{bundle_alias} bundle to #{bundle_path}"
+  unless options[:node_builtins]
+    options[:node_builtins] = File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
+  end
+
+  options[:bundle] = bundle_path
+elsif options[:bundle].nil?
+  # Default: use vite-react-ssr-app sample
+  options[:sample] = 'vite-react-ssr-app'
+  sample_dir = File.join(SAMPLES_DIR, 'vite-react-ssr-app')
+  bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
+
+  unless File.exist?(bundle_path)
+    puts "  Building default sample (vite-react-ssr-app)..."
+    success = system('deno', 'task', 'build', chdir: sample_dir)
+    abort "Build failed for default sample" unless success
+  end
+
+  options[:bundle] = bundle_path
 end
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def percentile(sorted, p)
   return 0.0 if sorted.empty?
@@ -184,16 +184,13 @@ end
 # ---------------------------------------------------------------------------
 
 def run_single_config(options)
-  pool_size = options[:pool_sizes].first
+  pool_size = options[:pool_size]
   iterations = options[:iterations]
   warmup = options[:warmup]
   thread_count = options[:thread_count]
   ractor_count = options[:ractor_count]
   mode_filter = options[:mode]
   bundle_path = BUNDLE_ALIASES[options[:bundle]] || options[:bundle]
-
-  # Ensure bundle exists — build from sample if needed.
-  ensure_bundle(options[:bundle], bundle_path)
 
   # Enable node builtins before loading ssr/deno (must happen before pool init).
   node_builtins = options[:node_builtins]
@@ -214,8 +211,6 @@ def run_single_config(options)
   warmup.times { bundle.render(payload) }
 
   bundle_label = options[:bundle]
-  puts "  Bundle: #{bundle_label}"
-  puts "  Node builtins: #{SSR::Deno.node_builtins_enabled?}"
   initial_heap = SSR::Deno.heap_stats['used_heap_size']
   configured_pool = SSR::Deno.isolate_pool_size
   # Match Rust's resolve_pool_size: 0 = auto-detect, else clamp to [1, 8].
@@ -226,9 +221,21 @@ def run_single_config(options)
   end
 
   puts
-  puts "--- Pool Size: #{resolve_pool_label(pool_size)} (actual: #{actual_pool}) ---"
-  puts "  Heap: #{fmt_bytes(initial_heap)}"
+  puts "=" * 60
+  puts "ssr-deno Performance Benchmark"
   puts
+  puts "Ruby version: #{RUBY_VERSION}"
+  puts "SSR::Deno version: #{SSR::Deno.native_version}"
+  puts "bundle: #{bundle_path}"
+  puts "Pool size: #{resolve_pool_label(pool_size)}"
+  mode_label = mode_filter ? mode_filter.to_s : 'all'
+  puts "Mode: #{mode_label}"
+  puts "Iterations: #{iterations}"
+  puts "Warm: #{warmup}"
+  puts "Timeout: #{options[:timeout_ms]}ms" if options[:timeout_ms]
+  puts "=" * 60
+  puts
+  puts "  Heap: #{fmt_bytes(initial_heap)}"
 
   # ----- Mode 1: Single Thread -----
   if !mode_filter || mode_filter == :single
@@ -319,60 +326,11 @@ def run_single_config(options)
 end
 
 # ---------------------------------------------------------------------------
-# Orchestrator — spawns subprocesses per pool size
-# ---------------------------------------------------------------------------
-
-def run_orchestrator(options)
-  version_file = File.join(BENCH_ROOT, 'lib', 'ssr', 'deno', 'version.rb')
-  version = begin
-    content = File.read(version_file)
-    content[/VERSION\s*=\s*['"]([^'"]+)['"]/, 1] || 'unknown'
-  rescue
-    'unknown'
-  end
-
-  puts "=" * 60
-  puts "ssr-deno Performance Benchmark"
-  nb = options[:node_builtins] ? ' node_builtins' : ''
-  to = options[:timeout_ms] ? " timeout=#{options[:timeout_ms]}ms" : ''
-  puts "Ruby: #{RUBY_VERSION} | ssr-deno: #{version} | bundle: #{options[:bundle]}#{nb}#{to}"
-  puts "=" * 60
-
-  script = File.expand_path(__FILE__)
-  base_args = %W[
-    --iterations #{options[:iterations]}
-    --warmup #{options[:warmup]}
-    --threads #{options[:thread_count]}
-    --ractors #{options[:ractor_count]}
-    --subprocess
-  ]
-  base_args << "--mode" << options[:mode].to_s if options[:mode]
-  base_args << "--bundle" << options[:bundle]
-  base_args << "--node-builtins" if options[:node_builtins]
-  base_args << "--timeout" << options[:timeout_ms].to_s if options[:timeout_ms]
-
-  options[:pool_sizes].each do |size|
-    args = base_args + %w[--pool-size] + [size.to_s]
-    puts
-    puts "Running pool-size=#{resolve_pool_label(size)}..."
-    success = system(RbConfig.ruby, script, *args)
-    abort "Subprocess failed for pool-size=#{resolve_pool_label(size)}" unless success
-  end
-
-  puts "=" * 60
-  puts "Benchmark complete"
-end
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 begin
-  if options[:subprocess]
-    run_single_config(options)
-  else
-    run_orchestrator(options)
-  end
+  run_single_config(options)
 rescue => e
   abort "Benchmark failed: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
 end
