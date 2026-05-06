@@ -15,7 +15,7 @@ module SSR
       # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
       def initialize(bundle_path)
         @bundle_path = bundle_path.to_s
-        @bundle_id = "#{File.basename(@bundle_path)}##{object_id}"
+        @bundle_id = @bundle_path
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
 

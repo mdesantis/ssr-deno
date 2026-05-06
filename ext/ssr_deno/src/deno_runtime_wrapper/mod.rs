@@ -79,6 +79,7 @@ fn intern_script_name(name: &str) -> &'static str {
 enum WorkerMsg {
     LoadBundle {
         bundle_id: String,
+        bundle_path: String,
         bundle_code: Arc<str>,
         script_name: &'static str,
         reply: tokio::sync::oneshot::Sender<Result<(), String>>,
@@ -339,6 +340,7 @@ impl IsolatePool {
 
             handle.blocking_send(WorkerMsg::LoadBundle {
                 bundle_id: bundle_id.to_string(),
+                bundle_path: bundle_path.to_string(),
                 bundle_code: Arc::clone(&bundle_code),
                 script_name,
                 reply: reply_tx,
@@ -406,10 +408,13 @@ fn worker_thread_main(
 
         let _ = init_tx.send(Ok(()));
 
+        let mut loaded_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+
         while let Some(msg) = rx.recv().await {
             match msg {
                 WorkerMsg::LoadBundle {
                     bundle_id,
+                    bundle_path,
                     bundle_code,
                     script_name,
                     reply,
@@ -417,9 +422,11 @@ fn worker_thread_main(
                     let result = load_bundle_in_worker(
                         &mut worker,
                         &bundle_id,
+                        &bundle_path,
                         bundle_code,
                         script_name,
                         node_builtins,
+                        &mut loaded_paths,
                     );
                     let _ = reply.send(result);
                 }
@@ -530,26 +537,32 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
 fn load_bundle_in_worker(
     worker: &mut MainWorker,
     bundle_id: &str,
+    bundle_path: &str,
     bundle_code: Arc<str>,
     script_name: &'static str,
     node_builtins: bool,
+    loaded_paths: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
-    // Provide globalThis.require for bundles that use Node.js built-in modules.
-    // Only needed when node_builtins is enabled.
-    if node_builtins {
-        if let Err(e) = setup_require(worker) {
-            return Err(format!("Failed to set up require: {e}"));
+    let is_new = loaded_paths.insert(bundle_path.to_owned());
+
+    if is_new {
+        // Provide globalThis.require for bundles that use Node.js built-in modules.
+        // Only needed when node_builtins is enabled.
+        if node_builtins {
+            if let Err(e) = setup_require(worker) {
+                return Err(format!("Failed to set up require: {e}"));
+            }
+        }
+
+        if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
+            return Err(format!("Failed to evaluate SSR bundle: {e}"));
         }
     }
 
-    if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
-        return Err(format!("Failed to evaluate SSR bundle: {e}"));
-    }
-
-    // Move globalThis.render into the bundle namespace so multiple bundles
-    // can coexist in the same V8 context without overwriting each other.
-    // bundle_id format: "basename#object_id" (e.g. "entry-server.js#47278032594620").
-    // serde_json::to_string produces a guaranteed-valid JS string literal.
+    // Idempotent namespace: register bundle_id under __ssr_bundles.
+    // With stable bundle_id (same file = same id), this is a no-op on
+    // subsequent loads. serde_json::to_string produces a guaranteed-valid
+    // JS string literal.
     let bundle_id_js = serde_json::to_string(bundle_id)
         .unwrap_or_else(|_| format!("\"{}\"", bundle_id));
 
@@ -557,6 +570,9 @@ fn load_bundle_in_worker(
         r#"(function(id) {{
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
                 globalThis.__ssr_bundles = {{}};
+            }}
+            if (typeof globalThis.__ssr_bundles[id] !== 'undefined') {{
+                return;
             }}
             if (typeof globalThis.render !== 'function') {{
                 throw new Error('Bundle did not assign a function to globalThis.render');

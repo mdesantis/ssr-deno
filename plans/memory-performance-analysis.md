@@ -181,70 +181,109 @@ Latency is unchanged from the single-isolate model — the round-robin dispatch 
 
 ### 3.3 Throughput with N Isolates
 
-The pool dispatches concurrently to N isolates via round-robin. Throughput scales linearly with pool size up to the pool capacity:
+The pool dispatches to N isolates via round-robin. Throughput scales with pool
+size **only for Ractor-based concurrency** (separate GVL). For thread-based
+concurrency, the GVL serializes FFI access — only one render in-flight at a
+time regardless of pool size. See [benchmark](performance-report.md) for
+actual measurements.
 
 ```mermaid
 flowchart LR
-    subgraph "Puma Threads"
-        T1["Thread 1"]
-        T2["Thread 2"]
-        T3["Thread 3"]
-        T4["Thread 4"]
+    subgraph "Puma Threads (GVL serializes)"
+        T1["Thread 1 (active)"]
+        T2["Thread 2 (waiting on GVL)"]
+        T3["Thread 3 (waiting on GVL)"]
+        T4["Thread 4 (waiting on GVL)"]
     end
     subgraph "IsolatePool (size=2)"
-        I0["Isolate 0 (busy)"]
-        I1["Isolate 1 (busy)"]
+        I0["Isolate 0 (idle)"]
+        I1["Isolate 1 (idle)"]
     end
-    T1 --> I0
-    T2 --> I1
-    T3 --> I0
-    T4 --> I1
-    I0 -.-> I0
-    I1 -.-> I1
-    T3 -.->|"waits (channel full)"| I0
-    T4 -.->|"waits (channel full)"| I1
+    T1 -->|"only 1 thread in FFI at a time"| I0
+    I1 ~~~ N1["(unused — GVL is the bottleneck)"]
+    T2 -.->|"GVL wait"| GVL["GVL lock"]
+    T3 -.->|"GVL wait"| GVL
+    T4 -.->|"GVL wait"| GVL
 ```
 
 | Concurrency Model | Max Throughput | Notes |
 |---|---|---|
-| 1 Puma thread (1 isolate) | ~20–200 req/s | Limited by `renderToString` latency |
-| N Puma threads, pool_size=N | **N × 20–200 req/s** | Parallel up to pool capacity |
-| N Puma threads, pool_size < N | pool_size × 20–200 req/s | Threads beyond pool_size serialize |
-| Multi-process (Puma workers) | workers × pool_size × 20–200 req/s | Each worker has its own pool |
+| 1 thread (1 isolate) | ~9,300 ops/sec minimal, ~700 ops/sec React SSR | Benchmarked with minimal bundle (0.1ms) and React 19 SSR (1.0ms). See [performance-report.md](performance-report.md) |
+| N threads, pool_size=N | Same as single-thread | GVL serializes FFI. Threads provide no parallelism benefit ([benchmark](performance-report.md#analysis)) |
+| N Ractors, pool_size=N | N × single-ractor throughput (up to MAX_ISOLATES=8) | Ractors bypass GVL. Pool=4 + 4 Ractors = 3.4x with React SSR |
+| N Ractors, pool_size < N | pool_size × single-ractor throughput | Extra Ractors contend on isolate channels |
+| Multi-process (Puma workers) | workers × per-process throughput | Each worker has its own pool |
 
-**Key insight:** Puma threads CAN benefit from parallelism — up to `pool_size` concurrent renders. Threads beyond `pool_size` will block on `blocking_send` (see §5.2).
-
-### 3.4 React renderToString Performance
-
-`renderToString` is synchronous and CPU-bound. Typical benchmarks:
-
-| Component Tree | renderToString Time |
-|---|---|
-| Simple page (10 components) | ~5–15 ms |
-| Medium page (50 components) | ~15–40 ms |
-| Complex page (200+ components) | ~40–100 ms |
-| Heavy page (500+ components, deeply nested) | ~100–300 ms |
-
-### 3.5 Thread Contention & Isolate Saturation
+**Key insight:** Despite having pool_size isolates, Puma threads DO NOT achieve
+parallelism. Ruby's Global VM Lock (GVL) serializes all FFI entry points —
+only one thread can be inside `native_render` at a time. The round-robin
+dispatch distributes load across isolates but threads queue at the GVL boundary
+rather than running concurrently. See [benchmark](performance-report.md#1-gvl-serializes-threads).
 
 With `pool_size = 2` and 4 Puma threads hitting SSR simultaneously:
 
-1. **Thread A** → round-robin picks isolate 0 → `blocking_send` → channel free → message sent → blocks on `recv_timeout`
-2. **Thread B** → round-robin picks isolate 1 → `blocking_send` → channel free → message sent → blocks on `recv_timeout`
-3. **Thread C** → round-robin picks isolate 0 → `blocking_send` → **channel full** → **Thread C blocks** on `blocking_send` (no timeout)
-4. **Thread D** → round-robin picks isolate 1 → `blocking_send` → **channel full** → **Thread D blocks** on `blocking_send` (no timeout)
-5. Isolate 0 finishes → Thread A unblocks → channel frees → Thread C's `blocking_send` succeeds
-6. Isolate 1 finishes → Thread B unblocks → channel frees → Thread D's `blocking_send` succeeds
+1. **Thread A** → acquires GVL → round-robin picks isolate 0 → `blocking_send` → channel free → message sent → blocks on `recv_timeout` — **holds GVL while blocking**
+2. **Thread B** → **waiting on GVL** (cannot enter `native_render`)
+3. **Thread C** → **waiting on GVL**
+4. **Thread D** → **waiting on GVL**
+5. Isolate 0 finishes → Thread A unblocks → releases GVL
+6. **Thread B** → acquires GVL → round-robin picks isolate 1 → sends message → blocks on `recv_timeout`
+7. ... serial loop
 
-**Key insight:** `blocking_send` on the channel has NO timeout. If all isolates are saturated, additional callers block indefinitely until an isolate frees up — the `render_timeout_ms` only applies *after* the message reaches the worker.
+The GVL serializes all FFI entry regardless of how many isolates are available.
+Ractor-based concurrency avoids this entirely (separate GVL per Ractor).
+
+In contrast, Ractors would run in parallel:
+1. **Ractor A** → round-robin picks isolate 0 → blocks on `recv_timeout` (no GVL held)
+2. **Ractor B** → round-robin picks isolate 1 → blocks on `recv_timeout` (no GVL held)
+3. Both renders run concurrently on different isolates
 
 ### 3.6 Ractor Performance
 
-Ractors provide true parallelism (separate GVL) but hit the same `IsolatePool` bottleneck. With `pool_size = M` and `K` ractors, throughput is capped at `M × 1/render_time`. Ractors don't add benefit beyond the pool size.
+Ractors provide true parallelism (separate GVL, separate Ruby VM state). Each
+Ractor blocks on `blocking_recv()` during FFI — but since Ractors don't share
+a GVL, multiple can be blocked on different isolates simultaneously.
+
+**Benchmarked scaling (minimal bundle, see [performance-report.md](performance-report.md#saturation-analysis-ractors--isolates)):**
+
+| Ractors | pool=2 | pool=4 | pool=8 |
+|---------|--------|--------|--------|
+| 1 | 9,722 | 9,167 | 8,100 |
+| 2 | 19,382 | 17,655 | 16,500 |
+| 4 | 23,009 | **32,061** | 30,500 |
+| 8 | 19,083 | 30,958 | **47,926** |
+
+Key findings:
+
+- **pool=2 + R=2 gives near-perfect linear scaling** (1.99x). 2 Ractors × 2
+  isolates = no contention. Best ratio for 2-CPU machines.
+- **pool=8 + R=8 is fastest overall** (5.9x baseline). Oversubscribing 2 CPUs
+  with 8 threads works for fast renders (~0.1ms) because each Ractor gets its
+  own isolate — no channel contention.
+- **pool=4 + R=4 with React SSR gives 3.4x** (vs 2.9x minimal). Ractor scaling
+  _improves_ with realistic bundles because more time in V8 execution means
+  less dispatch contention.
+
+**Design constraint:** Ractors can't share mutable Ruby objects. Each Ractor
+creates its own `Bundle` instance. `Bundle.new` calls `native_load_bundle`,
+which broadcasts code to ALL isolates. With N Ractors, this broadcast happens
+N times — harmless with ssr-deno (idempotent replace), but some bundles with
+module-level singletons (e.g., MUI X Charts) may fail.
+
+**Recommendation:** For Ractor-based SSR, set `pool_size` explicitly. The
+auto-detect formula (`Etc.nprocessors - 1`) yields 1 on 2-CPU machines —
+worst case for Ractor parallelism. On 8+ CPU machines, pool=8 with 8 Ractors
+can achieve ~6-8x single-thread throughput.
 
 ---
 
 ## 4. Rough Calculations
+
+**Note on throughput:** The per-isolate throughput estimates below assume
+thread-based concurrency (Puma). As the [benchmark](performance-report.md)
+confirms, threads serialize on GVL — pool_size > 1 provides no throughput
+benefit for threads. The numbers below are per-isolate estimates. For true
+parallelism, use Ractors (see §3.6).
 
 ### 4.1 Scenario: Typical Rails E-Commerce (Medium Traffic)
 
@@ -413,11 +452,17 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 ### 6.3 Long Term
 
-- **Pool size tuning guide.** Document recommended `pool_size` based on Ractor count, memory budget, and expected concurrency. Default `1` is optimal for thread-based Rails; increase only for Ractor-based setups.
+- [x] **Pool size tuning guide** — See [performance-report.md](performance-report.md) for benchmarked pool size recommendations per concurrency model:
+
+  | Concurrency | Pool Size | Rationale |
+  |---|---|---|
+  | Thread-based (Puma) | 1 | GVL serializes FFI; more isolates don't help throughput. Default is correct. |
+  | Mixed Threads + Ractors | CPU count or MAX_ISOLATES (8) | Ractors bypass GVL. Set explicitly — auto-detect (`Etc.nprocessors - 1`) is too conservative on low-CPU machines. |
+  | Heavy bundles (MUI, 200ms render) | 1 | Pool > 1 increases p99 latency without throughput benefit. Ractors may not work (singleton issues). |
 
 - **Per-isolate heap monitoring.** Expose per-isolate heap stats with an isolate index label so operators can detect uneven load or isolate-specific memory leaks.
 
-- **Consider a shared framework bundle** (Vite federation or manual code splitting) to avoid compiling React N × M times (N bundles, M isolates).
+- **Consider a shared framework bundle** (Vite federation or manual code splitting) to avoid compiling React N × M times (N bundles, M isolates). The MUI dashboard benchmark (3.2 MB bundle, ~15 MB compiled per isolate) showed this is critical for memory: 4 isolates × 15 MB = 60 MB just for one bundle.
 
 ---
 
