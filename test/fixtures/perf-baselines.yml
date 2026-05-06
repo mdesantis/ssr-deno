@@ -1,0 +1,15 @@
+---
+meta:
+  generated: '2026-05-06'
+  ruby: 4.0.3
+  cpu: 24
+thresholds:
+  ops_pct: 70
+  p99_mult: 5.0
+baselines:
+  minimal_single:
+    ops: 8963
+  react_single:
+    ops: 1254
+  mui_emotion_single:
+    ops: 119

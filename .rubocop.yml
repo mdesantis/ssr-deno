@@ -25,6 +25,7 @@ Layout/LineLength:
 Metrics/AbcSize:
   Exclude:
     - 'test/**/*'
+    - 'rakelib/**/*'
 
 Metrics/BlockLength:
   Exclude:
@@ -36,15 +37,32 @@ Metrics/ClassLength:
   Exclude:
     - 'test/**/*'
 
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'test/**/*'
+    - 'rakelib/**/*'
+
 Metrics/MethodLength:
   Max: 15
   CountAsOne:
     - array
     - hash
     - heredoc
+  Exclude:
+    - 'test/**/*'
+    - 'rakelib/**/*'
+
+Metrics/PerceivedComplexity:
+  Exclude:
+    - 'test/**/*'
+    - 'rakelib/**/*'
 
 Naming/RescuedExceptionsVariableName:
   PreferredName: error
+
+ThreadSafety/NewThread:
+  Exclude:
+    - 'test/**/*'
 Naming/VariableNumber:
   EnforcedStyle: snake_case
 

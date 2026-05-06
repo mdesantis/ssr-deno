@@ -2,26 +2,27 @@
 
 # ---------------------------------------------------------------------------
 # Code coverage (must be first — hooks into Kernel#require)
+# Skipped when SSR_DENO_SKIP_COVERAGE is set (e.g. performance benchmarks).
 # ---------------------------------------------------------------------------
 
-require 'simplecov'
+unless ENV['SSR_DENO_SKIP_COVERAGE']
+  require 'simplecov'
 
-SimpleCov.command_name ENV.fetch('SIMPLECOV_COMMAND_NAME', 'test:main')
+  SimpleCov.command_name ENV.fetch('SIMPLECOV_COMMAND_NAME', 'test:main')
 
-SimpleCov.start do
-  enable_coverage :branch
-  add_filter 'test/dummy/'
-  add_filter 'test/'
-  add_filter 'lib/ssr/deno/rails.rb'
-  add_filter 'lib/ssr/deno/rails/'
-  # Coverage thresholds are enforced on the merged report
-  # (both test:main and test:node_builtins combined).
-  formatter SimpleCov::Formatter::MultiFormatter.new(
-    [
-      SimpleCov::Formatter::SimpleFormatter,
-      SimpleCov::Formatter::HTMLFormatter
-    ]
-  )
+  SimpleCov.start do
+    enable_coverage :branch
+    add_filter 'test/dummy/'
+    add_filter 'test/'
+    add_filter 'lib/ssr/deno/rails.rb'
+    add_filter 'lib/ssr/deno/rails/'
+    formatter SimpleCov::Formatter::MultiFormatter.new(
+      [
+        SimpleCov::Formatter::SimpleFormatter,
+        SimpleCov::Formatter::HTMLFormatter
+      ]
+    )
+  end
 end
 
 # ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ require 'support/fixture_paths'
 
 require 'minitest'
 Minitest.load :profile
+Warning[:experimental] = false
 ARGV << '--profile'
 require 'minitest/autorun'
 require 'minitest/pride' if %w[true yes 1].include?(ENV['MINITEST_PRIDE']&.downcase)

@@ -92,7 +92,7 @@ module SSR
       @registry.register(:app, Object.new)
 
       threads = Array.new(10) do |i|
-        Thread.new do # rubocop:disable ThreadSafety/NewThread
+        Thread.new do
           100.times do
             @registry[:app]
           end
