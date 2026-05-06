@@ -11,6 +11,7 @@ module SSR
       config.ssr_deno.max_heap_size_mb = nil # nil = 64 MB (default)
       config.ssr_deno.isolate_pool_size = nil # nil = 1 (default)
       config.ssr_deno.heap_stats_sample_rate = 100 # emit heap stats every N renders
+      config.ssr_deno.node_builtins_enabled = nil # nil = false (default)
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
@@ -25,6 +26,7 @@ module SSR
         # Must be set before any Bundle.new call (triggers pool init).
         SSR::Deno.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
         SSR::Deno.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
+        SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if config.ssr_deno.node_builtins_enabled
 
         config.ssr_deno.bundles.each do |name, path|
           path ||= default_bundle_path(name)
@@ -46,7 +48,7 @@ module SSR
       end
 
       # Sample V8 heap stats periodically and emit heap_stats.ssr_deno events.
-      initializer 'ssr_deno.heap_stats', after: 'ssr_deno.subscribe_events' do |_app|
+      initializer 'ssr_deno.heap_stats' do |_app|
         sample_rate = config.ssr_deno.heap_stats_sample_rate
         counter = 0
         mutex = Mutex.new

@@ -1,7 +1,11 @@
 ## Unreleased
 
+### Added
+- Railtie: wire `config.ssr_deno.node_builtins_enabled` to `SSR::Deno.node_builtins_enabled=` setter. The config option was already defined in the generator template but was not connected to the native setter — creating the config had no effect on the V8 isolate pool.
+
 ### Changed
 - **BREAKING:** `isolate_pool_size` default changed from `0` (auto-detect from CPU count) to `1`. Performance benchmarks show that Ruby threads do not benefit from multiple isolates due to GVL serialization — only Ractors achieve true parallelism. Users with Ractor-based concurrency should explicitly set `isolate_pool_size` to match their pool needs.
+- Railtie: remove unnecessary `after: 'ssr_deno.subscribe_events'` dependency from `heap_stats` initializer. Both initializers only register event subscription callbacks — neither emits events during initialization — so ordering is irrelevant.
 ## [0.1.0-alpha.5] - 2026-05-04
 
 ### Added

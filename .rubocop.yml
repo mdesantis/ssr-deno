@@ -22,6 +22,10 @@ Layout/HeredocIndentation:
 Layout/LineLength:
   Max: 120
 
+Metrics/AbcSize:
+  Exclude:
+    - 'test/**/*'
+
 Metrics/BlockLength:
   Exclude:
     - 'Rakefile'

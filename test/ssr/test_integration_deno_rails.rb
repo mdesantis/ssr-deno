@@ -25,6 +25,8 @@ module SSR
         assert Rails.application.config.ssr_deno.enabled
         # raise_on_render_error defaults to !Rails.env.production?, which is true in test
         assert Rails.application.config.ssr_deno.raise_on_render_error
+        # node_builtins_enabled defaults to nil (which means false)
+        assert_nil Rails.application.config.ssr_deno.node_builtins_enabled
       end
 
       def test_railtie_sets_default_bundles
