@@ -238,8 +238,8 @@ auto-detect (`Etc.nprocessors - 1`, clamped to [1,8]) yielded 1 on a 2-CPU
 machine — the worst case for Ractor throughput. Users running Ractor workloads
 should explicitly set `pool_size` rather than relying on auto-detect.
 
-The pool cap of 8 isolates means a machine with 16+ cores won't see further
-scaling beyond that point.
+Users on high-CPU machines can now configure pool sizes beyond 8 (the previous
+hard cap). Memory is the real constraint: ~20-30 MB per idle isolate.
 
 ### For Latency-Sensitive Applications
 
@@ -308,8 +308,8 @@ with Ractor count:
 | 2-CPU | 2 | 2 | 2x | Match counts to cores |
 | 2-CPU | 8 | 8 | 5.9x | Oversubscribe OK for fast renders |
 | 4-CPU | 4 | 4 | ~3.5x | Estimated |
-| 8-CPU | 8 | 8 | ~6-8x (cap) | MAX_ISOLATES = 8 |
-| 16+ CPU | 8 | 8 | ~8x (cap) | Capped at MAX_ISOLATES |
+| 8-CPU | 8 | 8 | ~6-8x | Memory is the limit, not a hard cap |
+| 16+ CPU | up to CPU count | up to CPU count | ~6-10x+ | Scale with cores, no hard cap |
 
 **Key insight:** If renders are fast (~0.1ms), oversubscribing the CPU with
 more Ractors + isolates than cores is beneficial — it eliminates channel
@@ -467,5 +467,5 @@ count, memory bandwidth, and OS scheduler behavior vary across machines.
 - [ ] Long-running stability test (heap leak detection over hours)
 - [ ] GVL release experiment: wrap FFI call in `magnus::blocking` to measure
   thread throughput improvement
-- [ ] Increase `MAX_ISOLATES` cap beyond 8 for high-core-count servers
+- [x] Remove `MAX_ISOLATES` cap (pool now configurable up to `usize::MAX`, memory is the real limit)
 - [ ] Investigate MUI X singleton conflict in multi-Ractor bundle loading

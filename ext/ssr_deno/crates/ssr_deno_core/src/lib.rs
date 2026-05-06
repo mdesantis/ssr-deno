@@ -46,14 +46,6 @@ impl std::fmt::Display for SSRDenoError {
 impl std::error::Error for SSRDenoError {}
 
 // ---------------------------------------------------------------------------
-// Hard cap on the number of isolates
-// ---------------------------------------------------------------------------
-
-/// Maximum number of V8 isolates in the pool. Prevents accidental
-/// over-allocation on high-core-count machines.
-pub const MAX_ISOLATES: usize = 8;
-
-// ---------------------------------------------------------------------------
 // Configuration data
 // ---------------------------------------------------------------------------
 
@@ -88,18 +80,13 @@ impl Config {
 // Pool size validation
 // ---------------------------------------------------------------------------
 
-/// Validates that `size` is within `[1, MAX_ISOLATES]`.
-/// Returns `Ok(())` if valid, or an appropriate `SSRDenoError::WorkerInit` error.
+/// Validates that `size` is at least 1.
+/// Returns `Ok(())` if valid, or an `SSRDenoError::WorkerInit` error.
 pub fn validate_pool_size(size: usize) -> Result<(), SSRDenoError> {
     if size == 0 {
         return Err(SSRDenoError::WorkerInit(
             "Pool size must be at least 1".into(),
         ));
-    }
-    if size > MAX_ISOLATES {
-        return Err(SSRDenoError::WorkerInit(format!(
-            "Pool size {size} exceeds maximum {MAX_ISOLATES}"
-        )));
     }
     Ok(())
 }
@@ -123,9 +110,9 @@ pub fn validate_render_timeout_ms(ms: u64) -> Result<(), String> {
 // Pool size resolution
 // ---------------------------------------------------------------------------
 
-/// Resolves the effective pool size from config, clamped to `[1, MAX_ISOLATES]`.
+/// Resolves the effective pool size from config, clamped to at least 1.
 pub fn resolve_pool_size(cfg: Config) -> usize {
-    cfg.isolate_pool_size.clamp(1, MAX_ISOLATES)
+    cfg.isolate_pool_size.max(1)
 }
 
 // ---------------------------------------------------------------------------
@@ -220,15 +207,6 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // MAX_ISOLATES
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn max_isolates_is_eight() {
-        assert_eq!(MAX_ISOLATES, 8);
-    }
-
-    // -----------------------------------------------------------------------
     // Config defaults
     // -----------------------------------------------------------------------
 
@@ -294,20 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_pool_size_rejects_over_max() {
-        let err = validate_pool_size(MAX_ISOLATES + 1).unwrap_err();
-        assert!(matches!(err, SSRDenoError::WorkerInit(_)));
-        assert!(format!("{err}").contains("exceeds maximum"));
-    }
-
-    #[test]
     fn validate_pool_size_accepts_one() {
         assert!(validate_pool_size(1).is_ok());
     }
 
     #[test]
-    fn validate_pool_size_accepts_max() {
-        assert!(validate_pool_size(MAX_ISOLATES).is_ok());
+    fn validate_pool_size_accepts_large() {
+        assert!(validate_pool_size(64).is_ok());
+        assert!(validate_pool_size(256).is_ok());
     }
 
     // -----------------------------------------------------------------------
@@ -329,8 +301,9 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pool_size_clamps_to_max() {
-        assert_eq!(resolve_pool_size(make_cfg(99)), MAX_ISOLATES);
+    fn resolve_pool_size_does_not_clamp_large() {
+        assert_eq!(resolve_pool_size(make_cfg(99)), 99);
+        assert_eq!(resolve_pool_size(make_cfg(1024)), 1024);
     }
 
     #[test]

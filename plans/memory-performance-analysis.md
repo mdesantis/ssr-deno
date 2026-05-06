@@ -210,7 +210,7 @@ flowchart LR
 |---|---|---|
 | 1 thread (1 isolate) | ~9,300 ops/sec minimal, ~700 ops/sec React SSR | Benchmarked with minimal bundle (0.1ms) and React 19 SSR (1.0ms). See [performance-report.md](performance-report.md) |
 | N threads, pool_size=N | Same as single-thread | GVL serializes FFI. Threads provide no parallelism benefit ([benchmark](performance-report.md#analysis)) |
-| N Ractors, pool_size=N | N × single-ractor throughput (up to MAX_ISOLATES=8) | Ractors bypass GVL. Pool=4 + 4 Ractors = 3.4x with React SSR |
+| N Ractors, pool_size=N | N × single-ractor throughput | Ractors bypass GVL. Pool=4 + 4 Ractors = 3.4x with React SSR |
 | N Ractors, pool_size < N | pool_size × single-ractor throughput | Extra Ractors contend on isolate channels |
 | Multi-process (Puma workers) | workers × per-process throughput | Each worker has its own pool |
 
@@ -378,7 +378,7 @@ flowchart LR
 **Impact:** SSR throughput per process is capped at `pool_size / render_time`. For a 25 ms render and pool_size=4, max ~160 req/s. Threads beyond pool_size become a queue, not a parallelism resource.
 
 **Mitigation options:**
-- Increase `isolate_pool_size` (up to 8) for more parallelism within each process — at the cost of memory
+- Increase `isolate_pool_size` for more parallelism within each process — at the cost of memory
 - Scale Puma workers (processes) — each gets its own pool
 - Match `Puma threads` to `pool_size` — extra threads beyond pool_size only add contention without throughput benefit
 
@@ -436,7 +436,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
 
 ✅ **V8 heap size limit** — `SSR::Deno.max_heap_size_mb=` (default 64 MB per isolate). Per-isolate `max_old_generation_size_in_bytes` cap.
 
-✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: 1, max 8). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
+✅ **Multiple V8 isolates** — `IsolatePool` with round-robin dispatch (`pool_size` default: 1, no upper bound). Configurable via `SSR::Deno.isolate_pool_size=` or `SSR_DENO_ISOLATE_POOL_SIZE`.
 
 ✅ **V8 OOM protection** — `near_heap_limit_callback` + `terminate_execution` prevents fatal SIGTRAP when a user SSR component exceeds `max_heap_size_mb`. OOM raises `SSR::Deno::JsRuntimeOutOfMemoryError` (dedicated exception class, sibling of `RenderError`). See [`plans/archived/v8-oom-protection.md`](archived/v8-oom-protection.md).
 
@@ -457,7 +457,7 @@ Bundle B → {React + App B} × 4 isolates → ~12–60 MB
   | Concurrency | Pool Size | Rationale |
   |---|---|---|
   | Thread-based (Puma) | 1 | GVL serializes FFI; more isolates don't help throughput. Default is correct. |
-  | Mixed Threads + Ractors | CPU count or MAX_ISOLATES (8) | Ractors bypass GVL. Set explicitly — auto-detect (`Etc.nprocessors - 1`) is too conservative on low-CPU machines. |
+  | Mixed Threads + Ractors | CPU count or more | Ractors bypass GVL. Set explicitly — auto-detect (`Etc.nprocessors - 1`) is too conservative on low-CPU machines. Memory is the real constraint (~20-30 MB per idle isolate). |
   | Heavy bundles (MUI, 200ms render) | 1 | Pool > 1 increases p99 latency without throughput benefit. Ractors may not work (singleton issues). |
 
 - **Per-isolate heap monitoring.** Expose per-isolate heap stats with an isolate index label so operators can detect uneven load or isolate-specific memory leaks.

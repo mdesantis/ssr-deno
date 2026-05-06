@@ -111,7 +111,7 @@ Ractor count. No extra config needed.
 
 ## Tasks
 
-- [ ] Remove MAX_ISOLATES cap — see [separate plan](remove-max-isolates-cap.md)
+- [x] Remove MAX_ISOLATES cap — see [separate plan](remove-max-isolates-cap.md) ([implemented](archived/remove-max-isolates-cap.md))
 - [ ] Implement `SSR::Deno::RactorPool` in `lib/ssr/deno/ractor_pool.rb`
 - [ ] Wire `isolate_pool_size = size` in constructor
 - [ ] Add `render` + `render_chunks` delegation

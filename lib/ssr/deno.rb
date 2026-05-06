@@ -35,7 +35,7 @@ module SSR
       # (bypasses the GVL); thread-based Rails apps see no throughput gain
       # from larger pools due to GVL serialization.
       #
-      # @param size [Integer] isolate count (min 1, max 8)
+      # @param size [Integer] isolate count (min 1)
       def isolate_pool_size=(size)
         native_set_isolate_pool_size(size.to_i)
       end

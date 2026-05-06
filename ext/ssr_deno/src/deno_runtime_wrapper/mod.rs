@@ -25,8 +25,6 @@ use crate::sys::Sys;
 
 pub use ssr_deno_core::SSRDenoError;
 pub use ssr_deno_core::{next_index, validate_pool_size};
-// MAX_ISOLATES is available through ssr_deno_core::MAX_ISOLATES if needed.
-
 /// Chunk receiver and completion channel returned by chunked render.
 type ChunkedRenderResult = (
     tokio::sync::mpsc::Receiver<String>,

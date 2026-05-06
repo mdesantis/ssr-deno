@@ -4,57 +4,70 @@
 Remove the upper bound. Memory (~20-30 MB per idle isolate) is the real limit
 — let users decide.
 
+Default `isolate_pool_size = 1` stays unchanged.
+
 ---
 
-## Changes
+## Scope
 
-### `ext/ssr_deno/crates/ssr_deno_core/src/lib.rs`
+### Code changes
 
-| What | Change |
+| File | Change |
 |------|--------|
-| `MAX_ISOLATES` constant | Remove. Was `pub const MAX_ISOLATES: usize = 8;` |
-| `resolve_pool_size(cfg)` | Remove `clamp(1, MAX_ISOLATES)`. Clamp to `[1, usize::MAX]`. |
-| `validate_pool_size(size)` | Only reject 0. Remove `size > MAX_ISOLATES` check. |
-| Tests | Remove `max_isolates_is_eight`. Update `resolve_pool_size_clamps_to_max`. |
+| `ssr_deno_core/src/lib.rs:54` | Remove `pub const MAX_ISOLATES: usize = 8;` |
+| `ssr_deno_core/src/lib.rs:93-103` | `validate_pool_size`: keep only `size == 0` rejection. Remove `size > MAX_ISOLATES` check. |
+| `ssr_deno_core/src/lib.rs:128` | `resolve_pool_size`: `clamp(1, MAX_ISOLATES)` → `max(1)` |
+| `ssr_deno_core/src/lib.rs:228` | Delete test `max_isolates_is_eight` |
+| `ssr_deno_core/src/lib.rs:297-301` | Delete test `validate_pool_size_rejects_over_max` |
+| `ssr_deno_core/src/lib.rs:303-311` | Rename `validate_pool_size_accepts_max` → `validate_pool_size_accepts_large`. Test with `64` instead of `MAX_ISOLATES`. |
+| `ssr_deno_core/src/lib.rs:332-333` | Rename `resolve_pool_size_clamps_to_max` → `resolve_pool_size_does_not_clamp_large`. Test that `99` stays `99`. |
+| `mod.rs:28` | Delete stale comment `// MAX_ISOLATES is available...` |
+| `lib/ssr/deno.rb:38` | Remove `max 8` from `@param size` doc |
 
-### `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
+### Stale docs
 
-| What | Change |
-|------|--------|
-| `IsolatePool::new` | No upper-bound check needed. Allocate exactly `pool_size` workers. |
+| File | Stale text | Fix |
+|------|-----------|-----|
+| `docs/architecture.md:18` | `(up to 8 isolates` | `(round-robin)` |
+| `docs/architecture.md:67` | `N (max 8)` | `N` |
+| `docs/compatibility.md:177` | `max 8` | remove |
+| `plans/memory-performance-analysis.md:31` | `configurable up to 8` | `configurable, no upper bound` |
+| `plans/memory-performance-analysis.md:213` | `(up to MAX_ISOLATES=8)` | remove |
+| `plans/memory-performance-analysis.md:439` | `max 8` | remove |
+| `plans/memory-performance-analysis.md:460` | `MAX_ISOLATES (8)` | remove |
+| `plans/performance-report.md:241` | `pool cap of 8 isolates` | remove |
+| `plans/performance-report.md:311-312` | `MAX_ISOLATES = 8` / `Capped at` | remove |
+| `plans/performance-report.md:470` | `Increase MAX_ISOLATES cap` | mark `[x]` |
 
-### `lib/ssr/deno.rb` (Ruby layer)
+### Auto-detect
 
-| What | Change |
-|------|--------|
-| Pool size validation | Remove hard cap in Ruby-side validation if any. |
+`bench/performance.rb` uses `(Etc.nprocessors - 1).clamp(1, 8)` for its auto
+pool size. This is a benchmark script default, not library code. Keep the
+`clamp(1, 8)` — it's just a demo heuristic for the bench tool. The library's
+auto-detect (via `resolve_pool_size`) doesn't clamp to 8 anymore — it should
+not clamp at all. User `isolate_pool_size = 0` means "use 1" (the default).
 
 ## Backward compatibility
 
 - Default `isolate_pool_size = 1` unchanged.
-- Existing configs with `pool_size ≤ 8` work identically.
-- Users who set `pool_size > 8` now get it, previously got clamped to 8.
-- Auto-detect formula (`Etc.nprocessors - 1`) may now produce values > 8 on
-  high-CPU machines. Consider whether to cap auto-detect separately.
+- Configs with `pool_size ≤ 8` work identically.
+- Users who set `pool_size > 8` now get it, previously clamped to 8.
 
 ## Risks
 
-- **Memory.** 8 idle isolates ~160-240 MB. 64 isolates ~1.3-2 GB. Users may
-  shoot themselves in the foot. Mitigation: document memory budgeting in README.
-- **Thread count.** One OS thread per isolate. High isolate counts may starve
-  the Ruby VM. Mitigation: pool of 64 should be fine on 16+ core machines.
+- **Memory.** 8 idle isolates ~160-240 MB. 64 isolates ~1.3-2 GB.
+- **Thread count.** One OS thread per isolate. High counts starve Ruby VM.
+
+## Completed
+
+Implemented in commit `7d94cc2`. All code and doc changes done. `bundle exec rake`
+passes (100% coverage, no failures, RuboCop clean).
 
 ## Tasks
 
-- [ ] Remove `MAX_ISOLATES` constant in `ssr_deno_core/src/lib.rs`
-- [ ] Update `resolve_pool_size` to clamp only at 1 (no upper bound)
-- [ ] Update `validate_pool_size` to only reject 0
-- [ ] Update tests (remove max_isolates_is_eight, adjust clamp tests)
-- [ ] Remove upper-bound check in `IsolatePool::new` if any
-- [ ] Check Ruby layer for any hard cap
-- [ ] Run `bundle exec rake` to verify
-
-## Extracted from
-
-Part of the [RactorPool plan](ractor-pool.md). Extracted as standalone step
-for focused implementation.
+- [x] Default `isolate_pool_size = 1` unchanged
+- [x] Remove MAX_ISOLATES constant + update validate/resolve/tests
+- [x] Clean up mod.rs comment, Ruby param doc
+- [x] Update stale docs (architecture, compatibility, plans)
+- [x] Mark performance-report.md Future Work as done
+- [x] Run `bundle exec rake` to verify

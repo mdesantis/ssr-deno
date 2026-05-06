@@ -15,7 +15,7 @@ flowchart TB
     subgraph RubyProcess["Ruby Process"]
         RubyApp["Ruby App"] --> SSRBundle["SSR::Deno::Bundle.new(path).render(data)"]
         SSRBundle --> NativeExt["Ruby Native Extension (magnus)"]
-        NativeExt -->|JSON bridge| Pool["IsolatePool<br/>(up to 8 isolates, round-robin)"]
+        NativeExt -->|JSON bridge| Pool["IsolatePool<br/>(round-robin)"]
         Pool --> Isolate["V8 Isolate<br/>deno_runtime::MainWorker<br/>globalThis.render()<br/>HTML string out"]
         Isolate --> NativeExt
         NativeExt --> SSRBundle
@@ -64,7 +64,7 @@ flowchart LR
     end
     Pick --> H1["IsolateHandle 0"]
     Pick --> H2["IsolateHandle 1"]
-    Pick --> H3["IsolateHandle ... N (max 8)"]
+    Pick --> H3["IsolateHandle ... N"]
     H1 --> W1["deno-worker-0<br/>MainWorker + V8"]
     H2 --> W2["deno-worker-1<br/>MainWorker + V8"]
     H3 --> W3["deno-worker-N<br/>MainWorker + V8"]
