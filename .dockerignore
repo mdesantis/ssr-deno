@@ -34,8 +34,8 @@ Thumbs.db
 *.swp
 *.swo
 
-# Vendor (rusty_v8 submodule)
-vendor/
+# Vendor submodule (rusty_v8)
+vendor/rusty_v8
 
 # Ruby
 .bundle/
