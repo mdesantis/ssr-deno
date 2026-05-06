@@ -13,11 +13,10 @@
 # (gitignored). Requires: `deno task build` prerequisites (see samples/).
 #
 # Usage:
-#   ruby bench/performance.rb                                # vite-react-ssr-app, pool=1, single
-#   ruby bench/performance.rb --sample vite-react-ssr-app    # explicit sample
-#   ruby bench/performance.rb --bundle minimal               # using alias
-#   ruby bench/performance.rb --pool-size 4 --mode threads   # different config
-#   ruby bench/performance.rb --sample vite-svelte-ssr-app   # different sample
+#   ruby scripts/performance.rb                                # vite-react-ssr-app, pool=1, single
+#   ruby scripts/performance.rb --sample vite-react-ssr-app    # explicit sample
+#   ruby scripts/performance.rb --sample vite-svelte-ssr-app   # different sample
+#   ruby scripts/performance.rb --pool-size 4 --mode threads   # different config
 #
 # Requires: compiled native extension (bundle exec rake compile)
 # ---------------------------------------------------------------------------
@@ -37,21 +36,11 @@ BENCH_ROOT = File.expand_path('..', __dir__).freeze
 FIXTURES_DIR = File.join(BENCH_ROOT, 'test', 'fixtures').freeze
 TMP_DIR = File.join(BENCH_ROOT, 'tmp').freeze
 MINIMAL_BUNDLE = File.join(FIXTURES_DIR, 'minimal-bundle.js').freeze
-REACT_BUNDLE = File.join(TMP_DIR, 'react-ssr-bundle.js').freeze
-MUI_EMOTION_BUNDLE = File.join(TMP_DIR, 'react-mui-emotion-ssr-bundle.js').freeze
-MUI_DASHBOARD_BUNDLE = File.join(TMP_DIR, 'react-mui-dashboard-ssr-bundle.js').freeze
 SAMPLES_DIR = File.join(BENCH_ROOT, 'samples').freeze
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-
-BUNDLE_ALIASES = {
-  'minimal' => MINIMAL_BUNDLE,
-  'react' => REACT_BUNDLE,
-  'mui-emotion' => MUI_EMOTION_BUNDLE,
-  'mui-dashboard' => MUI_DASHBOARD_BUNDLE,
-}.freeze
 
 options = {
   iterations: 200,
@@ -60,7 +49,6 @@ options = {
   ractor_count: 4,
   pool_size: 1,
   mode: :single,
-  bundle: nil,
   sample: nil,
   node_builtins: false,
   timeout_ms: nil,
@@ -101,54 +89,35 @@ OptionParser.new do |opts|
     options[:timeout_ms] = ms
   end
 
-  opts.on('--bundle NAME',
-          "Bundle: #{BUNDLE_ALIASES.keys.join(' / ')} or file path") do |b|
-    options[:bundle] = b
-  end
-
   opts.on('--sample NAME', "Sample directory under samples/ (e.g. vite-react-ssr-app)") do |s|
     options[:sample] = s
   end
 end.parse!
 
 # ---------------------------------------------------------------------------
-# Bundle resolution: --sample takes precedence, then --bundle, then default
+# Bundle resolution: default to vite-react-ssr-app if no --sample
 # ---------------------------------------------------------------------------
 
-if options[:sample]
-  sample_dir = File.join(SAMPLES_DIR, options[:sample])
-  bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
+sample = options[:sample] || 'vite-react-ssr-app'
+sample_dir = File.join(SAMPLES_DIR, sample)
+bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
 
-  unless File.exist?(sample_dir)
-    abort "Sample not found: #{options[:sample]}. Available: #{Dir.glob("#{SAMPLES_DIR}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
-  end
-
-  unless File.exist?(bundle_path)
-    puts "  Building #{options[:sample]}..."
-    success = system('deno', 'task', 'build', chdir: sample_dir)
-    abort "Build failed for #{options[:sample]}" unless success
-    abort "#{bundle_path} not found after build" unless File.exist?(bundle_path)
-  end
-
-  unless options[:node_builtins]
-    options[:node_builtins] = File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
-  end
-
-  options[:bundle] = bundle_path
-elsif options[:bundle].nil?
-  # Default: use vite-react-ssr-app sample
-  options[:sample] = 'vite-react-ssr-app'
-  sample_dir = File.join(SAMPLES_DIR, 'vite-react-ssr-app')
-  bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
-
-  unless File.exist?(bundle_path)
-    puts "  Building default sample (vite-react-ssr-app)..."
-    success = system('deno', 'task', 'build', chdir: sample_dir)
-    abort "Build failed for default sample" unless success
-  end
-
-  options[:bundle] = bundle_path
+unless File.exist?(sample_dir)
+  abort "Sample not found: #{sample}. Available: #{Dir.glob("#{SAMPLES_DIR}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
 end
+
+unless File.exist?(bundle_path)
+  puts "  Building #{sample}..."
+  success = system('deno', 'task', 'build', chdir: sample_dir)
+  abort "Build failed for #{sample}" unless success
+  abort "#{bundle_path} not found after build" unless File.exist?(bundle_path)
+end
+
+unless options[:node_builtins]
+  options[:node_builtins] = File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
+end
+
+options[:bundle] = bundle_path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -190,7 +159,7 @@ def run_single_config(options)
   thread_count = options[:thread_count]
   ractor_count = options[:ractor_count]
   mode_filter = options[:mode]
-  bundle_path = BUNDLE_ALIASES[options[:bundle]] || options[:bundle]
+  bundle_path = options[:bundle]
 
   # Enable node builtins before loading ssr/deno (must happen before pool init).
   node_builtins = options[:node_builtins]
