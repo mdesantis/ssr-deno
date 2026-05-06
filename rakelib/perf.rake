@@ -2,27 +2,51 @@
 
 root = File.expand_path('..', __dir__)
 lib = File.join(root, 'lib')
+samples_dir = File.join(root, 'samples')
 test_dir = File.join(root, 'test')
 helper = File.join(test_dir, 'test_helper.rb')
 tmp = File.join(root, 'tmp')
 
-desc 'Run ad-hoc benchmark for a sample (env: SAMPLE, POOL, MODE, ITERATIONS, WARMUP, TIMEOUT, NODE_BUILTINS)
+desc 'Check performance regression (via test:perf)'
+task 'perf:check' => 'test:perf'
+
+desc 'Run ad-hoc benchmark against a sample directory (env: SAMPLE, POOL, MODE, ITERATIONS, WARMUP, TIMEOUT, NODE_BUILTINS)
 
 Examples:
-  rake perf:sample                            # minimal, pool=4
-  rake perf:sample SAMPLE=react POOL=1        # React, single isolate
-  rake perf:sample SAMPLE=mui-emotion NODE_BUILTINS=1 TIMEOUT=5000
-  rake perf:sample SAMPLE=minimal MODE=ractors ITERATIONS=100'
+  rake perf:sample                       # samples/minimal? no — samples/vite-react-ssr-app
+  rake perf:sample SAMPLE=vite-react-ssr-app POOL=1
+  rake perf:sample SAMPLE=vite-react-mui-emotion-ssr-app NODE_BUILTINS=1 TIMEOUT=5000
+  rake perf:sample SAMPLE=webpack-react-ssr-app MODE=single
+  rake perf:sample SAMPLE=vite-vue-ssr-app POOL=4 ITERATIONS=200'
 task 'perf:sample' do
-  sample = ENV.fetch('SAMPLE', 'minimal')
+  sample = ENV.fetch('SAMPLE', 'vite-react-ssr-app')
   pool = ENV.fetch('POOL', '4')
   mode = ENV.fetch('MODE', nil)
-  iters = ENV.fetch('ITERATIONS', '500')
-  warmup = ENV.fetch('WARMUP', '20')
+  iters = ENV.fetch('ITERATIONS', '200')
+  warmup = ENV.fetch('WARMUP', '10')
 
-  args = %W[--bundle #{sample} --pool-size #{pool} --iterations #{iters} --warmup #{warmup}]
+  sample_dir = File.join(samples_dir, sample)
+  bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
+
+  unless File.exist?(sample_dir)
+    abort "Sample directory not found: #{sample_dir}. Available: #{Dir.glob("#{samples_dir}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
+  end
+
+  unless File.exist?(bundle_path)
+    puts "  Building #{sample}..."
+    sh 'deno', 'task', 'build', chdir: sample_dir
+    abort "#{bundle_path} not found after build" unless File.exist?(bundle_path)
+  end
+
+  # Infer node_builtins: check if bundle requires Node.js built-in modules.
+  node_builtins = ENV['NODE_BUILTINS']
+  if node_builtins.nil?
+    node_builtins = File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/) ? '1' : '0'
+  end
+
+  args = %W[--bundle #{bundle_path} --pool-size #{pool} --iterations #{iters} --warmup #{warmup}]
   args += %W[--mode #{mode}] if mode
-  args += %W[--node-builtins] if ENV['NODE_BUILTINS']
+  args += %W[--node-builtins] if node_builtins == '1'
   args += %W[--timeout #{ENV['TIMEOUT']}] if ENV['TIMEOUT']
 
   ruby 'bench/performance.rb', *args

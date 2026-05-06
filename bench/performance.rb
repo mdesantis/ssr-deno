@@ -115,8 +115,8 @@ OptionParser.new do |opts|
     options[:timeout_ms] = ms
   end
 
-  opts.on('--bundle NAME', BUNDLE_ALIASES.keys.map(&:to_s),
-          "Bundle: #{BUNDLE_ALIASES.keys.join(' / ')} (default: minimal)") do |b|
+  opts.on('--bundle NAME',
+          "Bundle: #{BUNDLE_ALIASES.keys.join(' / ')} or file path (default: minimal)") do |b|
     options[:bundle] = b
   end
 
