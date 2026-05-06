@@ -1,0 +1,39 @@
+# Rust build artifacts (21G)
+ext/ssr_deno/target/
+
+# Temp files (28G)
+tmp/
+
+# Node dependencies
+node_modules/
+
+# Git data
+.git/
+.gitattributes
+.gitignore
+.gitmodules
+
+# CI
+.github/
+
+# Tests and docs
+test/
+docs/
+samples/
+benches/
+coverage/
+plans/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ruby
+.bundle/
+*.gem
