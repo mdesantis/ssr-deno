@@ -468,4 +468,3 @@ count, memory bandwidth, and OS scheduler behavior vary across machines.
 - [ ] GVL release experiment: wrap FFI call in `magnus::blocking` to measure
   thread throughput improvement
 - [x] Remove `MAX_ISOLATES` cap (pool now configurable up to `usize::MAX`, memory is the real limit)
-- [ ] Investigate MUI X singleton conflict in multi-Ractor bundle loading

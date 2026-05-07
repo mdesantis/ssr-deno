@@ -174,8 +174,8 @@ the total bundle memory cost is `bundles × isolates × ~3 MB`.
 
 `max_heap_size_mb` is a **per-isolate** constraint, not a total process budget.
 With `pool_size = 4` and `max_heap_size_mb = 64`, V8 may allocate up to
-`4 × 64 = 256 MB` combined. The auto-detect default (`CPU - 1`) can be
-aggressive on high-core machines.
+`4 × 64 = 256 MB` combined. The default pool size is `1`; increasing it
+multiplies this budget proportionally.
 
 A user component that leaks memory across renders triggers the
 near-heap-limit callback, which terminates execution and raises
