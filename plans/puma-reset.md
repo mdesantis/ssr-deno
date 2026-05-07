@@ -135,7 +135,7 @@ Run `bundle exec rake test` → **Test B, C, D fail** (`NoMethodError: undefined
 
 ---
 
-### Step 2 — Rust: `ext/ssr_deno/src/lib.rs`
+### ✅ Step 2 — Rust: `ext/ssr_deno/src/lib.rs`
 
 **Replace global state:**
 ```rust
@@ -179,12 +179,21 @@ fn get_or_init_pool() -> Result<Arc<IsolatePool>, Error> {
     if let Some(pool) = guard.as_ref() {
         return Ok(Arc::clone(pool));
     }
+
     let config = *CONFIG.lock().unwrap();
     let pool_size = ssr_deno_core::resolve_pool_size(config);
+    let max_heap_size_mb = config.max_heap_size_mb;
+    let render_timeout_ms = config.render_timeout_ms;
+    let node_builtins = config.node_builtins;
+
     let pool = Arc::new(
-        IsolatePool::new(pool_size, config.max_heap_size_mb,
-                         config.render_timeout_ms, config.node_builtins)
-            .map_err(|e| js_runtime_initialization_error(e.to_string()))?,
+        IsolatePool::new(
+            pool_size,
+            max_heap_size_mb,
+            render_timeout_ms,
+            node_builtins,
+        )
+        .map_err(|e| js_runtime_initialization_error(e.to_string()))?,
     );
     *guard = Some(Arc::clone(&pool));
     INITIALIZED.store(true, Ordering::SeqCst);
@@ -195,18 +204,25 @@ fn get_or_init_pool() -> Result<Arc<IsolatePool>, Error> {
 **Rewrite `get_pool`:**
 ```rust
 fn get_pool() -> Result<Arc<IsolatePool>, Error> {
-    POOL.read().unwrap().as_ref()
+    POOL.read()
+        .unwrap()
+        .as_ref()
         .map(Arc::clone)
-        .ok_or_else(|| js_runtime_not_initialized_error(
-            "Runtime not initialized. Call `SSR::Deno::Bundle.new` first."))
+        .ok_or_else(|| {
+            js_runtime_not_initialized_error(
+                "Runtime not initialized. Call `SSR::Deno::Bundle.new` first.",
+            )
+        })
 }
 ```
 
 All callers (`native_render`, `native_render_chunks`, `native_heap_stats`) use the returned `Arc` directly — `.method()` still works.
 
+Ractor safety comment updated: `RwLock + AtomicBool` replaces `OnceLock` reference.
+
 **Add `native_reset_pool` and `native_pool_generation`:**
 ```rust
-fn native_reset_pool(_: &Value) -> Result<(), Error> {
+fn native_reset_pool() -> Result<(), Error> {
     let mut guard = POOL.write().unwrap();
     *guard = None;  // Drop Arc → if last ref, IsolatePool drops → tx channels drop → workers exit
     INITIALIZED.store(false, Ordering::SeqCst);
@@ -214,15 +230,16 @@ fn native_reset_pool(_: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-fn native_pool_generation(_: &Value) -> u64 {
+fn native_pool_generation() -> u64 {
     POOL_GENERATION.load(Ordering::SeqCst)
 }
 ```
+Note: no `&Value` param — 0-arg `function!` means magnus doesn't pass self.
 
 **Register in magnus init block:**
 ```rust
-module.define_method("native_reset_pool", function!(native_reset_pool, 0))?;
-module.define_method("native_pool_generation", function!(native_pool_generation, 0))?;
+deno_module.define_singleton_method("native_reset_pool", function!(native_reset_pool, 0))?;
+deno_module.define_singleton_method("native_pool_generation", function!(native_pool_generation, 0))?;
 ```
 
 ---
@@ -364,6 +381,6 @@ Add under `## Unreleased`:
 ## Verification
 
 1. ✅ Write `test_deno_reset.rb` → `bundle exec rake test` → Test A passes, B/C/D fail
-2. ◐ Implement Rust → `bundle exec rake compile`
+2. ✅ Implement Rust → `bundle exec rake compile`
 3. Implement Ruby → `bundle exec rake test` → all pass
 4. `bundle exec rake` → full pipeline exits 0
