@@ -4,22 +4,30 @@ _Reviewed: 2026-05-08_
 
 ---
 
-## Decision 1 — `ssr_render` calls `.html_safe` on non-String bundle results
+## Bug 1 — `ssr_render` calls `.html_safe` on bundle results
 
 **File:** `lib/ssr/deno/rails/helper.rb:26`  
-**Status:** Won't fix — intentional
+**Priority:** High  
+**Status:** Fixed ✅
+
+**.html_safe is banned from the codebase.** The helper must not mark any string
+as `html_safe`. Raw strings are returned as-is from `bundle.render`. The caller
+(app view) is responsible for marking output safe when needed.
 
 ```ruby
+# Before (original):
 bundle.render(data, **options).html_safe
+
+# Before (previous fix):
+result = bundle.render(data, **options)
+result.is_a?(String) ? result.html_safe : result
+
+# After (final — no .html_safe anywhere):
+bundle.render(data, **options)
 ```
 
-`ssr_render` is a Rails helper for HTML rendering. If a bundle returns structured data
-(e.g. `{ html: '...', css: '...' }`) instead of an HTML string, the caller should use
-`bundle.render` directly with `raw_output: true` and handle the structure themselves.
-Adding a type check would silently mask bugs where a bundle returns unexpected types.
-
-The `NoMethodError` on `Hash#html_safe` is a clear signal to the developer that their
-bundle's return type doesn't match the helper contract.
+Updated documentation removes all mentions of `html_safe`. Empty string CSR
+fallback is plain `''`.
 
 ---
 
@@ -253,7 +261,7 @@ bool_value = %w[true 1 yes].include?(value.downcase)
 
 | # | Item | File | Priority | Done |
 |---|------|------|----------|------|
-| 1 | `ssr_render` `.html_safe` on non-String | `helper.rb:26` | High | [x] (won't fix) |
+| 1 | `ssr_render` `.html_safe` on non-String | `helper.rb:26` | High | [x] |
 | 2 | `render_timeout_ms` missing from Rails config | `railtie.rb` | Medium | [ ] |
 | 3 | `apply_integer_env` misleading out-of-range warning | `deno.rb:144` | Low | [ ] |
 | 4 | `reload_if_changed` thread-safety comment | `bundle.rb:132` | Low | [ ] |

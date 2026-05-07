@@ -4,10 +4,11 @@ Nonce passable via `ssr_render` data hash. No library code changes needed — no
 
 ## Usage
 
-Pass the nonce through the data hash in your Rails view:
+Pass the nonce through the data hash in your Rails view. Call `.html_safe` if
+your bundle returns trusted HTML:
 
 ```erb
-<%= ssr_render({ page: "home", nonce: content_security_policy_nonce }) %>
+<%= ssr_render({ page: "home", nonce: content_security_policy_nonce }).html_safe %>
 ```
 
 In your JS entry-server, read the nonce from the parsed data:

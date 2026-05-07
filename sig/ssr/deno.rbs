@@ -67,7 +67,7 @@ module SSR
     end
 
     module Helper
-      def ssr_render: (?untyped? data, **untyped options) -> String
+      def ssr_render: (?untyped? data, **untyped options) -> (::String | untyped)
 
       private
 

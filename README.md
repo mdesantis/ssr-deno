@@ -230,11 +230,15 @@ end
 
 ### Basic
 
-`ssr_render` delegates to `Bundle#render` and accepts the same `raw_input:` and `raw_output:` options:
+`ssr_render` delegates to `Bundle#render` and accepts the same `raw_input:` and `raw_output:` options.
+
+Rails auto-escapes HTML in views. Call `.html_safe` on the output if your bundle returns trusted HTML:
 
 ```erb
-<%= ssr_render({ page: 'home', user: @user }) %>
+<%= ssr_render({ page: 'home', user: @user }).html_safe %>
 ```
+
+Without `.html_safe`, special characters (`<`, `>`, `&`) are escaped by Rails.
 
 ### CSP Nonce
 

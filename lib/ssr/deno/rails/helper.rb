@@ -14,7 +14,7 @@ module SSR
       #     already a JSON string.
       #   @option options [Boolean] :raw_output  Skip JSON.parse — return raw
       #     JSON string from JS.
-      # @return [String] Rendered output (html_safe). Empty string on SSR
+      # @return [String, Object] Raw result from the bundle. Empty string on SSR
       #   failure when +raise_on_render_error+ is false (CSR fallback).
       # @raise [SSR::Deno::BundleNotFoundError] if bundle name not registered.
       # @raise [SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError]
@@ -23,14 +23,14 @@ module SSR
         bundle_name = options.delete(:bundle) || :application
         bundle = find_bundle!(bundle_name)
 
-        bundle.render(data, **options).html_safe
+        bundle.render(data, **options)
       rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
              SSR::Deno::JsRuntimeOutOfMemoryError => error
         raise if Rails.application.config.ssr_deno.raise_on_render_error
 
         Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \
                            "falling back to CSR: #{error.message}"
-        ''.html_safe
+        ''
       end
 
       private
