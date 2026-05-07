@@ -12,6 +12,8 @@ module SSR
       end
 
       def add_puma_on_worker_boot
+        create_file 'config/puma.rb'
+
         append_to_file 'config/puma.rb' do
           "\n# ssr-deno: create bundles in each worker after fork.\n" \
             "on_worker_boot do\n  " \
