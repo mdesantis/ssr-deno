@@ -8,12 +8,11 @@ use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Mutex, OnceLock};
 
-static POOL: RwLock<Option<Arc<IsolatePool>>> = RwLock::new(None);
-static INITIALIZED: AtomicBool = AtomicBool::new(false);
-static POOL_GENERATION: AtomicU64 = AtomicU64::new(0);
+static POOL: OnceLock<IsolatePool> = OnceLock::new();
+static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
+static INITIALIZED: OnceLock<()> = OnceLock::new();
 
 // Defaults: 64 MB heap, 1 isolate pool.
 static CONFIG: Mutex<Config> = Mutex::new(Config::default());
@@ -21,7 +20,7 @@ static CONFIG: Mutex<Config> = Mutex::new(Config::default());
 /// Returns an error if the runtime has already been initialized.
 /// All config setters call this before modifying CONFIG.
 fn check_not_initialized() -> Result<(), Error> {
-    if INITIALIZED.load(Ordering::SeqCst) {
+    if INITIALIZED.get().is_some() {
         Err(Error::new(
             deno_exception_class("JsRuntimeInitializationError"),
             "Cannot set config after runtime is already initialized",
@@ -161,68 +160,42 @@ fn native_get_node_builtins_enabled() -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Pool initialization (RwLock + double-check)
+// Pool initialization (OnceLock + init mutex)
 // ---------------------------------------------------------------------------
 
-fn get_or_init_pool() -> Result<Arc<IsolatePool>, Error> {
-    {
-        let guard = POOL.read().unwrap();
-        if let Some(pool) = guard.as_ref() {
-            return Ok(Arc::clone(pool));
-        }
+fn get_or_init_pool() -> Result<&'static IsolatePool, Error> {
+    if let Some(p) = POOL.get() {
+        return Ok(p);
     }
-    let mut guard = POOL.write().unwrap();
-    if let Some(pool) = guard.as_ref() {
-        return Ok(Arc::clone(pool));
+    let _guard = POOL_INIT_LOCK.lock().unwrap();
+    if let Some(p) = POOL.get() {
+        return Ok(p);
     }
 
     let config = *CONFIG.lock().unwrap();
     let pool_size = ssr_deno_core::resolve_pool_size(config);
-    // max_heap_size_mb is a per-isolate V8 CreateParams constraint, NOT a
-    // total budget. Each isolate independently gets the configured limit so
-    // that workloads calibrated for a single isolate don't break when the
-    // pool size is increased. Users with tight memory can reduce the per-isolate
-    // limit explicitly.
     let max_heap_size_mb = config.max_heap_size_mb;
     let render_timeout_ms = config.render_timeout_ms;
     let node_builtins = config.node_builtins;
 
-    let pool = Arc::new(
-        IsolatePool::new(
-            pool_size,
-            max_heap_size_mb,
-            render_timeout_ms,
-            node_builtins,
+    let pool = IsolatePool::new(
+        pool_size,
+        max_heap_size_mb,
+        render_timeout_ms,
+        node_builtins,
+    )
+    .map_err(|e| js_runtime_initialization_error(e.to_string()))?;
+    let _ = POOL.set(pool);
+    let _ = INITIALIZED.set(());
+    Ok(POOL.get().unwrap())
+}
+
+fn get_pool() -> Result<&'static IsolatePool, Error> {
+    POOL.get().ok_or_else(|| {
+        js_runtime_not_initialized_error(
+            "Runtime not initialized. Call `SSR::Deno::Bundle.new` first.",
         )
-        .map_err(|e| js_runtime_initialization_error(e.to_string()))?,
-    );
-    *guard = Some(Arc::clone(&pool));
-    INITIALIZED.store(true, Ordering::SeqCst);
-    Ok(pool)
-}
-
-fn get_pool() -> Result<Arc<IsolatePool>, Error> {
-    POOL.read()
-        .unwrap()
-        .as_ref()
-        .map(Arc::clone)
-        .ok_or_else(|| {
-            js_runtime_not_initialized_error(
-                "Runtime not initialized. Call `SSR::Deno::Bundle.new` first.",
-            )
-        })
-}
-
-fn native_reset_pool() -> Result<(), Error> {
-    let mut guard = POOL.write().unwrap();
-    *guard = None;
-    INITIALIZED.store(false, Ordering::SeqCst);
-    POOL_GENERATION.fetch_add(1, Ordering::SeqCst);
-    Ok(())
-}
-
-fn native_pool_generation() -> u64 {
-    POOL_GENERATION.load(Ordering::SeqCst)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -305,9 +278,9 @@ fn native_render_chunks(
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     // Opt in to Ractor safety. All shared state (POOL) is Rust-level and
-    // protected by RwLock + AtomicBool. Renders dispatch through per-isolate
-    // tokio channels and the round-robin counter uses AtomicUsize, so
-    // concurrent Ractors get isolated results without shared mutable state.
+    // protected by OnceLock. Renders dispatch through per-isolate tokio
+    // channels and the round-robin counter uses AtomicUsize, so concurrent
+    // Ractors get isolated results without shared mutable state.
     unsafe {
         extern "C" {
             fn rb_ext_ractor_safe(flag: bool);
@@ -327,11 +300,6 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("JsRuntimeOutOfMemoryError", base_error)?;
     deno_module.define_error("HeapStatsSerializationError", base_error)?;
 
-    deno_module.define_singleton_method("native_reset_pool", function!(native_reset_pool, 0))?;
-    deno_module.define_singleton_method(
-        "native_pool_generation",
-        function!(native_pool_generation, 0),
-    )?;
     deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
     deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;

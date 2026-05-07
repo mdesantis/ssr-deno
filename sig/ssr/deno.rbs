@@ -36,8 +36,7 @@ module SSR
   @bundle_path: String
   @bundle_id: String
   @mtime: Time
-  @auto_reload: bool
-  @pool_generation: Integer
+      @auto_reload: bool
 
       self.@registry: Registry
 
@@ -59,8 +58,6 @@ module SSR
       def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
 
       def load: () -> void
-
-      def ensure_loaded: () -> void
 
       def reload_if_changed: () -> void
 
@@ -109,12 +106,6 @@ module SSR
     class InstallGenerator
       def create_initializer: () -> void
     end
-
-    def self.reset!: () -> void
-
-    def self.native_reset_pool: () -> void
-
-    def self.native_pool_generation: () -> Integer
 
     def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
     def self.native_render: (String bundle_id, String json) -> String

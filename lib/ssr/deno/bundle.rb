@@ -18,7 +18,6 @@ module SSR
         @bundle_id = @bundle_path
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
-        @pool_generation = -1
 
         instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
           load
@@ -58,7 +57,6 @@ module SSR
       #   near-heap-limit callback terminates execution before V8 would crash
       #   the process with SIGTRAP. See {file:plans/archived/v8-oom-protection.md}.
       def render(data = nil, raw_input: false, raw_output: false)
-        ensure_loaded
         reload_if_changed if @auto_reload
 
         json_input = raw_input ? data : JSON.generate(data)
@@ -89,7 +87,6 @@ module SSR
       # @raise [SSR::Deno::JsRuntimeOutOfMemoryError] if the V8 isolate heap
       #   exceeds the configured limit (+max_heap_size_mb+)
       def render_chunks(data = nil, raw_input: false, &)
-        ensure_loaded
         reload_if_changed if @auto_reload
 
         json_input = raw_input ? data : JSON.generate(data)
@@ -107,16 +104,6 @@ module SSR
       # Load (or reload) the bundle into the Deno runtime.
       def load
         SSR::Deno.native_load_bundle(@bundle_id, @bundle_path)
-        @pool_generation = SSR::Deno.native_pool_generation
-      end
-
-      # Reload the bundle if the pool generation has changed (reset! was called).
-      def ensure_loaded
-        return if @pool_generation == SSR::Deno.native_pool_generation
-
-        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
-          load
-        end
       end
 
       # Reload the bundle if the file has changed on disk.

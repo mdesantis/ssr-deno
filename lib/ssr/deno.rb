@@ -119,16 +119,6 @@ module SSR
         {}
       end
 
-      # Drops the inherited isolate pool and lets it re-initialize lazily.
-      # Required when using Puma in clustered mode with +preload_app!+.
-      # Call in +on_worker_boot+ after fork.
-      #
-      # Config (heap size, pool size, timeout, node_builtins) is preserved
-      # across reset. Existing Bundle instances detect the generation mismatch
-      # and reload transparently on the next render.
-      def reset!
-        native_reset_pool
-      end
     end
 
     class << self

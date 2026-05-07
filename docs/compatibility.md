@@ -204,29 +204,4 @@ worker thread exits unexpectedly, `native_render` returns
 `SSR::Deno::JsRuntimeWorkerError`. The pool itself remains alive; renders
 are dispatched to the remaining isolates via round-robin.
 
-### Puma clustered mode
 
-When using Puma with `preload_app!`, the master process initializes the SSR pool
-(via `Bundle.new`) before forking workers. After fork, each worker inherits a
-corrupted pool — V8 isolate threads and tokio runtimes only exist in the parent.
-This is fork-after-thread undefined behavior.
-
-**Result:** the forked worker can enqueue a render message (the channel has
-capacity 1), but the reply never arrives because the worker thread that would
-process it doesn't exist. Deadlock.
-
-**Fix:** call `SSR::Deno.reset!` in `on_worker_boot`:
-
-```ruby
-# config/puma.rb
-on_worker_boot do
-  SSR::Deno.reset!
-end
-```
-
-`reset!` drops the inherited pool, resets the initialized flag, and increments an
-internal generation counter. The pool re-initializes lazily on the first render in
-each worker. Existing `Bundle` instances detect the generation mismatch and reload
-transparently.
-
-Config (heap size, pool size, timeout, node_builtins) is preserved across the reset.

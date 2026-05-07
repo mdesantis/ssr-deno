@@ -1,5 +1,10 @@
 # Plan: `SSR::Deno.reset!` — Puma Clustered Mode Compatibility
 
+**SUPERSEDED by [../puma-v8-limitation.md](../puma-v8-limitation.md).** V8 cannot
+create isolates after fork (`g_per_isolate_slot_initialized_` assertion).
+The `reset!` + re-create approach is impossible. Correct strategy: defer
+`Bundle.new` to `on_worker_boot`.
+
 ## Context
 
 In Puma clustered mode with `preload_app!`, the master process loads the app (and initializes the SSR pool via `Bundle.new`) before forking workers. After fork, the child inherits a corrupted pool: V8 isolates and per-isolate tokio runtimes reference threads that only exist in the parent. This is classic "fork-after-thread" UB.

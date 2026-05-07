@@ -1,10 +1,6 @@
 ## Unreleased
 
 ### Added
-- `SSR::Deno.reset!` — drops and re-initializes the isolate pool. Required when
-  using Puma in clustered mode with `preload_app!`. Call in `on_worker_boot`.
-  Existing `Bundle` instances reload automatically on the next render.
-  Config (heap size, pool size, timeout, node_builtins) is preserved across reset.
 - Railtie: wire `config.ssr_deno.node_builtins_enabled` to `SSR::Deno.node_builtins_enabled=` setter. The config option was already defined in the generator template but was not connected to the native setter — creating the config had no effect on the V8 isolate pool.
 
 ### Changed
