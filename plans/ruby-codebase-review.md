@@ -4,29 +4,22 @@ _Reviewed: 2026-05-08_
 
 ---
 
-## Bug 1 — `ssr_render` calls `.html_safe` on non-String bundle results
+## Decision 1 — `ssr_render` calls `.html_safe` on non-String bundle results
 
 **File:** `lib/ssr/deno/rails/helper.rb:26`  
-**Severity:** High
+**Status:** Won't fix — intentional
 
 ```ruby
 bundle.render(data, **options).html_safe
 ```
 
-`bundle.render` without `raw_output: true` calls `JSON.parse(native_result)`. If the JS
-`render()` function returns an object (`{ html: '...', css: '...' }` — common with
-emotion/MUI), `JSON.parse` returns a Hash. `Hash#html_safe` doesn't exist → `NoMethodError`.
+`ssr_render` is a Rails helper for HTML rendering. If a bundle returns structured data
+(e.g. `{ html: '...', css: '...' }`) instead of an HTML string, the caller should use
+`bundle.render` directly with `raw_output: true` and handle the structure themselves.
+Adding a type check would silently mask bugs where a bundle returns unexpected types.
 
-Affects any bundle that returns structured data and is called via `ssr_render`. Direct
-`bundle.render` calls are unaffected (test_integration_samples.rb uses those).
-
-**Fix:**
-```ruby
-result = bundle.render(data, **options)
-result.is_a?(String) ? result.html_safe : result
-```
-
-Or raise explicitly when result is not a String if `ssr_render` is defined to always output HTML.
+The `NoMethodError` on `Hash#html_safe` is a clear signal to the developer that their
+bundle's return type doesn't match the helper contract.
 
 ---
 
@@ -260,7 +253,7 @@ bool_value = %w[true 1 yes].include?(value.downcase)
 
 | # | Item | File | Priority | Done |
 |---|------|------|----------|------|
-| 1 | `ssr_render` `.html_safe` on non-String | `helper.rb:26` | High | [ ] |
+| 1 | `ssr_render` `.html_safe` on non-String | `helper.rb:26` | High | [x] (won't fix) |
 | 2 | `render_timeout_ms` missing from Rails config | `railtie.rb` | Medium | [ ] |
 | 3 | `apply_integer_env` misleading out-of-range warning | `deno.rb:144` | Low | [ ] |
 | 4 | `reload_if_changed` thread-safety comment | `bundle.rb:132` | Low | [ ] |
