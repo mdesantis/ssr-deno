@@ -60,13 +60,13 @@ pub struct NopNpmPackageFolderResolver;
 impl node_resolver::NpmPackageFolderResolver for NopNpmPackageFolderResolver {
     fn resolve_package_folder_from_package(
         &self,
-        _specifier: &str,
+        specifier: &str,
         _referrer: &node_resolver::UrlOrPathRef,
     ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
         Err(
             node_resolver::errors::PackageFolderResolveErrorKind::PackageNotFound(
                 node_resolver::errors::PackageNotFoundError {
-                    package_name: _specifier.to_string(),
+                    package_name: specifier.to_string(),
                     referrer: node_resolver::UrlOrPath::Url(
                         deno_runtime::deno_core::url::Url::from_file_path("/dev/null")
                             .expect("Valid file path"),
