@@ -119,15 +119,11 @@ automatically runs it via `bundle exec rake test`. No separate step.
 
 - **`EXCLUDED_MAIN` already covers `_deno_rails`**: test file excluded from `test:main` suite.
 
-## Implementation order
+## Status
 
-1. Edit `Gemfile` — add `combustion`, `rails`
-2. Create `test/test_helper_rails.rb`
-3. Edit `rakelib/test.rake` — add `test:rails` suite
-4. Edit `test/ssr/test_integration_deno_rails.rb` — remove skip guard
-5. Edit `.rubocop.yml` — add `test/internal/` exclusion
-6. Edit `test/test_helper.rb` — add `test/internal/` filter
-7. Mark `test/support/integration_deno_rails_runner.rb` deprecated
-8. `bundle install`
-9. `bundle exec rake` — compile + test + lint
-10. Commit
+All steps complete ✅. 8 Rails integration tests now run via `rake test:rails`.
+
+Key fixes discovered during implementation:
+- `require 'rails'` not `require 'rails/railtie'` — Railtie uses `Rails.env` at class-definition time
+- `Combustion.path = 'test/internal'` must be explicit — Minitest not loaded yet at `initialize!` call
+- Added `test/internal/log/` to `.gitignore` — Rails logger creates log file there
