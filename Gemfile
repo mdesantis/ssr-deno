@@ -10,6 +10,7 @@ gem 'dotenv', '~> 3.1'
 gem 'irb'
 gem 'minitest', '~> 6.0', require: false
 gem 'minitest-profile', '~> 0.0', require: false
+gem 'puma', '~> 8.0', require: false
 gem 'rake', '~> 13.0'
 gem 'rake-compiler', '~> 1.3'
 gem 'rbs', require: false

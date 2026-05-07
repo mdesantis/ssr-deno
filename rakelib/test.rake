@@ -11,6 +11,7 @@ Minitest::TestTask.create
 #   test:node_builtins — node_builtins enabled, 2000ms timeout
 #   test:async        — short 100ms timeout
 #   test:env_config   — env var config
+#   test:puma         — Puma integration (in-process single + clustered subprocess)
 Rake::Task[:test].clear if Rake::Task.task_defined?(:test)
 
 root = File.expand_path('..', __dir__)
@@ -19,10 +20,16 @@ test_dir = File.join(root, 'test')
 helper = File.join(test_dir, 'test_helper.rb')
 tmp = File.join(root, 'tmp')
 
+EXCLUDED_MAIN = %w[
+  _node_builtins _async_render _setters
+  _env_config _deno_rails _perf _puma
+  test_helper
+].freeze
+
 desc 'Run tests without Node.js builtin support (default config)'
 task 'test:main' do
   files = Dir.glob(File.join(test_dir, '**', 'test_*.rb'))
-             .grep_v(/_node_builtins|_async_render|_setters|_env_config|_deno_rails|_perf|test_helper/)
+             .reject { |f| EXCLUDED_MAIN.any? { |p| f.include?(p) } }
   runner = <<~RUBY
     require '#{helper}'
     SSR::Deno.isolate_pool_size = 1
@@ -92,6 +99,21 @@ task 'test:env_config' do
      Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_env_config.rb'))
 end
 
+desc 'Run Puma integration tests (in-process single mode + clustered subprocess)'
+task 'test:puma' do
+  puma_test = File.join(test_dir, 'ssr', 'test_integration_puma.rb')
+  runner = <<~RUBY
+    require '#{helper}'
+    SSR::Deno.isolate_pool_size = 1
+    SSR::Deno.render_timeout_ms = 5000
+    require '#{puma_test}'
+  RUBY
+
+  File.write(File.join(tmp, 'test_runner_puma.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:puma' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_puma.rb'))
+end
+
 desc 'Run performance regression tests (pool=4, node_builtins)'
 task 'test:perf' do
   perf_test = File.join(test_dir, 'ssr', 'test_perf.rb')
@@ -110,7 +132,7 @@ task 'test:perf' do
 end
 
 desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async test:env_config]
+task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:puma]
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do

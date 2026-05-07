@@ -18,7 +18,7 @@ end
 #   cargo.rake   — cargo:test, cargo:clippy
 #   perf.rake    — perf:check, perf:baseline:update
 #   samples.rake — samples:build, samples:build:<name>
-#   test.rake    — test:main, test:setters, test:node_builtins, test:async, test:env_config
+#   test.rake    — test:main, test:setters, test:node_builtins, test:async, test:env_config, test:puma
 
 RuboCop::RakeTask.new
 

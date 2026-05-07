@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- Puma integration tests: single mode (in-process, coverage-tracked) and clustered mode (subprocess, 2 workers, preload_app! + lazy Bundle) via `test:puma` suite. Verifies that `Bundle.new` deferred to first request works correctly after fork. Covers the V8 TLS limitation (isolates cannot be created after fork).
 - Railtie: wire `config.ssr_deno.node_builtins_enabled` to `SSR::Deno.node_builtins_enabled=` setter. The config option was already defined in the generator template but was not connected to the native setter — creating the config had no effect on the V8 isolate pool.
 
 ### Changed
