@@ -55,7 +55,6 @@ the first `Bundle.new` to `on_worker_boot`.
 
 See [archived/puma-reset.md](archived/puma-reset.md) for the original
 (failed) approach. This plan supersedes it.
-(failed) approach. This plan supersedes it.
 
 ## Verification
 
