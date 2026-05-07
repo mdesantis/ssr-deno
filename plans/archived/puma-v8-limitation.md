@@ -2,7 +2,7 @@
 
 ## Context
 
-The original approach (see [archived/puma-reset.md](archived/puma-reset.md)) was:
+The original approach (see [puma-reset.md](puma-reset.md)) was:
 `SSR::Deno.reset!` drops the pool, pool re-initializes lazily on first render
 in each forked worker. Generation counter + `ensure_loaded` reloads bundles.
 
@@ -53,7 +53,7 @@ the first `Bundle.new` to `on_worker_boot`.
 
 ## Cross-reference
 
-See [archived/puma-reset.md](archived/puma-reset.md) for the original
+See [puma-reset.md](puma-reset.md) for the original
 (failed) approach. This plan supersedes it.
 
 ## Verification

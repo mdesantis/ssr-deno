@@ -1,6 +1,6 @@
 # Plan: `SSR::Deno.reset!` — Puma Clustered Mode Compatibility
 
-**SUPERSEDED by [../puma-v8-limitation.md](../puma-v8-limitation.md).** V8 cannot
+**SUPERSEDED by [puma-v8-limitation.md](puma-v8-limitation.md).** V8 cannot
 create isolates after fork (`g_per_isolate_slot_initialized_` assertion).
 The `reset!` + re-create approach is impossible. Correct strategy: defer
 `Bundle.new` to `on_worker_boot`.
