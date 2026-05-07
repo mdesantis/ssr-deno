@@ -2,13 +2,14 @@
 
 ### Added
 - Puma integration tests: single mode (in-process, coverage-tracked) and clustered mode (subprocess, 2 workers, preload_app! + lazy Bundle) via `test:puma` suite. Verifies that `Bundle.new` deferred to first request works correctly after fork. Covers the V8 TLS limitation (isolates cannot be created after fork).
-- `Bundle.create_deferred_bundles!` class method — deferred bundle creation for Puma `on_worker_boot` compatibility. `InstallGenerator` now appends the `on_worker_boot` hook to `config/puma.rb`.
+- `Bundle.create_bundles!` class method — bundle creation for Puma `on_worker_boot` compatibility. `InstallGenerator` now appends the `on_worker_boot` hook to `config/puma.rb`.
 - Railtie: wire `config.ssr_deno.node_builtins_enabled` to `SSR::Deno.node_builtins_enabled=` setter.
 
 ### Changed
 - **BREAKING:** `isolate_pool_size` default changed from `0` (auto-detect from CPU count) to `1`. Performance benchmarks show that Ruby threads do not benefit from multiple isolates due to GVL serialization — only Ractors achieve true parallelism. Users with Ractor-based concurrency should explicitly set `isolate_pool_size` to match their pool needs.
+- **BREAKING:** Removed `SSR::Deno::Bundle::Registry` class. `Bundle.registry` is now a plain `Hash` — stores config hashes before `create_bundles!` and `Bundle` instances after. Eliminates `Bundle.deferred_bundles` ivar. `create_bundles!` uses `transform_values!` (no separate register step). All callers updated to use `is_a?(Bundle)` checks and direct hash access.
 - Railtie: remove unnecessary `after: 'ssr_deno.subscribe_events'` dependency from `heap_stats` initializer. Both initializers only register event subscription callbacks — neither emits events during initialization — so ordering is irrelevant.
-- Railtie `init_bundles` now defers `Bundle.new` to `on_worker_boot` (Puma clustered) or first render (single mode). Bundle configs stored via `Bundle.deferred_bundles` and instantiated via `Bundle.create_deferred_bundles!`. Prevents V8 isolate creation before fork.
+- Railtie `init_bundles` now defers `Bundle.new` to `on_worker_boot` (Puma clustered) or first render (single mode). Bundle configs stored via `Bundle.registry` and instantiated via `Bundle.create_bundles!`. Prevents V8 isolate creation before fork.
 ## [0.1.0-alpha.5] - 2026-05-04
 
 ### Added
