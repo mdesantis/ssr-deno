@@ -153,6 +153,6 @@ fn resolve_package_folder_from_package(&self, _specifier: &str, ...) {
 | 2 | `to_js_string` unsafe fallback | Medium | [ ] |
 | 3 | Chunked globals cleanup on early error | Low | [ ] |
 | 4 | `intern_script_name` double allocation | Low | [ ] |
-| 5 | `_specifier` rename | Trivial | [ ] |
+| 5 | `_specifier` rename | Trivial | [x] |
 | 6 | Watchdog per-render thread (future) | Future | [ ] |
 | 7 | Dead isolate replacement (future) | Future | [ ] |
