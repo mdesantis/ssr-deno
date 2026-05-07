@@ -39,6 +39,14 @@ module SSR
         bundle = SSR::Deno::Bundle.registry[bundle_name]
 
         unless bundle
+          # Lazy fallback: bundles may not be created yet in single-mode
+          # Puma or when on_worker_boot wasn't configured.
+          SSR::Deno::Bundle.create_deferred_bundles!
+
+          bundle = SSR::Deno::Bundle.registry[bundle_name]
+        end
+
+        unless bundle
           instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name
 
           raise SSR::Deno::BundleNotFoundError,

@@ -39,8 +39,15 @@ module SSR
       @auto_reload: bool
 
       self.@registry: Registry
+      self.@_create_mutex: Thread::Mutex
+      self.@deferred_bundles: Hash[Symbol, { path: String, auto_reload: boolish }]
+      self.@_deferred_created: boolish
 
       def self.registry: () -> Registry
+
+      def self.deferred_bundles: () -> Hash[Symbol, { path: String, auto_reload: boolish }]
+
+      def self.create_deferred_bundles!: () -> void
 
       def initialize: (String bundle_path) -> void
 
@@ -105,6 +112,8 @@ module SSR
 
     class InstallGenerator
       def create_initializer: () -> void
+
+      def add_puma_on_worker_boot: () -> void
     end
 
     def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
