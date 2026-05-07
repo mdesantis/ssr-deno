@@ -38,13 +38,16 @@ module SSR
   @mtime: Time
       @auto_reload: bool
 
-      self.@registry: Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      self.@registry: Registry
       self.@_create_mutex: Thread::Mutex
-      self.@_bundles_created: boolish
+      self.@deferred_bundles: Hash[Symbol, { path: String, auto_reload: boolish }]
+      self.@_deferred_created: boolish
 
-      def self.registry: () -> Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      def self.registry: () -> Registry
 
-      def self.create_bundles!: () -> void
+      def self.deferred_bundles: () -> Hash[Symbol, { path: String, auto_reload: boolish }]
+
+      def self.create_deferred_bundles!: () -> void
 
       def initialize: (String bundle_path) -> void
 
@@ -64,6 +67,29 @@ module SSR
       def load: () -> void
 
       def reload_if_changed: () -> void
+
+      class Registry
+        include Enumerable[ [Symbol, untyped] ]
+
+        @bundles: Hash[Symbol, untyped]
+        @mutex: Thread::Mutex
+
+        def initialize: () -> void
+
+        def []: (?Symbol name) -> untyped
+
+        alias bundle []
+
+        def register: (Symbol name, untyped bundle) -> void
+
+        def replace: (Symbol name, untyped bundle) -> void
+
+        def remove: (Symbol name) -> untyped?
+
+        def each: () { (Symbol, untyped) -> void } -> Hash[Symbol, untyped]
+
+        def size: () -> Integer
+      end
     end
 
     module Helper

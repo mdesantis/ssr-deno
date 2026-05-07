@@ -28,9 +28,9 @@ module SSR
         SSR::Deno.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
         SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if config.ssr_deno.node_builtins_enabled
 
-        # Store bundle configs in +registry+. Actual +Bundle.new+ is called
-        # from +on_worker_boot+ (Puma clustered) or lazily on first render
-        # (single mode).
+        # Store bundle configs for deferred initialization. Actual
+        # Bundle.new is called from +on_worker_boot+ (Puma clustered) or
+        # lazily on first render (single mode).
         config.ssr_deno.bundles.each do |name, path|
           path ||= default_bundle_path(name)
 
@@ -41,7 +41,7 @@ module SSR
             next
           end
 
-          SSR::Deno::Bundle.registry[name] = { path: path, auto_reload: config.ssr_deno.auto_reload }
+          SSR::Deno::Bundle.deferred_bundles[name] = { path: path, auto_reload: config.ssr_deno.auto_reload }
         end
       end
 

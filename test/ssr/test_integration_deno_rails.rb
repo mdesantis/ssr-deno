@@ -42,11 +42,12 @@ module SSR
       end
 
       def test_registry_accessible
-        assert_instance_of Hash,
+        assert_instance_of SSR::Deno::Bundle::Registry,
                            SSR::Deno::Bundle.registry
       end
 
       def test_registry_empty_by_default
+        # No bundle files exist in the dummy app, so none should be registered
         assert_equal 0, SSR::Deno::Bundle.registry.size
       end
 

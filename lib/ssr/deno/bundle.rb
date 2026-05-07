@@ -1,38 +1,43 @@
 # frozen_string_literal: true
 
+require_relative 'bundle/registry'
 require_relative 'instrumenter'
 
 module SSR
   module Deno
     class Bundle
       class << self
-        attr_reader :registry
+        attr_reader :registry, :deferred_bundles
 
-        # Create bundles from config hashes stored in +registry+.
-        # Thread-safe (outer guard + mutex). Call from +on_worker_boot+
-        # (Puma clustered) or lazily on first render (single mode).
+        # Create all deferred bundles. Thread-safe (double-checked lock).
+        # Call from +on_worker_boot+ (Puma clustered) or lazily on first
+        # render (single mode).
         # rubocop:disable ThreadSafety/ClassInstanceVariable
-        def create_bundles!
-          return if @_bundles_created
+        def create_deferred_bundles!
+          return if @_deferred_created
 
           @_create_mutex.synchronize do
-            next if @_bundles_created
+            return if @_deferred_created
 
-            @registry.transform_values! do |cfg|
+            @_deferred_created = true
+
+            deferred_bundles.each do |name, cfg|
               bundle = new(cfg[:path])
               bundle.auto_reload = true if cfg[:auto_reload]
-              bundle
-            end
 
-            @_bundles_created = true
+              registry.register(name, bundle)
+            rescue ArgumentError
+              warn "[ssr-deno] Bundle #{name.inspect} already registered. Skipping."
+            end
           end
         end
         # rubocop:enable ThreadSafety/ClassInstanceVariable
       end
 
-      @registry = {} # rubocop:disable ThreadSafety/MutableClassInstanceVariable
+      @registry = Registry.new
       @_create_mutex = Mutex.new
-      @_bundles_created = false
+      @deferred_bundles = {} # rubocop:disable ThreadSafety/MutableClassInstanceVariable
+      @_deferred_created = false
 
       # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
       def initialize(bundle_path)

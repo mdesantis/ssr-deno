@@ -105,48 +105,57 @@ module SSR
       assert_equal 'yielded', result
     end
 
-    def test_registry_creates_bundles
-      SSR::Deno::Bundle.registry[:test] = { path: MINIMAL_BUNDLE, auto_reload: false }
+    def test_deferred_bundles_creates_and_registers
+      SSR::Deno::Bundle.deferred_bundles[:deferred_test] = { path: MINIMAL_BUNDLE, auto_reload: false }
 
-      SSR::Deno::Bundle.create_bundles!
+      SSR::Deno::Bundle.create_deferred_bundles!
 
-      bundle = SSR::Deno::Bundle.registry[:test]
+      bundle = SSR::Deno::Bundle.registry[:deferred_test]
 
-      assert_instance_of SSR::Deno::Bundle, bundle
-      html = bundle.render({ data: { name: 'Created' } })
+      refute_nil bundle
+      html = bundle.render({ data: { name: 'Deferred' } })
 
-      assert_includes html, 'Created'
+      assert_includes html, 'Deferred'
     end
 
-    def test_create_bundles_is_idempotent
-      SSR::Deno::Bundle.registry[:idempotent_test] = { path: MINIMAL_BUNDLE, auto_reload: false }
+    def test_deferred_bundles_is_idempotent
+      SSR::Deno::Bundle.deferred_bundles[:deferred_test] = { path: MINIMAL_BUNDLE, auto_reload: false }
 
-      SSR::Deno::Bundle.create_bundles!
-      SSR::Deno::Bundle.create_bundles!
+      SSR::Deno::Bundle.create_deferred_bundles!
+      SSR::Deno::Bundle.create_deferred_bundles!
 
-      assert_instance_of SSR::Deno::Bundle, SSR::Deno::Bundle.registry[:idempotent_test]
+      refute_nil SSR::Deno::Bundle.registry[:deferred_test]
     end
 
-    def test_create_bundles_respects_auto_reload
-      SSR::Deno::Bundle.registry[:auto_reload_test] = { path: MINIMAL_BUNDLE, auto_reload: true }
+    def test_deferred_bundles_respects_auto_reload
+      SSR::Deno::Bundle.deferred_bundles[:auto_reload_test] = { path: MINIMAL_BUNDLE, auto_reload: true }
 
-      SSR::Deno::Bundle.create_bundles!
+      SSR::Deno::Bundle.create_deferred_bundles!
 
       bundle = SSR::Deno::Bundle.registry[:auto_reload_test]
 
       assert bundle.instance_variable_get(:@auto_reload)
     end
 
-    def test_create_bundles_outer_guard
+    def test_deferred_bundles_skips_already_registered
+      existing = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
+      SSR::Deno::Bundle.registry.register(:duplicate_test, existing)
+      SSR::Deno::Bundle.deferred_bundles[:duplicate_test] = { path: MINIMAL_BUNDLE, auto_reload: false }
+
+      SSR::Deno::Bundle.create_deferred_bundles!
+
+      assert_same existing, SSR::Deno::Bundle.registry[:duplicate_test]
+    end
+
+    def test_create_deferred_bundles_double_check_lock_inside_mutex
       original_mutex = SSR::Deno::Bundle.instance_variable_get(:@_create_mutex)
       locked_mutex = Mutex.new
-
       locked_mutex.lock
 
       SSR::Deno::Bundle.instance_variable_set(:@_create_mutex, locked_mutex)
-      SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, false)
+      SSR::Deno::Bundle.instance_variable_set(:@_deferred_created, false)
 
-      t = Thread.new { SSR::Deno::Bundle.create_bundles! }
+      t = Thread.new { SSR::Deno::Bundle.create_deferred_bundles! }
 
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       loop do
@@ -156,7 +165,7 @@ module SSR
         Thread.pass
       end
 
-      SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, true)
+      SSR::Deno::Bundle.instance_variable_set(:@_deferred_created, true)
       locked_mutex.unlock
 
       t.join
@@ -165,8 +174,8 @@ module SSR
     end
 
     def teardown
-      SSR::Deno::Bundle.registry.clear
-      SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, false)
+      SSR::Deno::Bundle.deferred_bundles.clear
+      SSR::Deno::Bundle.instance_variable_set(:@_deferred_created, false)
     end
   end
 end

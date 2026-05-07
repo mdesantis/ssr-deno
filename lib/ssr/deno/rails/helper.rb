@@ -38,12 +38,15 @@ module SSR
       def find_bundle!(bundle_name)
         bundle = SSR::Deno::Bundle.registry[bundle_name]
 
-        unless bundle.is_a?(SSR::Deno::Bundle)
-          SSR::Deno::Bundle.create_bundles!
+        unless bundle
+          # Lazy fallback: bundles may not be created yet in single-mode
+          # Puma or when on_worker_boot wasn't configured.
+          SSR::Deno::Bundle.create_deferred_bundles!
+
           bundle = SSR::Deno::Bundle.registry[bundle_name]
         end
 
-        unless bundle.is_a?(SSR::Deno::Bundle)
+        unless bundle
           instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name
 
           raise SSR::Deno::BundleNotFoundError,
