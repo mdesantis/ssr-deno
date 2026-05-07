@@ -13,10 +13,9 @@
 # (gitignored). Requires: `deno task build` prerequisites (see samples/).
 #
 # Usage:
-#   ruby scripts/performance.rb                                # vite-react-ssr-app, pool=1, single
-#   ruby scripts/performance.rb --sample vite-react-ssr-app    # explicit sample
-#   ruby scripts/performance.rb --sample vite-svelte-ssr-app   # different sample
-#   ruby scripts/performance.rb --pool-size 4 --mode threads   # different config
+#   ruby scripts/performance.rb --sample vite-react-ssr-app
+#   ruby scripts/performance.rb --sample vite-svelte-ssr-app
+#   ruby scripts/performance.rb --sample vite-react-ssr-app --pool-size 4 --mode threads
 #
 # Requires: compiled native extension (bundle exec rake compile)
 # ---------------------------------------------------------------------------
@@ -45,12 +44,11 @@ SAMPLES_DIR = File.join(BENCH_ROOT, 'samples').freeze
 options = {
   iterations: 200,
   warmup: 10,
-  thread_count: 4,
-  ractor_count: 4,
+  thread_count: nil,
+  ractor_count: nil,
   pool_size: 1,
-  mode: :single,
+  mode: nil,
   sample: nil,
-  node_builtins: false,
   timeout_ms: nil,
 }
 
@@ -77,12 +75,8 @@ OptionParser.new do |opts|
     options[:pool_size] = n
   end
 
-  opts.on('--mode MODE', %w[single threads ractors], 'Run only one mode') do |m|
+  opts.on('--mode MODE', %w[single threads ractors all], 'Concurrency mode (default: single)') do |m|
     options[:mode] = m.to_sym
-  end
-
-  opts.on('--node-builtins', 'Enable Node.js built-in modules') do
-    options[:node_builtins] = true
   end
 
   opts.on('--timeout MS', Integer, 'Render timeout in ms (default: 500)') do |ms|
@@ -95,10 +89,31 @@ OptionParser.new do |opts|
 end.parse!
 
 # ---------------------------------------------------------------------------
-# Bundle resolution: default to vite-react-ssr-app if no --sample
+# Mode inference: --threads implies mode=threads, --ractors implies mode=ractors
 # ---------------------------------------------------------------------------
 
-sample = options[:sample] || 'vite-react-ssr-app'
+options[:mode] ||= if options[:thread_count] && options[:ractor_count]
+  :single  # both given, ambiguous — default to single
+elsif options[:thread_count]
+  :threads
+elsif options[:ractor_count]
+  :ractors
+else
+  :single
+end
+
+options[:thread_count] ||= 4
+options[:ractor_count] ||= 4
+
+# ---------------------------------------------------------------------------
+# Bundle resolution: --sample required
+# ---------------------------------------------------------------------------
+
+sample = options[:sample]
+unless sample
+  abort "Usage: #{$PROGRAM_NAME} --sample <name>\n" \
+        "Available samples: #{Dir.glob("#{SAMPLES_DIR}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
+end
 sample_dir = File.join(SAMPLES_DIR, sample)
 bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
 
@@ -111,10 +126,6 @@ unless File.exist?(bundle_path)
   success = system('deno', 'task', 'build', chdir: sample_dir)
   abort "Build failed for #{sample}" unless success
   abort "#{bundle_path} not found after build" unless File.exist?(bundle_path)
-end
-
-unless options[:node_builtins]
-  options[:node_builtins] = File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
 end
 
 options[:bundle] = bundle_path
@@ -171,7 +182,11 @@ def run_single_config(options)
   require 'ssr/deno'
 
   SSR::Deno.render_timeout_ms = options[:timeout_ms] if options[:timeout_ms]
-  SSR::Deno.node_builtins_enabled = true if node_builtins
+
+  # Auto-infer node_builtins from bundle content.
+  if File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
+    SSR::Deno.node_builtins_enabled = true
+  end
 
   payload = { data: { name: 'benchmark' } }
 
@@ -197,8 +212,10 @@ def run_single_config(options)
   puts "SSR::Deno version: #{SSR::Deno.native_version}"
   puts "bundle: #{bundle_path}"
   puts "Pool size: #{resolve_pool_label(pool_size)}"
-  mode_label = mode_filter ? mode_filter.to_s : 'all'
+  mode_label = mode_filter.to_s
   puts "Mode: #{mode_label}"
+  puts "Threads: #{thread_count}" if %w[threads all].include?(mode_label)
+  puts "Ractors: #{ractor_count}" if %w[ractors all].include?(mode_label)
   puts "Iterations: #{iterations}"
   puts "Warm: #{warmup}"
   puts "Timeout: #{options[:timeout_ms]}ms" if options[:timeout_ms]
@@ -207,7 +224,7 @@ def run_single_config(options)
   puts "  Heap: #{fmt_bytes(initial_heap)}"
 
   # ----- Mode 1: Single Thread -----
-  if !mode_filter || mode_filter == :single
+  if mode_filter == :single || mode_filter == :all
     timings = []
 
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -228,13 +245,17 @@ def run_single_config(options)
   end
 
   # ----- Mode 2: Multi-Thread -----
-  if !mode_filter || mode_filter == :threads
+  if mode_filter == :threads || mode_filter == :all
     timings = []
+
+    per_thread = iterations / thread_count
+    extra = iterations % thread_count
 
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     threads = Array.new(thread_count) do |i|
+      count = per_thread + (i < extra ? 1 : 0)
       Thread.new do
-        iterations.times do
+        count.times do
           tc = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           bundle.render({ data: { name: "T#{i}" } })
           timings << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - tc)
@@ -244,21 +265,17 @@ def run_single_config(options)
     threads.each(&:join)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
-    total = iterations * thread_count
     puts "  Multi-Thread (#{thread_count} threads):"
-    puts "    #{total} renders in #{fmt_ms(elapsed)}ms" \
-         " | #{fmt_ops(total, elapsed)} ops/sec"
-    if actual_pool == 1
-      puts "    bottleneck: single isolate"
-    else
-      puts "    (threads serialize on GVL during FFI —" \
-           " see Multi-Ractor below for true parallelism)"
-    end
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms" \
+         " | #{fmt_ops(iterations, elapsed)} ops/sec"
     puts
   end
 
   # ----- Mode 3: Multi-Ractor -----
-  if !mode_filter || mode_filter == :ractors
+  if mode_filter == :ractors || mode_filter == :all
+    per_ractor = iterations / ractor_count
+    extra = iterations % ractor_count
+
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     # Each Ractor creates its own Bundle instance — Ractors cannot share
@@ -268,7 +285,8 @@ def run_single_config(options)
     # The native extension declares rb_ext_ractor_safe(true) for safety.
     lib_path = File.join(BENCH_ROOT, 'lib')
     ractors = Array.new(ractor_count) do |i|
-      Ractor.new(bundle_path, iterations, i, lib_path) do |path, iters, idx, lp|
+      count = per_ractor + (i < extra ? 1 : 0)
+      Ractor.new(bundle_path, count, i, lib_path) do |path, iters, idx, lp|
         require 'json'
         require File.join(lp, 'ssr/deno')
 
@@ -279,10 +297,9 @@ def run_single_config(options)
     ractors.each(&:value)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
-    total = iterations * ractor_count
     puts "  Multi-Ractor (#{ractor_count} Ractors):"
-    puts "    #{total} renders in #{fmt_ms(elapsed)}ms" \
-         " | #{fmt_ops(total, elapsed)} ops/sec | no GVL contention"
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms" \
+         " | #{fmt_ops(iterations, elapsed)} ops/sec"
     puts
   end
 
