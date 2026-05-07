@@ -244,7 +244,7 @@ deno_module.define_singleton_method("native_pool_generation", function!(native_p
 
 ---
 
-### Step 3 — Rust: `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
+### ✅ Step 3 — Rust: `ext/ssr_deno/src/deno_runtime_wrapper/mod.rs`
 
 **Add `Drop` for `IsolatePool`:**
 ```rust
@@ -260,7 +260,7 @@ Worker threads loop on `while let Some(msg) = rx.recv().await`. When all senders
 
 ---
 
-### Step 4 — Ruby: `lib/ssr/deno.rb`
+### ✅ Step 4 — Ruby: `lib/ssr/deno.rb`
 
 `reset!` delegates entirely to Rust. No mutable Ruby-side state:
 
@@ -274,7 +274,7 @@ end
 
 ---
 
-### Step 5 — Ruby: `lib/ssr/deno/bundle.rb`
+### ✅ Step 5 — Ruby: `lib/ssr/deno/bundle.rb`
 
 `@pool_generation` is a Bundle instance variable (not shared between threads → no synchronization needed).
 
@@ -321,7 +321,7 @@ end
 
 ---
 
-### Step 6 — RBS: `sig/ssr/deno.rbs`
+### ✅ Step 6 — RBS: `sig/ssr/deno.rbs`
 
 Add to `SSR::Deno` module:
 ```rbs
@@ -342,7 +342,7 @@ def ensure_loaded: () -> void
 
 ---
 
-### Step 7 — Docs: `docs/compatibility.md`
+### ✅ Step 7 — Docs: `docs/compatibility.md`
 
 Add **"Puma clustered mode"** section:
 - Why `preload_app!` + pool init before fork = deadlock (fork-after-thread, dead worker channels)
@@ -353,14 +353,14 @@ Add **"Puma clustered mode"** section:
 
 ---
 
-### Step 8 — CHANGELOG.md
+### ✅ Step 8 — CHANGELOG.md
 
 Add under `## Unreleased`:
 ```
 - `SSR::Deno.reset!` — drops and re-initializes the isolate pool. Required when
   using Puma in clustered mode with `preload_app!`. Call in `on_worker_boot`.
   Existing `Bundle` instances reload automatically on the next render.
-  Config (heap size, pool size, timeout) is preserved across the reset.
+  Config (heap size, pool size, timeout, node_builtins) is preserved across reset.
 ```
 
 ---
@@ -382,5 +382,6 @@ Add under `## Unreleased`:
 
 1. ✅ Write `test_deno_reset.rb` → `bundle exec rake test` → Test A passes, B/C/D fail
 2. ✅ Implement Rust → `bundle exec rake compile`
-3. Implement Ruby → `bundle exec rake test` → all pass
-4. `bundle exec rake` → full pipeline exits 0
+3. ✅ Implement Ruby → `bundle exec rake test` → all test assertions pass
+4. ❌ `bundle exec rake` → full pipeline exits 0
+5. ❌ Coverage: `ensure_loaded` (Bundle) and `reset!` (SSR::Deno) uncovered — need tests that exercise these paths under SimpleCov without subprocess isolation
