@@ -131,8 +131,21 @@ task 'test:perf' do
   ruby "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_perf.rb')
 end
 
+desc 'Run Rails integration tests (Railtie, Helper via Combustion)'
+task 'test:rails' do
+  rails_test = File.join(test_dir, 'ssr', 'test_integration_deno_rails.rb')
+  runner = <<~RUBY
+    require '#{File.join(test_dir, 'test_helper_rails.rb')}'
+    require '#{rails_test}'
+  RUBY
+
+  File.write(File.join(tmp, 'test_runner_rails.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:rails' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_rails.rb'))
+end
+
 desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:puma]
+task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:puma test:rails]
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do

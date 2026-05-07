@@ -12,6 +12,7 @@ unless ENV['SSR_DENO_SKIP_COVERAGE']
 
   SimpleCov.start do
     enable_coverage :branch
+    add_filter 'test/internal/'
     add_filter 'test/dummy/'
     add_filter 'test/'
     add_filter 'lib/ssr/deno/rails.rb'

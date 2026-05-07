@@ -1,13 +1,8 @@
 # frozen_string_literal: true
 
-# Boot the Rails dummy app and run integration tests.
-#
-# Usage:
-#   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
-#     test/support/integration_deno_rails_runner.rb
-#
-# This runner is separate from the main test suite because it requires
-# a full Rails application boot with its own Gemfile.
+# DEPRECATED — replaced by Combustion-based test:rails suite.
+# Run via: bundle exec rake test:rails
+# See test/test_helper_rails.rb for the new approach.
 
 ENV['RAILS_ENV'] = 'test'
 

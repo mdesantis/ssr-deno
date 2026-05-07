@@ -12,8 +12,8 @@ The Railtie, Helper, and Generator have zero test coverage.
 
 Replace hand-crafted dummy app with [Combustion](https://github.com/pat/combustion)
 (1.6k stars, 30M+ downloads). Combustion creates an in-memory Rails app at
-test-load time via `Combustion.initialize!`, generating minimal config files
-at `test/internal/` on first run.
+test-load time via `Combustion.initialize!`. `Combustion::Application` is a
+pre-defined `Rails::Application` subclass inside the gem — no file generation.
 
 **Why Combustion over `rails new` / Rake-task approach:**
 - No separate Gemfile — Rails gems live in main Gemfile's test group
@@ -38,25 +38,32 @@ Rails-specific test helper. **Order is critical:**
 
 SimpleCov start (must be first).
 ```ruby
-require 'rails/railtie'          # makes Rails::Railtie available
+require 'rails'                  # loads Rails module + Railtie + env/root/logger
 require 'ssr/deno/rails'         # loads Railtie → registers initializers
+
+require 'combustion'
+Combustion.path = 'test/internal'  # explicit (defaults to spec/internal)
 Combustion.initialize! :action_view, :action_controller  # boots Rails → runs initializers
 ```
 Then Minitest/autorun.
 
-**Why `require 'rails/railtie'` first:** `ssr/deno/rails` → `rails/railtie.rb` →
-`class Railtie < Rails::Railtie`. Without it, `Rails::Railtie` is undefined
-(`railties` is installed but not loaded yet). `NameError`.
+**Why `require 'rails'` first:** The Railtie uses `Rails.env` at class-definition time
+(`config.ssr_deno.auto_reload = Rails.env.development?`). `require 'rails/railtie'`
+alone doesn't define `Rails.env` — need the full `rails.rb` from the `railties` gem.
+Also makes `Rails::Railtie` available for `class Railtie < Rails::Railtie`.
 
 **Why Railtie before Combustion:** Railtie initializers (setup `config.ssr_deno`,
 include Helper in ActionView::Base) register at class-definition time. Rails
 executes them during `initialize!`. Wrong order → initializers never run.
 
-**Bundler.require subtlety:** Combustion's generated `application.rb` calls
-`Bundler.require(*Rails.groups)`. For a gemspec gem named `ssr-deno`, Bundler
-infers `require 'ssr/deno'` — NOT `require 'ssr/deno/rails'`. This is safe:
-our step already loaded `ssr/deno` (via `require_relative '../deno'`), so
-Bundler's require is a no-op. The Railtie stays registered.
+**`Combustion.path`:** Defaults to `/spec/internal`. Since Minitest isn't loaded
+yet when `initialize!` runs (it's loaded after), Combustion can't detect the
+framework. Set explicitly to `test/internal`.
+
+**Bundler.require subtlety:** `Combustion.initialize!` calls `Bundler.require(:default, Rails.env)`.
+For a gemspec gem named `ssr-deno`, Bundler infers `require 'ssr/deno'` — NOT
+`require 'ssr/deno/rails'`. Safe: our step already loaded `ssr/deno` (via
+`require_relative '../deno'`), so Bundler's require is a no-op.
 
 ### `rakelib/test.rake`
 Add `test:rails` suite:
@@ -85,22 +92,21 @@ automatically runs it via `bundle exec rake test`. No separate step.
 
 ## Edge cases
 
-- **`require 'rails/railtie'` before Railtie**: `ssr/deno/rails` → `class Railtie < Rails::Railtie`.
-  `railties` gem is installed (runtime dep) but NOT loaded — must `require 'rails/railtie'` first.
-  Without it → `NameError` (uninitialized constant Rails).
+- **`require 'rails'` before Railtie**: The Railtie uses `Rails.env` at class-definition time
+  (`config.ssr_deno.auto_reload = Rails.env.development?`). `require 'rails/railtie'` alone
+  doesn't define `Rails.env`. Use `require 'rails'` (loads `railties/lib/rails.rb` which
+  defines `Rails` module with `env`, `root`, `application`, etc.).
 
 - **Railtie before Combustion.initialize!**: Railtie initializers register at class-definition time.
   `initialize!` runs them. Wrong order → initializers never run, `config.ssr_deno` missing,
   Helper not included in ActionView::Base, tests fail.
 
-- **Bundler.require auto-require**: Combustion's `application.rb` calls `Bundler.require`.
+- **Bundler.require auto-require**: `Combustion.initialize!` calls `Bundler.require(:default, Rails.env)`.
   For gemspec gem `ssr-deno`, Bundler infers `require 'ssr/deno'` (not `ssr/deno/rails`).
   Already loaded → no-op. Railtie stays registered.
 
-- **`test/internal/` generation**: Combustion generates files on first `initialize!`
-  call (subprocess). Expected: `config/application.rb`, `config/database.yml`,
-  `config/routes.rb`, `config/boot.rb`, `app/views/layouts/application.html.erb`.
-  Commit these to repo.
+- **No file generation**: Combustion 1.5 uses a pre-defined in-memory `Rails::Application`
+  subclass — no templates generated. Only Rails logger creates `test/internal/log/test.log`.
 
 - **Coverage**: `SIMPLECOV_COMMAND_NAME=test:rails` ensures SimpleCov merges
   results with other suites. Existing `coverage:check` task validates merged result.

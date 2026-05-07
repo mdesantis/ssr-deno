@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- `test:rails` test suite — Rails integration tests (Railtie, Helper) now run via Combustion. Replaces dead hand-crafted `test/dummy/` approach. 8 tests covering Railtie config, Helper inclusion in ActionView::Base, registry state, and instrumentation events. Run with `bundle exec rake test:rails` or as part of `rake test`.
 - Puma integration tests: single mode (in-process, coverage-tracked) and clustered mode (subprocess, 2 workers, preload_app! + lazy Bundle) via `test:puma` suite. Verifies that `Bundle.new` deferred to first request works correctly after fork. Covers the V8 TLS limitation (isolates cannot be created after fork).
 - `Bundle.create_bundles!` class method — bundle creation for Puma `on_worker_boot` compatibility. `InstallGenerator` now appends the `on_worker_boot` hook to `config/puma.rb`.
 - Railtie: wire `config.ssr_deno.node_builtins_enabled` to `SSR::Deno.node_builtins_enabled=` setter.

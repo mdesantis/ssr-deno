@@ -13,5 +13,6 @@
 /pkg/
 /spec/reports/
 /test/dummy/
+/test/internal/log/
 /tmp/
 /.opencode/

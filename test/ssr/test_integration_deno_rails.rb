@@ -1,20 +1,15 @@
 # frozen_string_literal: true
 
-# Integration tests for the Rails dummy app.
-# These tests boot a real Rails application and verify that the Railtie,
-# Helper, and Generator work correctly together.
+# Integration tests for the Rails integration (Railtie, Helper, Generator).
+# Runs via Combustion (in-memory Rails app booted by test_helper_rails.rb).
 #
 # Run with:
-#   BUNDLE_GEMFILE=test/dummy/Gemfile bundle exec ruby \
-#     test/support/integration_deno_rails_runner.rb
+#   bundle exec rake test:rails
 
 module SSR
   module Deno
     class TestRailsIntegration < ::Minitest::Test
       def setup
-        # Ensure we're in a Rails context
-        skip 'Rails dummy app not available' unless defined?(Rails) && Rails.application
-
         @view = build_view
       end
 
