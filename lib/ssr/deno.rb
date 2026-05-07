@@ -118,7 +118,6 @@ module SSR
         warn "[ssr-deno] #{error.message}"
         {}
       end
-
     end
 
     class << self

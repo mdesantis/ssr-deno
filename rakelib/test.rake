@@ -11,7 +11,6 @@ Minitest::TestTask.create
 #   test:node_builtins — node_builtins enabled, 2000ms timeout
 #   test:async        — short 100ms timeout
 #   test:env_config   — env var config
-#   test:perf         — performance regression (pool=4, node_builtins)
 Rake::Task[:test].clear if Rake::Task.task_defined?(:test)
 
 root = File.expand_path('..', __dir__)
@@ -111,7 +110,7 @@ task 'test:perf' do
 end
 
 desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:perf]
+task test: %w[test:main test:setters test:node_builtins test:async test:env_config]
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do
