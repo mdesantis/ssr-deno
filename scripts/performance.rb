@@ -172,9 +172,6 @@ def run_single_config(options)
   mode_filter = options[:mode]
   bundle_path = options[:bundle]
 
-  # Enable node builtins before loading ssr/deno (must happen before pool init).
-  node_builtins = options[:node_builtins]
-
   # Set pool size before loading ssr/deno (triggers pool init).
   ENV['SSR_DENO_ISOLATE_POOL_SIZE'] = pool_size.to_s if pool_size > 0
 
@@ -194,15 +191,9 @@ def run_single_config(options)
   bundle = SSR::Deno::Bundle.new(bundle_path)
   warmup.times { bundle.render(payload) }
 
-  bundle_label = options[:bundle]
   initial_heap = SSR::Deno.heap_stats['used_heap_size']
-  configured_pool = SSR::Deno.isolate_pool_size
-  # Match Rust's resolve_pool_size: 0 = auto-detect, else clamp to [1, 8].
-  actual_pool = if configured_pool == 0
-    (Etc.nprocessors - 1).clamp(1, 8)
-  else
-    configured_pool.clamp(1, 8)
-  end
+
+  SSR::Deno.isolate_pool_size # called for side effect if needed, but do not assign
 
   puts
   puts "=" * 60
