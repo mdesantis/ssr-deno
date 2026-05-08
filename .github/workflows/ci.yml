@@ -85,6 +85,9 @@ jobs:
         run: bundle exec rake samples:build
       - name: Run tests
         run: bundle exec rake test
+      - name: Check Rust formatting
+        run: cargo fmt --check
+        working-directory: ext/ssr_deno
       - name: Run RuboCop
         run: bundle exec rubocop
       - name: Validate RBS signatures

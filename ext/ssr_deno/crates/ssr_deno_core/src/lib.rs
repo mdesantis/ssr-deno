@@ -339,9 +339,9 @@ mod tests {
         // fetch_add returns the OLD value, so each assertion checks the
         // pre-increment value modulo len.
         let counter = AtomicUsize::new(usize::MAX - 1);
-        assert_eq!(next_index(&counter, 3), (usize::MAX - 1) % 3);  // returns (MAX-1)%3, counter now MAX
-        assert_eq!(next_index(&counter, 3), (usize::MAX) % 3);      // returns MAX%3, counter wraps to 0
-        assert_eq!(next_index(&counter, 3), 0);                     // returns 0 (old value), counter now 1
+        assert_eq!(next_index(&counter, 3), (usize::MAX - 1) % 3); // returns (MAX-1)%3, counter now MAX
+        assert_eq!(next_index(&counter, 3), (usize::MAX) % 3); // returns MAX%3, counter wraps to 0
+        assert_eq!(next_index(&counter, 3), 0); // returns 0 (old value), counter now 1
     }
 
     #[test]

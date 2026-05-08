@@ -5,10 +5,8 @@ use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
+use super::render::{begin_render, end_render, poll_render_state, to_js_string, RenderState};
 use super::SSRDenoError;
-use super::render::{
-    begin_render, end_render, poll_render_state, to_js_string, RenderState,
-};
 
 // ---------------------------------------------------------------------------
 // Chunked render — chunks flow through JS global array to Ruby
@@ -75,8 +73,14 @@ pub async fn render_chunked(
     );
 
     let (watchdog, timeout_triggered) = begin_render(
-        worker, script, "<ssr-deno:render-chunked-start>", render_timeout_ms, oom_triggered, "chunked-render",
-    ).inspect_err(|_| {
+        worker,
+        script,
+        "<ssr-deno:render-chunked-start>",
+        render_timeout_ms,
+        oom_triggered,
+        "chunked-render",
+    )
+    .inspect_err(|_| {
         let _ = worker.execute_script(
             "<ssr-deno:render-chunked-cleanup>",
             "globalThis.__ssr_deno_result = undefined; \
@@ -129,7 +133,8 @@ pub async fn render_chunked(
     let _ = worker.execute_script(
         "<ssr-deno:render-chunked-cleanup>",
         "globalThis.__ssr_chunks = undefined; globalThis.__ssr_push_chunk = undefined;"
-            .to_string().into(),
+            .to_string()
+            .into(),
     );
 
     // Drop chunk_tx (moved into this function) -- closes the channel so the

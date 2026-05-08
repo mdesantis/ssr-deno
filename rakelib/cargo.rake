@@ -9,3 +9,8 @@ desc 'Run clippy lints on the ssr_deno crate'
 task 'cargo:clippy' do
   sh 'cargo', 'clippy', '--', '-D', 'warnings', chdir: 'ext/ssr_deno'
 end
+
+desc 'Check Rust formatting'
+task 'cargo:fmt' do
+  sh 'cargo', 'fmt', '--check', chdir: 'ext/ssr_deno'
+end

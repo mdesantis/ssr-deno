@@ -5,8 +5,8 @@ use std::time::Duration;
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
 
-use super::SSRDenoError;
 use super::watchdog::Watchdog;
+use super::SSRDenoError;
 
 // ---------------------------------------------------------------------------
 // Render — event-loop based, returns final result as JSON string
@@ -137,7 +137,12 @@ pub async fn render(
     );
 
     let (watchdog, timeout_triggered) = begin_render(
-        worker, script, "<ssr-deno:render-start>", render_timeout_ms, oom_triggered, "render",
+        worker,
+        script,
+        "<ssr-deno:render-start>",
+        render_timeout_ms,
+        oom_triggered,
+        "render",
     )?;
 
     // Run the event loop until the render completes or the watchdog fires.

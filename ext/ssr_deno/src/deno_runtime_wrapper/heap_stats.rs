@@ -45,6 +45,7 @@ pub fn collect_heap_stats(worker: &mut MainWorker) -> Result<String, SSRDenoErro
         used_global_handles_size: stats.used_global_handles_size(),
     };
 
-    serde_json::to_string(&heap)
-        .map_err(|e| SSRDenoError::HeapStatsSerialization(format!("Failed to serialize heap stats: {e}")))
+    serde_json::to_string(&heap).map_err(|e| {
+        SSRDenoError::HeapStatsSerialization(format!("Failed to serialize heap stats: {e}"))
+    })
 }
