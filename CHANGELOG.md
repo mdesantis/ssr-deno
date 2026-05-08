@@ -15,6 +15,7 @@
 - **BREAKING:** `ssr_render` no longer calls `.html_safe` on String results. The helper returns raw bundle output as-is — the caller (app view) is responsible for marking output safe. CSR fallback is plain `''` instead of `''.html_safe`.
 
 ### Added
+- `ssr_render.ssr_deno` instrumentation event — wraps end-to-end render including bundle lookup, JSON serialization, V8 execution, and error handling. Payload includes `bundle_name` and `error` (on failure). Timing measured via `ActiveSupport::Notifications` block form.
 - `config.ssr_deno.raise_on_bundle_error` — when true (default in dev/test), `BundleNotFoundError` at render raises. When false (production), caught and logged with CSR fallback (empty string). Defaults to `!Rails.env.production?`.
 - `cargo fmt --check` added to default Rake task and CI pipeline.
 - `test:rails` test suite — Rails integration tests (Railtie, Helper) now run via Combustion. Replaces dead hand-crafted `test/dummy/` approach. 8 tests covering Railtie config, Helper inclusion in ActionView::Base, registry state, and instrumentation events. Run with `bundle exec rake test:rails` or as part of `rake test`.

@@ -71,7 +71,8 @@ module SSR
 
       private
 
-      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) -> (nil | untyped)
+      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { (untyped) -> untyped } -> untyped
+                      | (untyped name, ?::Hash[untyped, untyped] payload) -> untyped
 
       def find_bundle!: (untyped bundle_name) -> Bundle
 

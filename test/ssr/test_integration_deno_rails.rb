@@ -64,7 +64,7 @@ module SSR
 
       def test_instrumentation_fires_bundle_miss_event
         events = []
-        callback = ->(name, *) { events << name }
+        callback = ->(name, _start, _finish, _id, payload) { events << [name, payload] }
 
         ActiveSupport::Notifications.subscribed(callback, /\.ssr_deno$/) do
           error = assert_raises SSR::Deno::BundleNotFoundError do
@@ -74,8 +74,18 @@ module SSR
           assert_match(/not registered/, error.message)
         end
 
-        assert_includes events, 'bundle_miss.ssr_deno',
+        event_names = events.map(&:first)
+
+        assert_includes event_names, 'bundle_miss.ssr_deno',
                         'bundle_miss.ssr_deno event should fire when bundle not found'
+        assert_includes event_names, 'ssr_render.ssr_deno',
+                        'ssr_render.ssr_deno event should fire on render'
+
+        render_event = events.assoc('ssr_render.ssr_deno')
+
+        assert render_event, 'ssr_render.ssr_deno event should be present'
+        assert_equal :application, render_event.last[:bundle_name]
+        assert_match(/not registered/, render_event.last[:error].to_s)
       end
 
       private

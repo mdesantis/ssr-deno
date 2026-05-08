@@ -21,14 +21,19 @@ module SSR
       #   when +raise_on_render_error+ is true.
       def ssr_render(data = nil, **options)
         bundle_name = options.delete(:bundle) || :application
-        bundle = find_bundle!(bundle_name)
 
-        bundle.render(data, **options)
-      rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
-             SSR::Deno::JsRuntimeOutOfMemoryError => error
-        fallback_or_raise(error, bundle_name, :raise_on_render_error)
-      rescue SSR::Deno::BundleNotFoundError => error
-        fallback_or_raise(error, bundle_name, :raise_on_bundle_error)
+        instrument 'ssr_render.ssr_deno', bundle_name: bundle_name do |payload|
+          bundle = find_bundle!(bundle_name)
+
+          bundle.render(data, **options)
+        rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
+               SSR::Deno::JsRuntimeOutOfMemoryError => error
+          payload[:error] = error.message
+          fallback_or_raise(error, bundle_name, :raise_on_render_error)
+        rescue SSR::Deno::BundleNotFoundError => error
+          payload[:error] = error.message
+          fallback_or_raise(error, bundle_name, :raise_on_bundle_error)
+        end
       end
 
       private
@@ -65,10 +70,12 @@ module SSR
         bundle
       end
 
-      def instrument(name, payload = {})
-        return unless defined?(ActiveSupport::Notifications)
-
-        ActiveSupport::Notifications.instrument(name, payload)
+      def instrument(name, payload = {}, &)
+        if defined?(ActiveSupport::Notifications)
+          ActiveSupport::Notifications.instrument(name, payload, &)
+        elsif block_given?
+          yield
+        end
       end
     end
   end
