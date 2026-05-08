@@ -16,10 +16,10 @@ use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 
+use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;
 use crate::nop_types::NopInNpmPackageChecker;
 use crate::nop_types::NopNpmPackageFolderResolver;
 use crate::nop_types::NopPermissionDescriptorParser;
-use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
 
@@ -59,7 +59,7 @@ static SCRIPT_NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::
 /// interned value if available. At most one leak per unique filename.
 ///
 /// Intentionally allocates twice on miss (one for the leak, one as map key).
-/// We expect <10 script names total — the extra allocation is negligible
+/// We expect a few script names total — the extra allocation is negligible
 /// and avoids the complexity of `HashMap<&'static str, &'static str>`.
 fn intern_script_name(name: &str) -> &'static str {
     let map = SCRIPT_NAMES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -154,9 +154,12 @@ impl IsolateHandle {
     /// Sends a render request to this isolate's worker thread and blocks
     /// until the result arrives. Runs the full Deno event loop (macrotasks,
     /// timers, I/O all fire). Returns the result as a JSON string.
-    pub fn block_on_render(&self, bundle_id: &str, args_json: &str) -> Result<String, SSRDenoError> {
-        let (reply_tx, reply_rx) =
-            tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
+    pub fn block_on_render(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<String, SSRDenoError> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Result<String, SSRDenoError>>();
 
         self.tx
             .blocking_send(WorkerMsg::Render {
@@ -167,9 +170,9 @@ impl IsolateHandle {
             })
             .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread has exited".into()))?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| SSRDenoError::WorkerDied("Deno worker thread exited before reply".into()))?
+        reply_rx.blocking_recv().map_err(|_| {
+            SSRDenoError::WorkerDied("Deno worker thread exited before reply".into())
+        })?
     }
 
     /// Sends a chunked render request. Returns the chunk receiver
@@ -270,7 +273,11 @@ impl IsolatePool {
 
     /// Dispatches a render request to the next available isolate.
     /// Blocks until the result arrives.
-    pub fn dispatch_render(&self, bundle_id: &str, args_json: &str) -> Result<String, SSRDenoError> {
+    pub fn dispatch_render(
+        &self,
+        bundle_id: &str,
+        args_json: &str,
+    ) -> Result<String, SSRDenoError> {
         self.next_handle().block_on_render(bundle_id, args_json)
     }
 
@@ -283,7 +290,8 @@ impl IsolatePool {
         bundle_id: &str,
         args_json: &str,
     ) -> Result<ChunkedRenderResult, SSRDenoError> {
-        self.next_handle().start_render_chunked(bundle_id, args_json)
+        self.next_handle()
+            .start_render_chunked(bundle_id, args_json)
     }
 
     /// Queries V8 heap statistics from the next available isolate.
@@ -309,8 +317,9 @@ impl IsolatePool {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(std::path::Path::new("."));
-        let canonical_parent = std::fs::canonicalize(original_parent)
-            .map_err(|e| SSRDenoError::BundleLoad(format!("Cannot resolve bundle directory: {e}")))?;
+        let canonical_parent = std::fs::canonicalize(original_parent).map_err(|e| {
+            SSRDenoError::BundleLoad(format!("Cannot resolve bundle directory: {e}"))
+        })?;
         if !canonical.starts_with(&canonical_parent) {
             return Err(SSRDenoError::BundleLoad(format!(
                 "Bundle file '{bundle_name}' escapes its directory via symlink"
@@ -402,7 +411,10 @@ fn worker_thread_main(
         let oom_triggered = Arc::new(AtomicBool::new(false));
 
         let mut worker = match build_worker(
-            &main_module_url, max_heap_size_mb, node_builtins, oom_triggered.clone(),
+            &main_module_url,
+            max_heap_size_mb,
+            node_builtins,
+            oom_triggered.clone(),
         ) {
             Ok(w) => w,
             Err(e) => {
@@ -413,7 +425,8 @@ fn worker_thread_main(
 
         let _ = init_tx.send(Ok(()));
 
-        let mut loaded_paths: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut loaded_paths: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
 
         while let Some(msg) = rx.recv().await {
             match msg {
@@ -442,9 +455,13 @@ fn worker_thread_main(
                     reply,
                 } => {
                     let result = render::render(
-                        &mut worker, &bundle_id, &args_json,
-                        render_timeout_ms, &oom_triggered,
-                    ).await;
+                        &mut worker,
+                        &bundle_id,
+                        &args_json,
+                        render_timeout_ms,
+                        &oom_triggered,
+                    )
+                    .await;
                     let _ = reply.send(result);
                 }
                 WorkerMsg::RenderChunked {
@@ -455,9 +472,14 @@ fn worker_thread_main(
                     reply,
                 } => {
                     let result = render_chunked::render_chunked(
-                        &mut worker, &bundle_id, &args_json,
-                        render_timeout_ms, chunk_tx, &oom_triggered,
-                    ).await;
+                        &mut worker,
+                        &bundle_id,
+                        &args_json,
+                        render_timeout_ms,
+                        chunk_tx,
+                        &oom_triggered,
+                    )
+                    .await;
                     let _ = reply.send(result);
                 }
                 WorkerMsg::HeapStats { reply } => {
@@ -478,7 +500,9 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
     let check_val = worker
         .execute_script(
             "<ssr-deno:require-guard>",
-            "typeof globalThis.require !== 'undefined'".to_string().into(),
+            "typeof globalThis.require !== 'undefined'"
+                .to_string()
+                .into(),
         )
         .map_err(|e| format!("Failed to check require: {e}"))?;
     let isolate = worker.js_runtime.v8_isolate();
@@ -531,7 +555,9 @@ fn setup_require(worker: &mut MainWorker) -> Result<(), String> {
             if (typeof globalThis.require === 'undefined') {
                 throw new Error('createRequire failed - globalThis.require is undefined');
             }
-            "#.to_string().into(),
+            "#
+            .to_string()
+            .into(),
         )
         .map(|_| ())
         .map_err(|e| format!("setup_require failed: {e}"))
@@ -568,8 +594,8 @@ fn load_bundle_in_worker(
     // With stable bundle_id (same file = same id), this is a no-op on
     // subsequent loads. serde_json::to_string produces a guaranteed-valid
     // JS string literal.
-    let bundle_id_js = serde_json::to_string(bundle_id)
-        .expect("serde_json::to_string cannot fail for &str");
+    let bundle_id_js =
+        serde_json::to_string(bundle_id).expect("serde_json::to_string cannot fail for &str");
 
     let namespace_script = format!(
         r#"(function(id) {{
@@ -597,11 +623,7 @@ fn load_bundle_in_worker(
 // build_worker — broken into focused helpers
 // ---------------------------------------------------------------------------
 
-type NodeServices = NodeExtInitServices<
-    NopInNpmPackageChecker,
-    NopNpmPackageFolderResolver,
-    Sys,
->;
+type NodeServices = NodeExtInitServices<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>;
 
 /// Constructs `NodeExtInitServices` for the `deno_node` extension when
 /// `node_builtins` is enabled. Returns `None` otherwise.
@@ -610,25 +632,19 @@ fn build_node_services(node_builtins: bool) -> Option<NodeServices> {
         return None;
     }
 
-    use std::borrow::Cow;
-    use node_resolver::{
-        DenoIsBuiltInNodeModuleChecker,
-        NodeResolverOptions, NodeConditionOptions,
-        PackageJsonResolver,
-        cache::NodeResolutionSys,
-    };
     use deno_runtime::deno_fs::sync::MaybeArc;
-    use deno_runtime::deno_node::{NodeResolver, NodeRequireLoaderRc};
+    use deno_runtime::deno_node::{NodeRequireLoaderRc, NodeResolver};
+    use node_resolver::{
+        cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions,
+        NodeResolverOptions, PackageJsonResolver,
+    };
+    use std::borrow::Cow;
 
     let loader: NodeRequireLoaderRc = std::rc::Rc::new(SSRDenoNodeRequireLoader);
 
-    let pkg_json_resolver = MaybeArc::new(
-        PackageJsonResolver::new(Sys, None),
-    );
+    let pkg_json_resolver = MaybeArc::new(PackageJsonResolver::new(Sys, None));
 
-    let resolver: MaybeArc<
-        NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>,
-    > = {
+    let resolver: MaybeArc<NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>> = {
         let r = NodeResolver::new(
             NopInNpmPackageChecker,
             DenoIsBuiltInNodeModuleChecker,
@@ -706,13 +722,11 @@ fn build_worker(
 
     let options = WorkerOptions {
         bootstrap: BootstrapOptions::default(),
-        extensions: vec![
-            deno_runtime::deno_core::Extension {
-                name: "ssr_deno_ops",
-                ops: Cow::Owned(vec![]),
-                ..Default::default()
-            },
-        ],
+        extensions: vec![deno_runtime::deno_core::Extension {
+            name: "ssr_deno_ops",
+            ops: Cow::Owned(vec![]),
+            ..Default::default()
+        }],
         startup_snapshot: None,
         skip_op_registration: false,
         create_params,
@@ -747,13 +761,13 @@ fn build_worker(
     // Without this, a user component that leaks memory across renders
     // eventually causes V8 to call abort(), killing the Ruby process.
     let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
-    worker.js_runtime.add_near_heap_limit_callback(
-        move |current_limit, _initial_limit| {
+    worker
+        .js_runtime
+        .add_near_heap_limit_callback(move |current_limit, _initial_limit| {
             oom_triggered.store(true, Ordering::SeqCst);
             let _ = isolate_handle.terminate_execution();
             current_limit * 2
-        },
-    );
+        });
 
     Ok(worker)
 }
