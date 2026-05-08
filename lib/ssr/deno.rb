@@ -140,14 +140,19 @@ module SSR
 
         begin
           send(setter, Integer(value))
-        rescue ArgumentError
-          warn "[ssr-deno] Invalid integer for #{env_var}=#{value.inspect}, skipping"
+        rescue ArgumentError => error
+          warn "[ssr-deno] Cannot apply #{env_var}=#{value.inspect}: #{error.message}, skipping"
         end
       end
 
       def apply_bool_env(env_var, setter)
         value = ENV.fetch(env_var, nil)
         return if value.nil? || value.empty?
+
+        recognised = %w[true 1 yes false 0 no]
+        unless recognised.include?(value.downcase)
+          warn "[ssr-deno] Unrecognised boolean for #{env_var}=#{value.inspect}, treating as false"
+        end
 
         bool_value = %w[true 1 yes].include?(value.downcase)
         send(setter, bool_value)

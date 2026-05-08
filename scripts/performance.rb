@@ -193,8 +193,6 @@ def run_single_config(options)
 
   initial_heap = SSR::Deno.heap_stats['used_heap_size']
 
-  SSR::Deno.isolate_pool_size # called for side effect if needed, but do not assign
-
   puts
   puts "=" * 60
   puts "ssr-deno Performance Benchmark"
@@ -237,8 +235,6 @@ def run_single_config(options)
 
   # ----- Mode 2: Multi-Thread -----
   if mode_filter == :threads || mode_filter == :all
-    timings = []
-
     per_thread = iterations / thread_count
     extra = iterations % thread_count
 
@@ -247,9 +243,7 @@ def run_single_config(options)
       count = per_thread + (i < extra ? 1 : 0)
       Thread.new do
         count.times do
-          tc = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           bundle.render({ data: { name: "T#{i}" } })
-          timings << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - tc)
         end
       end
     end

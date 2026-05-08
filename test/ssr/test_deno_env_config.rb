@@ -91,6 +91,17 @@ module SSR
                         env: { 'SSR_DENO_NODE_BUILTINS_ENABLED' => '' })
     end
 
+    def test_boolean_unrecognised_value_warns
+      _, stderr, status = run_subprocess(
+        'exit 0 unless SSR::Deno.node_builtins_enabled?; exit 1',
+        env: { 'SSR_DENO_NODE_BUILTINS_ENABLED' => 'treu' }
+      )
+
+      assert_predicate status, :success?,
+                       'Expected false for unrecognised boolean'
+      assert_includes stderr, 'Unrecognised boolean'
+    end
+
     def test_invalid_integer_format_warns_and_skips
       script = 'exit 0 if SSR::Deno.max_heap_size_mb == 64; exit 1'
 

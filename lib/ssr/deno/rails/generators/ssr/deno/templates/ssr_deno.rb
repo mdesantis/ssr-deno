@@ -17,6 +17,9 @@ Rails.application.config.ssr_deno.bundles = {
 # Raise on render errors (recommended: true in dev/test, false in production).
 # Rails.application.config.ssr_deno.raise_on_render_error = !Rails.env.production?
 
+# Render timeout in milliseconds (default: 500ms, min 100, max 300000).
+# Rails.application.config.ssr_deno.render_timeout_ms = 1000
+
 # Enable Node.js built-in module support. Required for SSR bundles that
 # depend on @emotion/server or other packages calling require() for
 # Node.js built-in modules (stream, buffer, events, …).

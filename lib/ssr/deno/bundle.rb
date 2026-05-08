@@ -129,6 +129,8 @@ module SSR
       end
 
       # Reload the bundle if the file has changed on disk.
+      # Not thread-safe: benign on MRI (GVL serializes), unsound on
+      # JRuby/TruffleRuby without external synchronization.
       def reload_if_changed
         current_mtime = File.mtime(@bundle_path)
 

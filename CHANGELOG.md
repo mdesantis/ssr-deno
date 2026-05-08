@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Fixed
+- Railtie: wire `config.ssr_deno.render_timeout_ms` to `SSR::Deno.render_timeout_ms=` setter. Previously only settable via env var or direct call before pool init.
+- `apply_integer_env` warning now includes the error message (e.g. "Render timeout must be at least 100ms") instead of generic "Invalid integer".
+- `apply_bool_env` warns on unrecognised values (e.g. `SSR_DENO_NODE_BUILTINS_ENABLED=treu`) instead of silently treating as false.
+- `reload_if_changed` documents thread-safety limitation with comment.
+- `Dir.mktmpdir` temp dirs cleaned up after each test (was leaking in test helpers).
+- Dead code removed from `scripts/performance.rb`: no-op `isolate_pool_size` getter call, unsynchronized unused `timings` array in multi-thread mode.
+- `heap_stats` subscriber guarded by `config.ssr_deno.enabled` check for symmetry with `init_bundles`.
+
 ### Removed
 - **BREAKING:** `ssr_render` no longer calls `.html_safe` on String results. The helper returns raw bundle output as-is — the caller (app view) is responsible for marking output safe. CSR fallback is plain `''` instead of `''.html_safe`.
 

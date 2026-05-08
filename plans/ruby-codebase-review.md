@@ -262,10 +262,10 @@ bool_value = %w[true 1 yes].include?(value.downcase)
 | # | Item | File | Priority | Done |
 |---|------|------|----------|------|
 | 1 | `ssr_render` `.html_safe` on non-String | `helper.rb:26` | High | [x] |
-| 2 | `render_timeout_ms` missing from Rails config | `railtie.rb` | Medium | [ ] |
-| 3 | `apply_integer_env` misleading out-of-range warning | `deno.rb:144` | Low | [ ] |
-| 4 | `reload_if_changed` thread-safety comment | `bundle.rb:132` | Low | [ ] |
-| 5 | `Dir.mktmpdir` temp dir leaks in tests | test files | Low | [ ] |
-| 6 | Dead code in `scripts/performance.rb` | `performance.rb` | Trivial | [ ] |
-| 7 | `heap_stats` subscriber misses `enabled` guard | `railtie.rb:49` | Trivial | [ ] |
-| 8 | `apply_bool_env` silent on unrecognised values | `deno.rb:148` | Low | [ ] |
+| 2 | `render_timeout_ms` missing from Rails config | `railtie.rb` | Medium | [x] |
+| 3 | `apply_integer_env` misleading out-of-range warning | `deno.rb:144` | Low | [x] |
+| 4 | `reload_if_changed` thread-safety comment | `bundle.rb:132` | Low | [x] |
+| 5 | `Dir.mktmpdir` temp dir leaks in tests | test files | Low | [x] |
+| 6 | Dead code in `scripts/performance.rb` | `performance.rb` | Trivial | [x] |
+| 7 | `heap_stats` subscriber misses `enabled` guard | `railtie.rb:49` | Trivial | [x] |
+| 8 | `apply_bool_env` silent on unrecognised values | `deno.rb:148` | Low | [x] |

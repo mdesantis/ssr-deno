@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'fileutils'
 require 'test_helper'
 require 'tmpdir'
 
@@ -9,6 +10,12 @@ module SSR
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
+      @tmp_dirs = []
+    end
+
+    def teardown
+      @tmp_dirs&.each { |d| FileUtils.rm_rf(d) }
+      super
     end
 
     def test_render_returns_html
@@ -56,6 +63,7 @@ module SSR
 
     def test_render_with_corrupted_sentinel
       dir = Dir.mktmpdir
+      @tmp_dirs << dir
       path = File.join(dir, 'corrupt-sentinel.js')
       File.write(path, <<~JS)
         globalThis.render = function() {
@@ -74,6 +82,7 @@ module SSR
 
     def with_reject_bundle
       dir = Dir.mktmpdir
+      @tmp_dirs << dir
       path = File.join(dir, 'reject-render.js')
 
       File.write(path, <<~JS)
