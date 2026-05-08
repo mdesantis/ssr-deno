@@ -52,6 +52,7 @@ ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
 ENV SCCACHE_DIR=/root/.cache/sccache
 ENV SCCACHE=/usr/bin/sccache
 ENV V8_FROM_SOURCE=true
+ENV CARGO_TARGET_DIR=/app/tmp/cargo-target
 
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
