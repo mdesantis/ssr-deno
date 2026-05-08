@@ -70,7 +70,11 @@ wrapped = ->(chunk) { block.call(chunk.respond_to?(:html_safe) ? chunk.html_safe
 SSR::Deno.native_render_chunks(@bundle_id, json_input, &wrapped)
 ```
 
-Enumerator form — wrap yielded values.
+Enumerator form — map over enum:
+```ruby
+enum = SSR::Deno.native_render_chunks(@bundle_id, json_input)
+enum.map { |chunk| chunk.respond_to?(:html_safe) ? chunk.html_safe : chunk }
+```
 
 ### 4. Railtie
 
@@ -104,8 +108,11 @@ def render_chunks: (?(Hash[untyped, untyped] | String) data,
                     ?raw_input: bool, ?html_safe: boolish) { (untyped) -> void } -> nil
 ```
 
-### 7. Tests (`test:rails`)
+### 7. Tests (`test:main` + `test:node_builtins`)
 
+- `test_html_safe_config_default_false` — `SSR::Deno.html_safe?` → false
+- `test_html_safe_config_true` — `SSR::Deno.html_safe = true` → `result.html_safe?`
+- `test_html_safe_config_true_per_call_false` — config true, per-call false → not html_safe
 - `test_ssr_render_with_html_safe_option` — `html_safe: true` → `result.html_safe?`
 - `test_ssr_render_without_html_safe_option` — default → not html_safe
 
@@ -113,6 +120,10 @@ def render_chunks: (?(Hash[untyped, untyped] | String) data,
 
 - **README:** Show `<%= ssr_render({ page: 'home' }, html_safe: true) %>` instead of `.html_safe` call
 - **csp-nonce.md:** Same pattern
+
+### Pre-completion
+
+Before archive: check `:nocov:` directives in `lib/ssr/deno/bundle.rb` — new `html_safe` branches may be untestable outside Rails. Audit `docs/csp-nonce.md` for stale references in stale audit step.
 
 ## Order
 
