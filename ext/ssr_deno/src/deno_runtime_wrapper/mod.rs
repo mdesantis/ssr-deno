@@ -57,6 +57,10 @@ static SCRIPT_NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::
 
 /// Returns a `&'static str` for the given script name, reusing a previously
 /// interned value if available. At most one leak per unique filename.
+///
+/// Intentionally allocates twice on miss (one for the leak, one as map key).
+/// We expect <10 script names total — the extra allocation is negligible
+/// and avoids the complexity of `HashMap<&'static str, &'static str>`.
 fn intern_script_name(name: &str) -> &'static str {
     let map = SCRIPT_NAMES.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = map.lock().unwrap();

@@ -107,6 +107,9 @@ fn intern_script_name(name: &str) -> &'static str {
 Saves one `String` allocation per miss. `guard.get(name)` still works because
 `HashMap<&'static str, _>` can be queried with `&str` via the `Borrow` blanket impl.
 
+**Decision:** Wontfix. We expect <10 script names total — extra allocation
+is negligible. Added clarifying comment at `mod.rs:58`.
+
 ---
 
 ## Optimization 2 — Watchdog spawns OS thread per render
@@ -156,7 +159,7 @@ fn resolve_package_folder_from_package(&self, _specifier: &str, ...) {
 | 1 | Same-path/different-bundle-id bug | High | [x] |
 | 2 | `to_js_string` unsafe fallback | Medium | [x] |
 | 3 | Chunked globals cleanup on early error | Low | [x] |
-| 4 | `intern_script_name` double allocation | Low | [ ] |
+| 4 | `intern_script_name` double allocation | Low | [x] — wontfix, intentional (see comment at mod.rs:58) |
 | 5 | `_specifier` rename | Trivial | [x] |
 | 6 | Watchdog per-render thread (future) | Future | [ ] |
 | 7 | Dead isolate replacement (future) | Future | [ ] |
