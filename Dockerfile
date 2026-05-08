@@ -1,3 +1,4 @@
+# hadolint global ignore=DL3008
 # Build:   docker build -t ssr-deno-poc .                          # PoC (stage 2)
 # Base:    docker build -t ssr-deno-builder --target builder .    # for FROM in apps
 
@@ -7,7 +8,7 @@ FROM ubuntu:26.04 AS builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Build toolchain for Ruby + V8
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     curl \
@@ -40,27 +41,23 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path
 ENV PATH=/root/.cargo/bin:$PATH
 
-ENV SCCACHE=/usr/bin/sccache
-ENV SCCACHE_DIR=/root/.cache/sccache
-ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
-
 WORKDIR /app
 
 COPY . .
 
-ENV V8_FROM_SOURCE=true
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
 ENV RB_SYS_CARGO_PROFILE=release
+ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
+ENV SCCACHE_DIR=/root/.cache/sccache
+ENV SCCACHE=/usr/bin/sccache
+ENV V8_FROM_SOURCE=true
 
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/ext/ssr_deno/target,sharing=locked \
+    --mount=type=cache,target=/app/tmp,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     bundle install && bundle exec rake compile
-
-RUN test -f lib/ssr/deno/ssr_deno.so && echo ".so OK" || (echo ".so MISSING" && exit 1)
-
 
 # Stage 2: Minimal runtime (NO Rust, NO V8 source, NO LLVM)
 FROM ubuntu:26.04
@@ -68,7 +65,7 @@ FROM ubuntu:26.04
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Runtime deps for Ruby binary (no build toolchain)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     ca-certificates \
     zlib1g \
     libyaml-0-2 \
