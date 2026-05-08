@@ -18,7 +18,7 @@ thread creation.
 
 ## Dead isolate replacement on partial broadcast failure
 
-**Source:** `src/deno_runtime_wrapper/mod.rs:336-355`
+**Source:** `src/deno_runtime_wrapper/pool.rs:145`
 
 `load_bundle` broadcasts to all isolates. If a worker dies mid-broadcast (`blocking_send`
 returns `Err`), isolates 0..N-1 got the bundle and the dead isolate didn't. Round-robin
