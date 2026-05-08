@@ -51,13 +51,13 @@ WORKDIR /app
 COPY . .
 
 # Generate a minimal JS bundle for the PoC (test/ excluded by .dockerignore)
-RUN mkdir -p /app/test/fixtures && cat > /app/test/fixtures/minimal-bundle.js << 'EOF'
-globalThis.render = function(data) {
-  var parsed = typeof data === 'string' ? JSON.parse(data) : data;
-  var name = (parsed.data && parsed.data.name) || 'world';
-  return '<h1>' + name + '</h1>';
-};
-EOF
+RUN mkdir -p /app/test/fixtures && printf '%s\n' \
+    'globalThis.render = function(data) {' \
+    '  var parsed = typeof data === "string" ? JSON.parse(data) : data;' \
+    '  var name = (parsed.data && parsed.data.name) || "world";' \
+    '  return "<h1>" + name + "</h1>";' \
+    '};' \
+    > /app/test/fixtures/minimal-bundle.js
 
 ENV V8_FROM_SOURCE=true
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
