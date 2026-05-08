@@ -22,13 +22,14 @@ module SSR
         assert Rails.application.config.ssr_deno.raise_on_render_error
         # node_builtins_enabled defaults to nil (which means false)
         assert_nil Rails.application.config.ssr_deno.node_builtins_enabled
+        assert Rails.application.config.ssr_deno.raise_on_bundle_error
       end
 
       def test_railtie_sets_default_bundles
         bundles = Rails.application.config.ssr_deno.bundles
 
-        assert bundles.key?(:application),
-               'Default bundles should include :application'
+        assert_empty bundles,
+                     'Bundles should be empty (test overrides railtie default)'
       end
 
       def test_helper_included_in_action_view

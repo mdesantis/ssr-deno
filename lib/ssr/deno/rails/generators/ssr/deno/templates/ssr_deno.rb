@@ -25,3 +25,6 @@ Rails.application.config.ssr_deno.bundles = {
 # Node.js built-in modules (stream, buffer, events, …).
 # Adds ~50ms to worker initialization time.
 # Rails.application.config.ssr_deno.node_builtins_enabled = false
+
+# Raise on bundle not found (recommended: true in dev/test, false in production).
+# Rails.application.config.ssr_deno.raise_on_bundle_error = !Rails.env.production?

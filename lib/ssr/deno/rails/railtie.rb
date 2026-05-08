@@ -8,6 +8,7 @@ module SSR
       config.ssr_deno.enabled = true
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
+      config.ssr_deno.raise_on_bundle_error = !Rails.env.production?
       config.ssr_deno.max_heap_size_mb = nil # nil = 64 MB (default)
       config.ssr_deno.isolate_pool_size = nil # nil = 1 (default)
       config.ssr_deno.heap_stats_sample_rate = 100 # emit heap stats every N renders
@@ -39,7 +40,7 @@ module SSR
           next unless path
 
           unless File.exist?(path)
-            Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
+            Rails.logger.error "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
             next
           end
 

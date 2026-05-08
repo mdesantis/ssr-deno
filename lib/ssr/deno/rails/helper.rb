@@ -26,14 +26,26 @@ module SSR
         bundle.render(data, **options)
       rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
              SSR::Deno::JsRuntimeOutOfMemoryError => error
-        raise if Rails.application.config.ssr_deno.raise_on_render_error
-
-        Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} render failed, " \
-                           "falling back to CSR: #{error.message}"
-        ''
+        fallback_or_raise(error, bundle_name, :raise_on_render_error)
+      rescue SSR::Deno::BundleNotFoundError => error
+        fallback_or_raise(error, bundle_name, :raise_on_bundle_error)
       end
 
       private
+
+      def fallback_or_raise(error, bundle_name, config_key)
+        raise if Rails.application.config.ssr_deno.send(config_key)
+
+        prefix = if error.is_a?(SSR::Deno::BundleNotFoundError)
+                   'not found'
+                 else
+                   'render failed'
+                 end
+
+        Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} #{prefix}, " \
+                           "falling back to CSR: #{error.message}"
+        ''
+      end
 
       def find_bundle!(bundle_name)
         bundle = SSR::Deno::Bundle.registry[bundle_name]
@@ -43,7 +55,7 @@ module SSR
           bundle = SSR::Deno::Bundle.registry[bundle_name]
         end
 
-        unless bundle.is_a?(SSR::Deno::Bundle)
+        unless bundle
           instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name
 
           raise SSR::Deno::BundleNotFoundError,

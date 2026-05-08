@@ -74,6 +74,8 @@ module SSR
       def instrument: (untyped name, ?::Hash[untyped, untyped] payload) -> (nil | untyped)
 
       def find_bundle!: (untyped bundle_name) -> Bundle
+
+      def fallback_or_raise: (untyped error, untyped bundle_name, untyped config_key) -> String
     end
 
     # Rails-only class — loaded via require: 'ssr/deno/rails'.
@@ -81,7 +83,7 @@ module SSR
     class Railtie
       private
 
-      def default_bundle_path: (Symbol name) -> String
+      def default_bundle_path: (untyped name) -> untyped
     end
 
     class InstallGenerator

@@ -68,7 +68,7 @@ pub fn worker_thread_main(
                     bundle_code,
                     script_name,
                     reply,
-                 } => {
+                } => {
                     let result = load_bundle_in_worker(
                         &mut worker,
                         &bundle_id,

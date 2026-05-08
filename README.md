@@ -250,6 +250,17 @@ Pass nonce via `ssr_render` data hash:
 
 See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
 
+### Bundle error handling
+
+When `raise_on_bundle_error` is enabled (default: `true` in dev/test),
+`BundleNotFoundError` at render time raises immediately. When disabled
+(production), errors are logged and `ssr_render` falls back to CSR
+(empty string). Set in your initializer:
+
+```ruby
+Rails.application.config.ssr_deno.raise_on_bundle_error = false
+```
+
 ## Development
 
 ### Prerequisites
