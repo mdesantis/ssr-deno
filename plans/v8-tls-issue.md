@@ -42,9 +42,9 @@ The fix is two-part — both PRs are required:
 
 1. ✅ **[v8 PR #20](https://github.com/denoland/v8/pull/20)** (denoland/v8) — adds `V8_TLS_USED_IN_LIBRARY` define to V8's `internal_config` GN target. This is the define that actually changes the TLS model from `local-exec` to `local-dynamic` in V8's own `.cc` files. **Merged 2026-05-06.**
 
-2. 🔴 **[rusty_v8 PR #1970](https://github.com/denoland/rusty_v8/pull/1970)** (denoland/rusty_v8) — passes `v8_monolithic_for_shared_library=true` GN arg when building V8. This triggers the condition patched by PR #20. **Still open — waiting on autoroll of v8 PR #20.**
+2. 🔴 **[rusty_v8 PR #1970](https://github.com/denoland/rusty_v8/pull/1970)** (denoland/rusty_v8) — passes `v8_monolithic_for_shared_library=true` GN arg when building V8. This triggers the condition patched by PR #20. **Still open as of 2026-05-08. No activity since 2026-04-26.**
 
-**Dependency chain:** PR #1970 was blocked on v8 PR #20. That blocker is now resolved. Waiting for the `*-lkgr-denoland` autoroll to pick up the merged v8 commit, after which PR #1970 can land.
+**Dependency chain:** PR #1970 was blocked on v8 PR #20. That blocker is resolved. The autoroll ("Rolling to V8 14.7.173.23") is now open in rusty_v8 — once it lands and the v8 submodule pointer is bumped, PR #1970 can merge.
 
 **Why the workaround works now:** `V8_FROM_SOURCE=true` applies floated patches from `vendor/rusty_v8/patches/`, which already includes the v8-level TLS patch (the same change as PR #20). This is why `GN_ARGS='v8_monolithic_for_shared_library=true'` works locally despite PR #1970 not being merged upstream yet.
 
