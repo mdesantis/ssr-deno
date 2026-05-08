@@ -50,15 +50,6 @@ WORKDIR /app
 
 COPY . .
 
-# Generate a minimal JS bundle for the PoC (test/ excluded by .dockerignore)
-RUN mkdir -p /app/test/fixtures && printf '%s\n' \
-    'globalThis.render = function(data) {' \
-    '  var parsed = typeof data === "string" ? JSON.parse(data) : data;' \
-    '  var name = (parsed.data && parsed.data.name) || "world";' \
-    '  return "<h1>" + name + "</h1>";' \
-    '};' \
-    > /app/test/fixtures/minimal-bundle.js
-
 ENV V8_FROM_SOURCE=true
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
@@ -95,7 +86,15 @@ RUN ldconfig
 WORKDIR /app
 
 COPY --from=builder /app/lib /app/lib
-COPY --from=builder /app/test/fixtures/minimal-bundle.js /app/minimal-bundle.js
 COPY docker-entrypoint.rb /app/docker-entrypoint.rb
+
+# Generate minimal JS bundle (no build deps needed)
+RUN printf '%s\n' \
+    'globalThis.render = function(data) {' \
+    '  var parsed = typeof data === "string" ? JSON.parse(data) : data;' \
+    '  var name = (parsed.data && parsed.data.name) || "world";' \
+    '  return "<h1>" + name + "</h1>";' \
+    '};' \
+    > /app/minimal-bundle.js
 
 ENTRYPOINT ["ruby", "docker-entrypoint.rb"]
