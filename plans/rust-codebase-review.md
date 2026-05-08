@@ -16,7 +16,8 @@ _Reviewed: 2026-05-07_
 ```rust
 let is_new = loaded_paths.insert((bundle_path.to_owned(), bundle_id.to_owned()));
 ```
-Change `loaded_paths` type to `HashSet<(String, String)>`.
+Change `loaded_paths` type to `HashSet<(String, String)>` in both the function signature
+(`mod.rs:542`) and the caller's initialization (`mod.rs:409`).
 
 **Fix option B** — skip `globalThis.render` check if bundle_id already in `__ssr_bundles`:
 The namespace JS already has `if (typeof globalThis.__ssr_bundles[id] !== 'undefined') { return; }`,
@@ -57,18 +58,22 @@ The startup script sets `__ssr_chunks = []` and `__ssr_push_chunk` before the
 bundle-not-found guard. If `begin_render` fails (e.g., BundleNotFound), `?` propagates
 and the cleanup block at line 119-123 is skipped. Globals remain set until next render.
 
-**Fix:**
+**Fix:** Clean up all globals set by the startup script before the bundle guard:
 ```rust
 let (watchdog, timeout_triggered) = begin_render(...).map_err(|e| {
     let _ = worker.execute_script(
         "<ssr-deno:render-chunked-cleanup>",
-        "globalThis.__ssr_chunks = undefined; globalThis.__ssr_push_chunk = undefined;"
+        "globalThis.__ssr_deno_result = undefined; \
+         globalThis.__ssr_deno_error = undefined; \
+         globalThis.__ssr_chunks = undefined; \
+         globalThis.__ssr_push_chunk = undefined;"
             .to_string()
             .into(),
     );
     e
 })?;
 ```
+Normal success path (`end_render` + line 118-123) already resets these on completion.
 
 ---
 
@@ -127,8 +132,7 @@ returns `Err`), isolates 0..N-1 got the bundle and the dead isolate didn't. Roun
 will dispatch to the partially-loaded isolates (success), but the dead worker is
 permanently excluded. No isolate replacement mechanism exists.
 
-Not fixable without a restart/health-check strategy. Worth a `// TODO` comment and a
-future plan for dead-isolate replacement.
+Not fixable without a restart/health-check strategy. Add `// TODO: replace dead isolate` comment at the broadcast error site and file a future plan for dead-isolate replacement.
 
 ---
 
@@ -149,9 +153,9 @@ fn resolve_package_folder_from_package(&self, _specifier: &str, ...) {
 
 | # | Item | Priority | Done |
 |---|------|----------|------|
-| 1 | Same-path/different-bundle-id bug | High | [ ] |
-| 2 | `to_js_string` unsafe fallback | Medium | [ ] |
-| 3 | Chunked globals cleanup on early error | Low | [ ] |
+| 1 | Same-path/different-bundle-id bug | High | [x] |
+| 2 | `to_js_string` unsafe fallback | Medium | [x] |
+| 3 | Chunked globals cleanup on early error | Low | [x] |
 | 4 | `intern_script_name` double allocation | Low | [ ] |
 | 5 | `_specifier` rename | Trivial | [x] |
 | 6 | Watchdog per-render thread (future) | Future | [ ] |

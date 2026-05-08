@@ -336,6 +336,9 @@ impl IsolatePool {
         for handle in &self.handles {
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
+            // TODO: replace dead isolate — if blocking_send fails, the worker
+            // is dead but prior workers already got the bundle. No replacement
+            // mechanism exists; the pool runs with fewer isolates.
             handle.blocking_send(WorkerMsg::LoadBundle {
                 bundle_id: bundle_id.to_string(),
                 bundle_path: bundle_path.to_string(),
@@ -406,7 +409,7 @@ fn worker_thread_main(
 
         let _ = init_tx.send(Ok(()));
 
-        let mut loaded_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut loaded_paths: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
 
         while let Some(msg) = rx.recv().await {
             match msg {
@@ -539,9 +542,9 @@ fn load_bundle_in_worker(
     bundle_code: Arc<str>,
     script_name: &'static str,
     node_builtins: bool,
-    loaded_paths: &mut std::collections::HashSet<String>,
+    loaded_paths: &mut std::collections::HashSet<(String, String)>,
 ) -> Result<(), String> {
-    let is_new = loaded_paths.insert(bundle_path.to_owned());
+    let is_new = loaded_paths.insert((bundle_path.to_owned(), bundle_id.to_owned()));
 
     if is_new {
         // Provide globalThis.require for bundles that use Node.js built-in modules.
@@ -562,7 +565,7 @@ fn load_bundle_in_worker(
     // subsequent loads. serde_json::to_string produces a guaranteed-valid
     // JS string literal.
     let bundle_id_js = serde_json::to_string(bundle_id)
-        .unwrap_or_else(|_| format!("\"{}\"", bundle_id));
+        .expect("serde_json::to_string cannot fail for &str");
 
     let namespace_script = format!(
         r#"(function(id) {{

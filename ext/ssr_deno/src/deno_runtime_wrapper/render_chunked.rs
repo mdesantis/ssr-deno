@@ -76,7 +76,17 @@ pub async fn render_chunked(
 
     let (watchdog, timeout_triggered) = begin_render(
         worker, script, "<ssr-deno:render-chunked-start>", render_timeout_ms, oom_triggered, "chunked-render",
-    )?;
+    ).inspect_err(|_| {
+        let _ = worker.execute_script(
+            "<ssr-deno:render-chunked-cleanup>",
+            "globalThis.__ssr_deno_result = undefined; \
+             globalThis.__ssr_deno_error = undefined; \
+             globalThis.__ssr_chunks = undefined; \
+             globalThis.__ssr_push_chunk = undefined;"
+                .to_string()
+                .into(),
+        );
+    })?;
 
     // Run the event loop -- each tick, drain __ssr_chunks and forward to Ruby.
     // The watchdog is the sole timeout authority — no separate deadline check.

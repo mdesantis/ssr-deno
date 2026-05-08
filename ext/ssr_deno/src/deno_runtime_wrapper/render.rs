@@ -26,7 +26,7 @@ pub(super) fn cleanup_render_globals(worker: &mut MainWorker) {
 /// Produces a JS-safe string literal from a bundle_id or args_json.
 /// Uses serde_json for guaranteed escaping, falls back to double-quoting.
 pub(super) fn to_js_string(s: &str) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| format!("\"{}\"", s))
+    serde_json::to_string(s).expect("serde_json::to_string cannot fail for &str")
 }
 
 /// Arms the watchdog, executes `startup_script`, and dispatches execution
