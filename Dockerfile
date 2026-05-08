@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libgdbm-dev \
     libncurses-dev \
+    sccache \
     && rm -rf /var/lib/apt/lists/*
 
 # Compile Ruby 4.0.3 from source via ruby-build
@@ -35,13 +36,12 @@ RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build 
 
 RUN gem install bundler
 
-# Install Rust + sccache (V8 C++ compilation cache)
+# Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path
 ENV PATH=/root/.cargo/bin:$PATH
-RUN cargo install sccache --locked
 
-ENV SCCACHE=/root/.cargo/bin/sccache
+ENV SCCACHE=/usr/bin/sccache
 ENV SCCACHE_DIR=/root/.cache/sccache
 ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
 
@@ -67,13 +67,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/ext/ssr_deno/target,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
-    bundle install
-
-RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
-    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/ext/ssr_deno/target,sharing=locked \
-    --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
-    bundle exec rake compile
+    bundle install && bundle exec rake compile
 
 RUN test -f lib/ssr/deno/ssr_deno.so && echo ".so OK" || (echo ".so MISSING" && exit 1)
 

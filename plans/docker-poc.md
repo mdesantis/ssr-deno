@@ -19,10 +19,10 @@ FROM ubuntu:26.04 AS builder
 Base deps for V8 + Ruby compilation:
 
 ```dockerfile
-RUN apt-get install -y build-essential curl pkg-config ninja-build python3 \
+RUN apt-get install -y build-essential curl git pkg-config ninja-build python3 \
     libglib2.0-dev mold clang-19 lld-19 libclang-19-dev \
     libssl-dev libyaml-dev libreadline-dev libffi-dev zlib1g-dev \
-    libgdbm-dev libncurses-dev
+    libgdbm-dev libncurses-dev sccache
 ```
 
 LLVM/Clang 19 from distro repos (no apt.llvm.org).
@@ -39,10 +39,10 @@ RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build 
 
 `gem install bundler`.
 
-Rust via `rustup`. sccache: `cargo install sccache --locked`.
+Rust via `rustup`. sccache from apt (`sccache` package — precompiled, ~5 min faster than `cargo install`).
 
 ```dockerfile
-ENV SCCACHE=/root/.cargo/bin/sccache
+ENV SCCACHE=/usr/bin/sccache
 ENV SCCACHE_DIR=/root/.cache/sccache
 ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
 ```
@@ -56,15 +56,14 @@ ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
 ENV RB_SYS_CARGO_PROFILE=release
 ```
 
-Both `bundle install` and `bundle exec rake compile` share the same BuildKit cache mounts:
+Single `RUN` with both `bundle install && bundle exec rake compile`, sharing the same BuildKit cache mounts (avoids duplication and handles bundler compiling extensions during install):
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/ext/ssr_deno/target,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
-    bundle install
-# same mounts for bundle exec rake compile
+    bundle install && bundle exec rake compile
 ```
 
 Verify `.so` at `lib/ssr/deno/ssr_deno.so`.
