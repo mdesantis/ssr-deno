@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
@@ -61,8 +60,6 @@ pub fn worker_thread_main(
 
         let _ = init_tx.send(Ok(()));
 
-        let mut loaded_paths: HashSet<(String, String)> = HashSet::new();
-
         while let Some(msg) = rx.recv().await {
             match msg {
                 WorkerMsg::LoadBundle {
@@ -71,7 +68,7 @@ pub fn worker_thread_main(
                     bundle_code,
                     script_name,
                     reply,
-                } => {
+                 } => {
                     let result = load_bundle_in_worker(
                         &mut worker,
                         &bundle_id,
@@ -79,7 +76,6 @@ pub fn worker_thread_main(
                         bundle_code,
                         script_name,
                         node_builtins,
-                        &mut loaded_paths,
                     );
                     let _ = reply.send(result);
                 }
@@ -203,32 +199,23 @@ fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), St
 fn load_bundle_in_worker(
     worker: &mut deno_runtime::worker::MainWorker,
     bundle_id: &str,
-    bundle_path: &str,
+    _bundle_path: &str,
     bundle_code: Arc<str>,
     script_name: &'static str,
     node_builtins: bool,
-    loaded_paths: &mut HashSet<(String, String)>,
 ) -> Result<(), String> {
-    let is_new = loaded_paths.insert((bundle_path.to_owned(), bundle_id.to_owned()));
-
-    if is_new {
-        // Provide globalThis.require for bundles that use Node.js built-in modules.
-        // Only needed when node_builtins is enabled.
-        if node_builtins {
-            if let Err(e) = setup_require(worker) {
-                return Err(format!("Failed to set up require: {e}"));
-            }
-        }
-
-        if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
-            return Err(format!("Failed to evaluate SSR bundle: {e}"));
+    if node_builtins {
+        if let Err(e) = setup_require(worker) {
+            return Err(format!("Failed to set up require: {e}"));
         }
     }
 
-    // Idempotent namespace: register bundle_id under __ssr_bundles.
-    // With stable bundle_id (same file = same id), this is a no-op on
-    // subsequent loads. serde_json::to_string produces a guaranteed-valid
-    // JS string literal.
+    if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
+        return Err(format!("Failed to evaluate SSR bundle: {e}"));
+    }
+
+    // Always register/overwrite the bundle in __ssr_bundles to support auto-reload.
+    // serde_json::to_string produces a guaranteed-valid JS string literal.
     let bundle_id_js =
         serde_json::to_string(bundle_id).expect("serde_json::to_string cannot fail for &str");
 
@@ -236,9 +223,6 @@ fn load_bundle_in_worker(
         r#"(function(id) {{
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
                 globalThis.__ssr_bundles = {{}};
-            }}
-            if (typeof globalThis.__ssr_bundles[id] !== 'undefined') {{
-                return;
             }}
             if (typeof globalThis.render !== 'function') {{
                 throw new Error('Bundle did not assign a function to globalThis.render');
