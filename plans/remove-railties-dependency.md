@@ -69,6 +69,15 @@ Search for stale references to the `railties` dependency:
 - `lib/ssr/deno/rails/railtie.rb` — verify no stale comments
 - `CHANGELOG.md` — verify old entries don't need updating
 
+## Status
+
+| # | Item | Done |
+|---|------|------|
+| 1 | Remove `spec.add_dependency 'railties'` from gemspec | [x] |
+| 2 | Add guard in `lib/ssr/deno/rails.rb` | [x] |
+| 3 | Update CHANGELOG.md | [x] |
+| 4 | Stale audit — no stale refs in active files | [x] |
+
 ## Not changing
 
 - **`Gemfile`** — already has `gem 'rails', '~> 8.0', require: false` for dev/test

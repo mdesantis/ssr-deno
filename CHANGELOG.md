@@ -10,6 +10,7 @@
 - `heap_stats` subscriber guarded by `config.ssr_deno.enabled` check for symmetry with `init_bundles`.
 
 ### Removed
+- **BREAKING:** `railties` is no longer a runtime dependency. Users who rely on `ssr-deno` pulling in `railties` transitively must now add `gem "railties"` to their Gemfile explicitly. The Rails integration (`require: "ssr/deno/rails"`) raises a clear `LoadError` if `railties` is missing.
 - **BREAKING:** `ssr_render` no longer calls `.html_safe` on String results. The helper returns raw bundle output as-is — the caller (app view) is responsible for marking output safe. CSR fallback is plain `''` instead of `''.html_safe`.
 
 ### Added

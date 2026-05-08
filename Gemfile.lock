@@ -2,7 +2,6 @@ PATH
   remote: .
   specs:
     ssr-deno (0.1.0.pre.alpha.5)
-      railties
       rb_sys (~> 0.9)
 
 GEM

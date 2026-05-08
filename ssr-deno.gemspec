@@ -32,6 +32,5 @@ Gem::Specification.new do |spec|
   spec.extensions = ['ext/ssr_deno/extconf.rb']
 
   # Runtime dependencies
-  spec.add_dependency 'railties' # optional — only loaded when require: 'ssr/deno/rails'
   spec.add_dependency 'rb_sys', '~> 0.9'
 end
