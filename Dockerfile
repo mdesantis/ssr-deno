@@ -35,8 +35,6 @@ RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build 
     && /tmp/ruby-build/bin/ruby-build 4.0.3 /usr/local \
     && rm -rf /tmp/ruby-build
 
-RUN gem install bundler
-
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path
