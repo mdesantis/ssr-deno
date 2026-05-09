@@ -120,8 +120,15 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local /usr/local
 RUN ldconfig
 
-# Deno extension JS/TS sources at build-time paths
-COPY --from=builder /app/deno-ext-src/ /root/.cargo/
+# Deno extension JS/TS sources at build-time paths.
+# The native extension has these paths baked in at compile time. We copy the
+# files to a neutral location and symlink from /root/.cargo so non-root users
+# can access them without opening /root/ entirely to the world.
+COPY --from=builder /app/deno-ext-src/ /var/lib/deno-cargo/
+RUN rm -rf /root/.cargo 2>/dev/null; \
+    ln -sf /var/lib/deno-cargo /root/.cargo && \
+    chmod -R a+rX /var/lib/deno-cargo/ && \
+    chmod a+x /root/
 
 # Stage gem source (no V8 bloat)
 COPY --from=builder /app/lib /ssr-deno/lib
