@@ -26,7 +26,7 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir['lib/**/*.rb', 'sig/**/*.rbs'] +
                Dir['ext/ssr_deno/Cargo.*', 'ext/ssr_deno/src/**/*', 'ext/ssr_deno/crates/**/*'] +
-               ['ext/ssr_deno/extconf.rb', 'README.md', 'CHANGELOG.md', 'LICENSE.txt']
+               ['ssr-deno.gemspec', 'ext/ssr_deno/extconf.rb', 'README.md', 'CHANGELOG.md', 'LICENSE.txt']
 
   # Native extension
   spec.extensions = ['ext/ssr_deno/extconf.rb']

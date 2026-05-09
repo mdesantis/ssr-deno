@@ -43,14 +43,24 @@ ENV PATH=/root/.cargo/bin:$PATH
 
 WORKDIR /app
 
+# Cache-optimised layer order:
+#   1. Gem deps (rare changes) → bundle install cached separately
+#   2. App source code → compile cached separately
+# Gemfile change = only layer 1 + compile invalidated
+# Ruby/docs change  = only compile (cargo relink, ~15-25s)
+
+COPY Gemfile Gemfile.lock ssr-deno.gemspec ./
+COPY lib/ lib/
+RUN bundle install
+
 COPY . .
 
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
-ENV RB_SYS_CARGO_PROFILE=release
 ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
-ENV SCCACHE_DIR=/root/.cache/sccache
+ENV RUSTC_WRAPPER=sccache
 ENV SCCACHE=/usr/bin/sccache
+ENV SCCACHE_DIR=/root/.cache/sccache
 ENV V8_FROM_SOURCE=true
 ENV CARGO_TARGET_DIR=/app/tmp/cargo-target
 
@@ -58,7 +68,23 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/tmp,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
-    bundle install && bundle exec rake compile
+    cargo build --manifest-path ext/ssr_deno/Cargo.toml -p ssr_deno --release && \
+    cp "$CARGO_TARGET_DIR/release/libssr_deno.so" lib/ssr/deno/ssr_deno.so
+
+# Copy Deno extension JS/TS sources for runtime.
+# When hmr → include_js_files_for_snapshotting → deno_core stores
+# compile-time paths (CARGO_MANIFEST_DIR) in binary. At runtime these
+# files must exist at the same absolute path.
+RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    dest=/app/deno-ext-src; \
+    mkdir -p "$dest"; \
+    for crate_dir in /root/.cargo/registry/src/*/deno_*/; do \
+        if [ -d "$crate_dir" ] && find "$crate_dir" -maxdepth 4 \( -name "*.js" -o -name "*.ts" \) -print -quit 2>/dev/null | grep -q .; then \
+            rel="${crate_dir#/root/.cargo/}"; \
+            mkdir -p "$dest/$(dirname "$rel")"; \
+            cp -a "$crate_dir" "$dest/$(dirname "$rel")/"; \
+        fi; \
+    done
 
 # Stage 2: Minimal runtime (NO Rust, NO V8 source, NO LLVM)
 FROM ubuntu:26.04
@@ -79,18 +105,51 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local /usr/local
 RUN ldconfig
 
-WORKDIR /app
+# Deno extension JS/TS sources at build-time paths
+COPY --from=builder /app/deno-ext-src/ /root/.cargo/
 
-COPY --from=builder /app/lib /app/lib
-COPY docker-entrypoint.rb /app/docker-entrypoint.rb
-
-# Generate minimal JS bundle (no build deps needed)
+# Stage gem source (no V8 bloat)
+COPY --from=builder /app/lib /ssr-deno/lib
+COPY --from=builder /app/ext/ssr_deno/extconf.rb /ssr-deno/ext/ssr_deno/extconf.rb
+COPY --from=builder /app/ssr-deno.gemspec /ssr-deno/
+# Generate minimal JS bundle
 RUN printf '%s\n' \
     'globalThis.render = function(data) {' \
     '  var parsed = typeof data === "string" ? JSON.parse(data) : data;' \
     '  var name = (parsed.data && parsed.data.name) || "world";' \
     '  return "<h1>" + name + "</h1>";' \
-    '};' \
-    > /app/minimal-bundle.js
+    '}' > /ssr-deno/minimal-bundle.js
 
-ENTRYPOINT ["ruby", "docker-entrypoint.rb"]
+# Create PoC app with Gemfile path source
+RUN mkdir -p /poc && \
+    printf '%s\n' \
+      'source "https://rubygems.org"' \
+      '' \
+      'gem "ssr-deno", path: "/ssr-deno"' \
+    > /poc/Gemfile && \
+    printf '%s\n' \
+      '#!/usr/bin/env ruby' \
+      '# frozen_string_literal: true' \
+      '' \
+      'require "bundler/setup"' \
+      'require "ssr/deno"' \
+      '' \
+      'SSR::Deno.max_heap_size_mb = 64' \
+      'SSR::Deno.render_timeout_ms = 10_000' \
+      '' \
+      'begin' \
+      '  bundle = SSR::Deno::Bundle.new("/ssr-deno/minimal-bundle.js")' \
+      '  result = bundle.render({ data: { name: "Docker PoC" } })' \
+      '  puts "SSR result: #{result}"' \
+      '  puts "OK: gem works via path source."' \
+      'rescue StandardError => error' \
+      '  warn "FAIL: #{error.class}: #{error.message}"' \
+      '  warn error.backtrace.first(3).join("\n")' \
+      '  exit 1' \
+      'end' \
+    > /poc/app.rb
+
+WORKDIR /poc
+RUN bundle install
+
+ENTRYPOINT ["ruby", "app.rb"]
