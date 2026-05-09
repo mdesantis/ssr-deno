@@ -163,4 +163,4 @@ Misses `require('node:stream')`, `import ... from 'stream'`, dynamic `require(va
 
 ## Status
 
-All findings addressed. Tests added for each gap. Coverage at 100% line + 100% branch.
+All original findings addressed. Tests added for each gap. Coverage at 100% line + 100% branch.
