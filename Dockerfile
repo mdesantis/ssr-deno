@@ -20,9 +20,9 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     python3 \
     libglib2.0-dev \
     mold \
-    clang-19 \
-    lld-19 \
-    libclang-19-dev \
+    clang-21 \
+    lld-21 \
+    libclang-21-dev \
     libssl-dev \
     libyaml-dev \
     libreadline-dev \
@@ -58,7 +58,7 @@ RUN bundle install
 COPY . .
 
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
-ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
+ENV LIBCLANG_PATH=/usr/lib/llvm-21/lib
 ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
 ENV RUSTC_WRAPPER=sccache
 ENV SCCACHE=/usr/bin/sccache
