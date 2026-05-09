@@ -49,7 +49,7 @@ options = {
   pool_size: 1,
   mode: nil,
   sample: nil,
-  timeout_ms: nil,
+  timeout_ms: nil
 }
 
 OptionParser.new do |opts|
@@ -83,8 +83,16 @@ OptionParser.new do |opts|
     options[:timeout_ms] = ms
   end
 
-  opts.on('--sample NAME', "Sample directory under samples/ (e.g. vite-react-ssr-app)") do |s|
+  opts.on('--sample NAME', 'Sample directory under samples/ (e.g. vite-react-ssr-app)') do |s|
     options[:sample] = s
+  end
+
+  opts.on('--node-builtins', 'Enable Node.js builtin polyfills (default: auto-detect)') do
+    options[:node_builtins] = true
+  end
+
+  opts.on('--no-node-builtins', 'Disable Node.js builtin polyfills') do
+    options[:node_builtins] = false
   end
 end.parse!
 
@@ -93,14 +101,14 @@ end.parse!
 # ---------------------------------------------------------------------------
 
 options[:mode] ||= if options[:thread_count] && options[:ractor_count]
-  :single  # both given, ambiguous — default to single
-elsif options[:thread_count]
-  :threads
-elsif options[:ractor_count]
-  :ractors
-else
-  :single
-end
+                     :single # both flags given, ambiguous — default to single
+                   elsif options[:thread_count]
+                     :threads
+                   elsif options[:ractor_count]
+                     :ractors
+                   else
+                     :single # no concurrency flag — sequential single-threaded
+                   end
 
 options[:thread_count] ||= 4
 options[:ractor_count] ||= 4
@@ -118,7 +126,9 @@ sample_dir = File.join(SAMPLES_DIR, sample)
 bundle_path = File.join(sample_dir, 'dist/server/entry-server.js')
 
 unless File.exist?(sample_dir)
-  abort "Sample not found: #{sample}. Available: #{Dir.glob("#{SAMPLES_DIR}/*/").map { |d| File.basename(d) }.sort.join(', ')}"
+  abort "Sample not found: #{sample}. Available: #{Dir.glob("#{SAMPLES_DIR}/*/").map do |d|
+    File.basename(d)
+  end.sort.join(', ')}"
 end
 
 unless File.exist?(bundle_path)
@@ -136,12 +146,14 @@ options[:bundle] = bundle_path
 
 def percentile(sorted, p)
   return 0.0 if sorted.empty?
-  idx = [(p.to_f / 100) * sorted.size, sorted.size - 1].min
+
+  idx = (((p.to_f / 100) * sorted.size).ceil - 1).clamp(0, sorted.size - 1)
   sorted[idx.to_i]
 end
 
 def fmt_ops(iterations, elapsed_s)
   return '0' if elapsed_s <= 0
+
   format('%d', iterations / elapsed_s)
 end
 
@@ -152,11 +164,12 @@ end
 def fmt_bytes(b)
   return "#{b} B" if b < 1024
   return "#{(b / 1024.0).round(1)} KB" if b < 1024 * 1024
+
   "#{(b / (1024.0 * 1024.0)).round(1)} MB"
 end
 
 def resolve_pool_label(size)
-  size == 0 ? 'auto' : size.to_s
+  size.zero? ? 'auto' : size.to_s
 end
 
 # ---------------------------------------------------------------------------
@@ -173,7 +186,7 @@ def run_single_config(options)
   bundle_path = options[:bundle]
 
   # Set pool size before loading ssr/deno (triggers pool init).
-  ENV['SSR_DENO_ISOLATE_POOL_SIZE'] = pool_size.to_s if pool_size > 0
+  ENV['SSR_DENO_ISOLATE_POOL_SIZE'] = pool_size.to_s if pool_size.positive?
 
   $LOAD_PATH.unshift File.join(BENCH_ROOT, 'lib')
   require 'ssr/deno'
@@ -181,7 +194,12 @@ def run_single_config(options)
   SSR::Deno.render_timeout_ms = options[:timeout_ms] if options[:timeout_ms]
 
   # Auto-infer node_builtins from bundle content.
-  if File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
+  # Heuristic: scans for CommonJS require() of known Node.js builtins.
+  # Misses: require('node:stream'), import ... from 'stream', dynamic
+  # require(varName). Use --node-builtins / --no-node-builtins to override.
+  if options.key?(:node_builtins)
+    SSR::Deno.node_builtins_enabled = options[:node_builtins]
+  elsif File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
     SSR::Deno.node_builtins_enabled = true
   end
 
@@ -194,8 +212,8 @@ def run_single_config(options)
   initial_heap = SSR::Deno.heap_stats['used_heap_size']
 
   puts
-  puts "=" * 60
-  puts "ssr-deno Performance Benchmark"
+  puts '=' * 60
+  puts 'ssr-deno Performance Benchmark'
   puts
   puts "Ruby version: #{RUBY_VERSION}"
   puts "SSR::Deno version: #{SSR::Deno.native_version}"
@@ -208,12 +226,12 @@ def run_single_config(options)
   puts "Iterations: #{iterations}"
   puts "Warm: #{warmup}"
   puts "Timeout: #{options[:timeout_ms]}ms" if options[:timeout_ms]
-  puts "=" * 60
+  puts '=' * 60
   puts
   puts "  Heap: #{fmt_bytes(initial_heap)}"
 
   # ----- Mode 1: Single Thread -----
-  if mode_filter == :single || mode_filter == :all
+  if %i[single all].include?(mode_filter)
     timings = []
 
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -225,16 +243,16 @@ def run_single_config(options)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
     sorted = timings.sort
-    puts "  Single Thread:"
-    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms" \
-         " | #{fmt_ops(iterations, elapsed)} ops/sec" \
-         " | p50: #{fmt_ms(percentile(sorted, 50))}ms" \
-         " p99: #{fmt_ms(percentile(sorted, 99))}ms"
+    puts '  Single Thread:'
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
+         "| #{fmt_ops(iterations, elapsed)} ops/sec " \
+         "| p50: #{fmt_ms(percentile(sorted, 50))}ms " \
+         "p99: #{fmt_ms(percentile(sorted, 99))}ms"
     puts
   end
 
   # ----- Mode 2: Multi-Thread -----
-  if mode_filter == :threads || mode_filter == :all
+  if %i[threads all].include?(mode_filter)
     per_thread = iterations / thread_count
     extra = iterations % thread_count
 
@@ -251,13 +269,13 @@ def run_single_config(options)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
     puts "  Multi-Thread (#{thread_count} threads):"
-    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms" \
-         " | #{fmt_ops(iterations, elapsed)} ops/sec"
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
+         "| #{fmt_ops(iterations, elapsed)} ops/sec"
     puts
   end
 
   # ----- Mode 3: Multi-Ractor -----
-  if mode_filter == :ractors || mode_filter == :all
+  if %i[ractors all].include?(mode_filter)
     per_ractor = iterations / ractor_count
     extra = iterations % ractor_count
 
@@ -283,16 +301,16 @@ def run_single_config(options)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
     puts "  Multi-Ractor (#{ractor_count} Ractors):"
-    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms" \
-         " | #{fmt_ops(iterations, elapsed)} ops/sec"
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
+         "| #{fmt_ops(iterations, elapsed)} ops/sec"
     puts
   end
 
   # ----- Memory Check -----
   final_heap = SSR::Deno.heap_stats['used_heap_size']
   delta = final_heap - initial_heap
-  puts "  Memory: #{fmt_bytes(initial_heap)} → #{fmt_bytes(final_heap)}" \
-       " (#{delta > 0 ? '+' : ''}#{fmt_bytes(delta.abs)})"
+  puts "  Memory: #{fmt_bytes(initial_heap)} → #{fmt_bytes(final_heap)} " \
+       "(#{'+' if delta.positive?}#{fmt_bytes(delta.abs)})"
   puts
 end
 
@@ -302,6 +320,6 @@ end
 
 begin
   run_single_config(options)
-rescue => e
-  abort "Benchmark failed: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+rescue StandardError => error
+  abort "Benchmark failed: #{error.message}\n#{error.backtrace.first(5).join("\n")}"
 end

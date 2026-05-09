@@ -124,7 +124,7 @@ There is no test verifying that `render_chunks` fires (or doesn't fire) `render.
 
 ## scripts/ — Performance Script
 
-### Minor: `scripts/performance.rb:137-141` — `percentile` off by one for even-sized arrays
+### [FIXED] Minor: `scripts/performance.rb` — `percentile` off by one for even-sized arrays
 
 ```ruby
 idx = [(p.to_f / 100) * sorted.size, sorted.size - 1].min
@@ -136,13 +136,13 @@ For 10 elements at p50: `0.5 × 10 = 5.0` → `sorted[5]` (6th element). The sta
 
 ---
 
-### Minor: `scripts/performance.rb:95` — mode inference comment covers only one `:single` path
+### [FIXED] Minor: `scripts/performance.rb` — mode inference comment covers only one `:single` path
 
 The comment `# both given, ambiguous — default to single` sits on the first branch. The `else` (neither flag given) also silently defaults to `:single` with no explanation.
 
 ---
 
-### Fragile: `scripts/performance.rb:184-186` — node_builtins auto-detect regex
+### [FIXED] Fragile: `scripts/performance.rb` — node_builtins auto-detect regex + explicit `--node-builtins` flag
 
 ```ruby
 File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)

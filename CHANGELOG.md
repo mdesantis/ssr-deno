@@ -1,6 +1,8 @@
 ## Unreleased
 
 ### Fixed
+- **Scripts: percentile calculation corrected for even-sized arrays** — uses nearest-rank via `.ceil - 1` instead of index truncation.
+- **Scripts: `--node-builtins` / `--no-node-builtins` flags added** — overrides the heuristic auto-detect regex.
 - **Auto-reload was not updating bundle code** — `load_bundle_in_worker` had a `HashSet` cache (`loaded_paths`) that prevented re-evaluation of the same `(bundle_path, bundle_id)` pair, plus the namespace registration script had an early-return guard for already-registered bundle IDs. Both guards are now removed; the Ruby layer's `mtime` check is the authoritative reload gate.
 - Railtie: wire `config.ssr_deno.render_timeout_ms` to `SSR::Deno.render_timeout_ms=` setter. Previously only settable via env var or direct call before pool init.
 - `apply_integer_env` warning now includes the error message (e.g. "Render timeout must be at least 100ms") instead of generic "Invalid integer".
