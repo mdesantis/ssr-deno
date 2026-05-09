@@ -90,6 +90,26 @@ module SSR
       assert_includes html, 'Changed'
     end
 
+    def test_auto_reload_picks_up_new_file_content
+      Dir.mktmpdir do |dir|
+        bundle_path = File.join(dir, 'hmr-bundle.js')
+        File.write(bundle_path, <<~JS)
+          globalThis.render = function() { return '<h1>v1</h1>'; };
+        JS
+
+        bundle = SSR::Deno::Bundle.new(bundle_path)
+        bundle.auto_reload = true
+
+        assert_includes bundle.render({}), 'v1'
+
+        File.write(bundle_path, <<~JS)
+          globalThis.render = function() { return '<h1>v2</h1>'; };
+        JS
+
+        assert_includes bundle.render({}), 'v2'
+      end
+    end
+
     def test_instrument_noop_when_active_support_notifications_not_loaded
       original = ActiveSupport.send(:remove_const, :Notifications)
       result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }
