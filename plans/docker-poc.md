@@ -12,86 +12,97 @@ This validates the feasibility of shipping prebuilt platform gems (`ssr-deno-x86
 
 **Stage 1 — builder** (`ubuntu:26.04`):
 
-```dockerfile
-FROM ubuntu:26.04 AS builder
-```
+Base deps for V8 + Ruby compilation (LLVM/Clang 19 from distro, sccache from apt).
 
-Base deps for V8 + Ruby compilation:
+Ruby 4.0.3 compiled from source via ruby-build.
 
-```dockerfile
-RUN apt-get install -y build-essential curl git pkg-config ninja-build python3 \
-    libglib2.0-dev mold clang-19 lld-19 libclang-19-dev \
-    libssl-dev libyaml-dev libreadline-dev libffi-dev zlib1g-dev \
-    libgdbm-dev libncurses-dev sccache
-```
+Rust via `rustup`.
 
-LLVM/Clang 19 from distro repos (no apt.llvm.org).
-
-Ruby 4.0.3 compiled from source via ruby-build:
+Cache-optimised layer order:
 
 ```dockerfile
-RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build \
-    && /tmp/ruby-build/bin/ruby-build 4.0.3 /usr/local \
-    && rm -rf /tmp/ruby-build
-```
+# 1. Gem deps (rare changes) → cached separately
+COPY Gemfile Gemfile.lock ssr-deno.gemspec ./
+COPY lib/ lib/
+RUN bundle install
 
-`git` reinstated in apt-get for the clone.
+# 2. App source → compile cached separately
+COPY . .
 
-`gem install bundler`.
-
-Rust via `rustup`. sccache from apt (`sccache` package — precompiled, ~5 min faster than `cargo install`).
-
-```dockerfile
-ENV SCCACHE=/usr/bin/sccache
-ENV SCCACHE_DIR=/root/.cache/sccache
-ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
-```
-
-`COPY . .` (`.git/` excluded by `.dockerignore`). `minimal-bundle.js` generated inline (bypasses `.dockerignore` excluding `test/`).
-
-```dockerfile
-ENV V8_FROM_SOURCE=true
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-19/lib
-ENV RB_SYS_CARGO_PROFILE=release
-```
+ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE=/usr/bin/sccache
+ENV SCCACHE_DIR=/root/.cache/sccache
+ENV V8_FROM_SOURCE=true
+ENV CARGO_TARGET_DIR=/app/tmp/cargo-target
 
-Single `RUN` with both `bundle install && bundle exec rake compile`, sharing the same BuildKit cache mounts (avoids duplication and handles bundler compiling extensions during install):
-
-```dockerfile
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/ext/ssr_deno/target,sharing=locked \
+    --mount=type=cache,target=/app/tmp,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
-    bundle install && bundle exec rake compile
+    cargo build --manifest-path ext/ssr_deno/Cargo.toml -p ssr_deno --release && \
+    cp "$CARGO_TARGET_DIR/release/libssr_deno.so" lib/ssr/deno/ssr_deno.so
 ```
 
-Verify `.so` at `lib/ssr/deno/ssr_deno.so`.
+`RB_SYS_CARGO_PROFILE` removed — raw `cargo build --release` replaces `bundle exec rake compile`.
+
+`hmr` feature on `deno_runtime` enables `include_js_files_for_snapshotting` → deno_core stores `CARGO_MANIFEST_DIR` paths in binary instead of embedding JS. A subsequent RUN copies deno extension JS/TS sources from cargo registry cache to `/app/deno-ext-src/`, preserving relative path under `/root/.cargo/`.
 
 **Stage 2 — runtime** (`ubuntu:26.04`):
 
-Runtime deps only (no `-dev`, no LLVM, no build tools):
-
-```dockerfile
-RUN apt-get install -y ca-certificates zlib1g libyaml-0-2 libffi8 \
-    libgdbm6 libncurses6
-```
+Runtime deps only (no `-dev`, no LLVM, no build tools).
 
 `COPY --from=builder /usr/local /usr/local` + `RUN ldconfig` — Ruby 4.0.3.
 
-`COPY --from=builder /app/lib /app/lib` — the compiled `.so` + pure Ruby.
+Deno extension JS/TS sources at build-time paths:
+```dockerfile
+COPY --from=builder /app/deno-ext-src/ /root/.cargo/
+```
 
-`COPY --from=builder /app/test/fixtures/minimal-bundle.js /app/minimal-bundle.js`.
+Gem source staged (no V8 bloat):
+```dockerfile
+COPY --from=builder /app/lib /ssr-deno/lib
+COPY --from=builder /app/ext/ssr_deno/extconf.rb /ssr-deno/ext/ssr_deno/extconf.rb
+COPY --from=builder /app/ssr-deno.gemspec /ssr-deno/
+```
 
-`COPY docker-entrypoint.rb`.
+`/poc` app with Gemfile path source:
+```dockerfile
+RUN mkdir -p /poc && printf '%s\n' \
+    'source "https://rubygems.org"' '' \
+    'gem "ssr-deno", path: "/ssr-deno"' > /poc/Gemfile && \
+    printf '%s\n' \
+    '#!/usr/bin/env ruby' '# frozen_string_literal: true' '' \
+    'require "bundler/setup"' 'require "ssr/deno"' '' \
+    'SSR::Deno.max_heap_size_mb = 64' \
+    'SSR::Deno.render_timeout_ms = 10_000' '' \
+    'begin' \
+    '  bundle = SSR::Deno::Bundle.new("/ssr-deno/minimal-bundle.js")' \
+    '  result = bundle.render({ data: { name: "Docker PoC" } })' \
+    '  puts "SSR result: #{result}"' \
+    '  puts "OK: gem works via path source."' \
+    'rescue StandardError => error' \
+    '  warn "FAIL: #{error.class}: #{error.message}"' \
+    '  warn error.backtrace.first(3).join("\n")' \
+    '  exit 1' \
+    'end' > /poc/app.rb
 
-`ENTRYPOINT ["ruby", "docker-entrypoint.rb"]`.
+WORKDIR /poc
+RUN bundle install
+ENTRYPOINT ["ruby", "app.rb"]
+```
 
-### 2. `docker-entrypoint.rb` — PoC runner
+### 2. `docker-entrypoint.rb` — removed
 
-`$LOAD_PATH` prepend, `require 'ssr/deno'`, `max_heap_size_mb = 64`, `render_timeout_ms = 10_000`, `Bundle.new(minimal-bundle.js).render(name: 'Docker PoC')`. Prints result or exits 1 with backtrace.
+Inlined as `app.rb` in Dockerfile. No separate file.
 
-### 3. `.dockerignore`
+### 3. `ssr-deno.gemspec`
+
+Added `'ssr-deno.gemspec'` to `spec.files`.
+
+### 4. `.dockerignore`
 
 Kept as-is. Inline bundle generation in Dockerfile avoids modifying it.
 
@@ -118,13 +129,13 @@ docker build -t ssr-deno-builder --target builder .      # base image for apps
 
 ## Cache strategy
 
-Four BuildKit `--mount=type=cache` mounts, shared between `bundle install` and `bundle exec rake compile`:
+Five BuildKit `--mount=type=cache` mounts:
 
 | Target | Contents | Size |
 |--------|----------|------|
 | `/root/.cargo/registry` | Downloaded crate sources | ~2 GB |
 | `/root/.cargo/git` | Git dependencies | ~500 MB |
-| `/app/ext/ssr_deno/target` | Rust artifacts + V8 gn/ninja output | ~15-30 GB |
+| `/app/tmp` | Rust artifacts + V8 gn/ninja output | ~15-30 GB |
 | `/root/.cache/sccache` | V8 `.o` files keyed by source+flags hash | ~5 GB |
 
 All `sharing=locked` — Cargo and ninja are unsafe under concurrent access.
@@ -132,12 +143,19 @@ All `sharing=locked` — Cargo and ninja are unsafe under concurrent access.
 **Cache management:** `docker buildx prune --filter type=exec.cachemount`. Survives Dockerfile changes (identified by mount target path, not build stage hash).
 
 **Rebuild behavior:**
+- Gemfile change → layer 1 (bundle install) + compile invalidated (~1min)
+- Ruby/docs change → compile only, cargo relink (~15-25s)
 - Same source: ninja detects nothing changed → instant. Cargo re-links only.
 - V8 source changed (submodule update): sccache returns cached `.o` for unchanged files → ninja recompiles only affected `.cc` in ~2-3 minutes.
 - Clean builder cache (pruned): full cold build ~90 minutes.
 
+## Notable issues
+
+- `hmr` feature → `include_js_files_for_snapshotting` → deno_core stores CARGO_MANIFEST_DIR in binary. JS/TS files must exist at those exact paths at runtime. Fixed by copying cargo registry source dirs in builder.
+- `sccache` with `RUSTC_WRAPPER` reduces rebuild time for Rust changes.
+
 ## Not changing
 
-- `extconf.rb`, `Cargo.toml`, `Rakefile`, `ssr-deno.gemspec`
+- `extconf.rb`, `Cargo.toml`, `Rakefile` (except `hmr` feature)
 - `vendor/rusty_v8/` or submodule setup
 - Platform gem packaging workflow (separate future work)
