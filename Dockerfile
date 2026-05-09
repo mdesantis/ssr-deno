@@ -47,15 +47,21 @@ WORKDIR /app
 
 # Cache-optimised layer order:
 #   1. Gem deps (rare changes) → bundle install cached separately
-#   2. App source code → compile cached separately
-# Gemfile change = only layer 1 + compile invalidated
-# Ruby/docs change  = only compile (cargo relink, ~15-25s)
+#   2. Rust sources + V8 vendor → cargo build cached separately
+#   3. Everything else → fast layers, Rust stays cached
+# Gemfile change = only layer 1 + final layers invalidated
+# Ruby/docs change = only layer 3 invalidated (no Rust rebuild!)
+# Rust change = layers 2 + 3 invalidated
 
 COPY Gemfile Gemfile.lock ssr-deno.gemspec ./
 COPY lib/ lib/
 RUN bundle install
 
-COPY . .
+# Rust compilation deps only — changes here trigger cargo rebuild
+COPY ext/ssr_deno/Cargo.toml ext/ssr_deno/Cargo.lock ext/ssr_deno/
+COPY ext/ssr_deno/src/ ext/ssr_deno/src/
+COPY ext/ssr_deno/crates/ ext/ssr_deno/crates/
+COPY vendor/ vendor/
 
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-21/lib
@@ -71,7 +77,14 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/tmp,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     cargo build --manifest-path ext/ssr_deno/Cargo.toml -p ssr_deno --release && \
-    cp "$CARGO_TARGET_DIR/release/libssr_deno.so" lib/ssr/deno/ssr_deno.so
+    cp "$CARGO_TARGET_DIR/release/libssr_deno.so" /tmp/libssr_deno.so
+
+# Copy rest of the project (Ruby, config, tests, docs).
+# Layer invalidates on non-Rust changes — cargo stays cached.
+COPY . .
+
+# Restore the .so built in the Rust layer (COPY . . overwrote it)
+RUN cp /tmp/libssr_deno.so lib/ssr/deno/ssr_deno.so && rm /tmp/libssr_deno.so
 
 # Copy Deno extension JS/TS sources for runtime.
 # When hmr → include_js_files_for_snapshotting → deno_core stores
