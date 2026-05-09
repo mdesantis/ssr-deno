@@ -149,6 +149,7 @@ module SSR
       t = Thread.new { SSR::Deno::Bundle.create_bundles! }
 
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
       loop do
         break if t.status == 'sleep'
         raise 'timeout' if Process.clock_gettime(Process::CLOCK_MONOTONIC) - start > 1
@@ -161,6 +162,11 @@ module SSR
 
       t.join
     ensure
+      begin
+        locked_mutex.unlock
+      rescue StandardError
+        nil
+      end
       SSR::Deno::Bundle.instance_variable_set(:@_create_mutex, original_mutex) if original_mutex
     end
 

@@ -147,14 +147,18 @@ module SSR
 
       def apply_bool_env(env_var, setter)
         value = ENV.fetch(env_var, nil)
+
         return if value.nil? || value.empty?
 
         recognised = %w[true 1 yes false 0 no]
+
         unless recognised.include?(value.downcase)
-          warn "[ssr-deno] Unrecognised boolean for #{env_var}=#{value.inspect}, treating as false"
+          warn "[ssr-deno] Unrecognised boolean for #{env_var}=#{value.inspect}, ignoring"
+          return
         end
 
         bool_value = %w[true 1 yes].include?(value.downcase)
+
         send(setter, bool_value)
       end
     end

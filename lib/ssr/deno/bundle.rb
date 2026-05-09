@@ -35,6 +35,10 @@ module SSR
       @_bundles_created = false
 
       # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
+      #
+      # Two Bundle instances with the same path share the same native bundle_id.
+      # The second #load overwrites the first in the Rust layer — intentional
+      # file-level deduplication.
       def initialize(bundle_path)
         @bundle_path = bundle_path.to_s
         @bundle_id = @bundle_path
@@ -83,10 +87,13 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_id do
+        instrument 'render.ssr_deno', bundle_name: @bundle_id do |payload|
           result = SSR::Deno.native_render(@bundle_id, json_input)
 
           raw_output ? result : JSON.parse(result)
+        rescue StandardError => error
+          payload[:error] = error.message if payload
+          raise
         end
       end
 
@@ -113,7 +120,9 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        SSR::Deno.native_render_chunks(@bundle_id, json_input, &)
+        instrument 'render.ssr_deno', bundle_name: @bundle_id do
+          SSR::Deno.native_render_chunks(@bundle_id, json_input, &)
+        end
       end
 
       private

@@ -29,7 +29,9 @@ module SSR
         SSR::Deno.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
         SSR::Deno.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
         SSR::Deno.render_timeout_ms = config.ssr_deno.render_timeout_ms if config.ssr_deno.render_timeout_ms
-        SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if config.ssr_deno.node_builtins_enabled
+        unless config.ssr_deno.node_builtins_enabled.nil?
+          SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled
+        end
 
         # Store bundle configs in +registry+. Actual +Bundle.new+ is called
         # from +on_worker_boot+ (Puma clustered) or lazily on first render
@@ -67,8 +69,9 @@ module SSR
           next unless should_sample
 
           stats = SSR::Deno.heap_stats
+
           ActiveSupport::Notifications.instrument('heap_stats.ssr_deno', stats)
-        rescue SSR::Deno::Error => error
+        rescue SSR::Deno::Error, JSON::ParserError => error
           Rails.logger.warn "[ssr-deno] Failed to collect heap stats: #{error.message}"
         end
       end

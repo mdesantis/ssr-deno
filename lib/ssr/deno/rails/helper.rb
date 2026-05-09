@@ -70,12 +70,8 @@ module SSR
         bundle
       end
 
-      def instrument(name, payload = {}, &)
-        if defined?(ActiveSupport::Notifications)
-          ActiveSupport::Notifications.instrument(name, payload, &)
-        elsif block_given?
-          yield
-        end
+      def instrument(...)
+        Instrumenter.instrument(...)
       end
     end
   end

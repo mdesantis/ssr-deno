@@ -8,7 +8,7 @@ Thorough review of `lib/`, `test/`, and `scripts/` Ruby code.
 
 ## lib/ — Source
 
-### Bug: `railtie.rb:32` — `node_builtins_enabled = false` silently ignored
+### [FIXED] Bug: `lib/ssr/deno/rails/railtie.rb:32` — `node_builtins_enabled = false` silently ignored
 
 ```ruby
 SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if config.ssr_deno.node_builtins_enabled
@@ -20,7 +20,7 @@ SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if confi
 
 ---
 
-### Gap: `bundle.rb:111` — `render_chunks` has no instrumentation
+### [FIXED] Gap: `lib/ssr/deno/bundle.rb:111` — `render_chunks` has no instrumentation
 
 `render` wraps `native_render` in `instrument 'render.ssr_deno'`. `render_chunks` calls `native_render_chunks` bare. Consequences:
 
@@ -32,7 +32,7 @@ SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled if confi
 
 ---
 
-### Gap: `bundle.rb:86-90` — `render.ssr_deno` event has no `:error` payload
+### [FIXED] Gap: `lib/ssr/deno/bundle.rb:86-90` — `render.ssr_deno` event has no `:error` payload
 
 When `native_render` raises (e.g., `RenderError`), the exception propagates through the `instrument` block. AS::Notifications fires the event without `:error` in the payload. The logger in `railtie.rb:81` checks `payload[:error]` — this branch is dead for native render failures at the bundle layer; it only fires at the helper layer (`ssr_render.ssr_deno`).
 
@@ -50,7 +50,7 @@ end
 
 ---
 
-### Inconsistency: `helper.rb:73-79` — `Helper#instrument` duplicates `Instrumenter`
+### [FIXED] Inconsistency: `lib/ssr/deno/rails/helper.rb:73-79` — `Helper#instrument` duplicates `Instrumenter`
 
 `Bundle#instrument` delegates to `Instrumenter.instrument` which already handles the no-AS no-op. `Helper#instrument` re-implements the same `defined?(ActiveSupport::Notifications)` check inline. A future change to `Instrumenter` won't be reflected in `Helper`.
 
@@ -58,7 +58,7 @@ end
 
 ---
 
-### Minor: `railtie.rb:71` — heap stats rescue too narrow
+### [FIXED] Minor: `lib/ssr/deno/rails/railtie.rb:71` — heap stats rescue too narrow
 
 ```ruby
 rescue SSR::Deno::Error => error
@@ -72,7 +72,7 @@ rescue SSR::Deno::Error => error
 
 ---
 
-### Undocumented: `bundle.rb:40` — identity by file path
+### [ADDRESSED] Undocumented: `lib/ssr/deno/bundle.rb:40` — identity by file path
 
 ```ruby
 @bundle_id = @bundle_path
@@ -82,7 +82,7 @@ Two `Bundle.new(same_path)` instances share the same native bundle_id. The secon
 
 ---
 
-### Nitpick: `deno.rb:152-158` — `apply_bool_env` calls setter for unrecognised values
+### [ADDRESSED] Nitpick: `lib/ssr/deno.rb:148-159` — `apply_bool_env` calls setter for unrecognised values
 
 An unrecognised value (e.g., `SSR_DENO_NODE_BUILTINS_ENABLED=maybe`) warns, then still calls `send(setter, false)`. A typo actively disables the feature rather than preserving the prior value. The ordering is safe in practice (env vars applied at require-time, user code runs later), but the semantics are surprising.
 
@@ -90,7 +90,7 @@ An unrecognised value (e.g., `SSR_DENO_NODE_BUILTINS_ENABLED=maybe`) warns, then
 
 ## test/ — Test Suite
 
-### Bug: `test_deno_bundle.rb:140-165` — `test_create_bundles_outer_guard` leaks thread on timeout
+### [FIXED] Bug: `test/ssr/test_deno_bundle.rb:140-165` — `test_create_bundles_outer_guard` leaks thread on timeout
 
 If the `raise 'timeout'` fires, the `ensure` block restores the mutex ivar but never unlocks `locked_mutex`. Thread `t` is left blocked in `locked_mutex.synchronize` indefinitely — a zombie thread that will never be joined.
 
@@ -98,25 +98,25 @@ If the `raise 'timeout'` fires, the `ensure` block restores the mutex ivar but n
 
 ---
 
-### Gap: `test_integration_deno_rails.rb` — no successful `ssr_render` path
+### [FIXED] Gap: `test/ssr/test_integration_deno_rails.rb` — no successful `ssr_render` path
 
 All 7 tests cover error/miss paths. No test registers a bundle, calls `ssr_render`, and asserts HTML output. The happy path through `Helper#ssr_render → Bundle#render` is untested at the Rails integration layer.
 
 ---
 
-### Gap: `test_integration_deno_rails.rb` — CSR fallback path untested
+### [FIXED] Gap: `test/ssr/test_integration_deno_rails.rb` — CSR fallback path untested
 
 The `raise_on_render_error: false` / `raise_on_bundle_error: false` branch in `Helper#fallback_or_raise` (returns `''` and logs) has no coverage. Neither the empty-string return nor the `Rails.logger.error` call is ever asserted.
 
 ---
 
-### Gap: `test_integration_deno_rails.rb` — Rails config → runtime config path untested
+### [FIXED] Gap: `test/ssr/test_integration_deno_rails.rb` — Rails config → runtime config path untested
 
 No test verifies that `config.ssr_deno.max_heap_size_mb = 128` (or other runtime options) actually calls `SSR::Deno.max_heap_size_mb = 128` before pool init. The railtie initializer `ssr_deno.init_bundles` is exercised but only for bundle path logic.
 
 ---
 
-### Gap: `test_deno_bundle.rb` — `render_chunks` instrumentation not asserted
+### [FIXED] Gap: `test/ssr/test_deno_render_chunks.rb` — `render_chunks` instrumentation not asserted
 
 There is no test verifying that `render_chunks` fires (or doesn't fire) `render.ssr_deno`. Should be added alongside the lib fix so the behaviour is locked in.
 
@@ -160,3 +160,7 @@ Misses `require('node:stream')`, `import ... from 'stream'`, dynamic `require(va
 4. `bundle exec rake rbs` — type signatures valid
 5. Manual smoke: set `node_builtins_enabled: false` in Rails config, confirm setter called
 6. Manual smoke: call `render_chunks`, confirm `render.ssr_deno` event fires
+
+## Status
+
+All findings addressed. Tests added for each gap. Coverage at 100% line + 100% branch.

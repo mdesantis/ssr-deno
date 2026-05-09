@@ -9,9 +9,7 @@ module SSR
 
     HANG_JS = <<~JS.chomp
       globalThis.render = function() {
-        let end = Date.now() + 500;
-        while (Date.now() < end) {}
-        return 'timeout did not fire';
+        return new Promise(function() {});
       };
     JS
 
@@ -37,9 +35,7 @@ module SSR
     def test_render_timeout_respects_configured_value
       slow_js = <<~JS.chomp
         globalThis.render = function() {
-          let end = Date.now() + 400;
-          while (Date.now() < end) {}
-          return 'timeout did not fire';
+          return new Promise(function() {});
         };
       JS
       assert_subprocess(<<~RUBY, 'Expected timeout at ~100ms')

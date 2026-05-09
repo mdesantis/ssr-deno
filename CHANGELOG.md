@@ -4,11 +4,16 @@
 - **Auto-reload was not updating bundle code** — `load_bundle_in_worker` had a `HashSet` cache (`loaded_paths`) that prevented re-evaluation of the same `(bundle_path, bundle_id)` pair, plus the namespace registration script had an early-return guard for already-registered bundle IDs. Both guards are now removed; the Ruby layer's `mtime` check is the authoritative reload gate.
 - Railtie: wire `config.ssr_deno.render_timeout_ms` to `SSR::Deno.render_timeout_ms=` setter. Previously only settable via env var or direct call before pool init.
 - `apply_integer_env` warning now includes the error message (e.g. "Render timeout must be at least 100ms") instead of generic "Invalid integer".
-- `apply_bool_env` warns on unrecognised values (e.g. `SSR_DENO_NODE_BUILTINS_ENABLED=treu`) instead of silently treating as false.
+- `apply_bool_env` warns on unrecognised values (e.g. `SSR_DENO_NODE_BUILTINS_ENABLED=treu`) instead of silently treating as false, and now returns early without calling the setter (preserving prior value).
 - `reload_if_changed` documents thread-safety limitation with comment.
 - `Dir.mktmpdir` temp dirs cleaned up after each test (was leaking in test helpers).
 - Dead code removed from `scripts/performance.rb`: no-op `isolate_pool_size` getter call, unsynchronized unused `timings` array in multi-thread mode.
 - `heap_stats` subscriber guarded by `config.ssr_deno.enabled` check for symmetry with `init_bundles`.
+- **Railtie: `node_builtins_enabled` setter no longer silently skipped when set to `false`** — changed guard from `if` to `unless .nil?` so explicit `false` is forwarded to the runtime.
+- **`Bundle#render` now sets `payload[:error]` on failure** — `render.ssr_deno` event carries `:error` key when native render raises, so subscribers (event logger, heap sampler) see the failure.
+- **`Bundle#render_chunks` now fires `render.ssr_deno` instrumentation** — wrapped `native_render_chunks` call so heap stats and event logging work for chunked renders too.
+- **Railtie heap_stats rescue broadened** to catch `JSON::ParserError` alongside `SSR::Deno::Error`.
+- **Thread leak fixed in `test_create_bundles_outer_guard`** — `locked_mutex` unlocked in `ensure` block to prevent zombie thread on timeout.
 
 ### Removed
 - **BREAKING:** `railties` is no longer a runtime dependency. Users who rely on `ssr-deno` pulling in `railties` transitively must now add `gem "railties"` to their Gemfile explicitly. The Rails integration (`require: "ssr/deno/rails"`) raises a clear `LoadError` if `railties` is missing.
