@@ -5,6 +5,7 @@
 - **HMR integration test** — verifies that `auto_reload` picks up Vite SSR bundle rebuilds (modify source → rebuild → auto-detect via mtime → render updated content).
 
 ### Fixed
+- **Bundle reload could fail with libraries using module-level singleton guards** (e.g. MUI X Charts) — `var` declarations at global scope persist across repeated `execute_script` calls, causing double-instantiation errors. Bundle code is now wrapped in an IIFE so each reload gets fresh `var` bindings.
 - **Scripts: percentile calculation corrected for even-sized arrays** — uses nearest-rank via `.ceil - 1` instead of index truncation.
 - **Scripts: `--node-builtins` / `--no-node-builtins` flags added** — overrides the heuristic auto-detect regex.
 - **Auto-reload was not updating bundle code** — `load_bundle_in_worker` had a `HashSet` cache (`loaded_paths`) that prevented re-evaluation of the same `(bundle_path, bundle_id)` pair, plus the namespace registration script had an early-return guard for already-registered bundle IDs. Both guards are now removed; the Ruby layer's `mtime` check is the authoritative reload gate.

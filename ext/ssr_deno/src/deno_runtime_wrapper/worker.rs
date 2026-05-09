@@ -210,7 +210,9 @@ fn load_bundle_in_worker(
         }
     }
 
-    if let Err(e) = worker.execute_script(script_name, bundle_code.into()) {
+    let wrapped_code = format!("(function(){{\n{}\n}})();", bundle_code);
+
+    if let Err(e) = worker.execute_script(script_name, wrapped_code.into()) {
         return Err(format!("Failed to evaluate SSR bundle: {e}"));
     }
 
