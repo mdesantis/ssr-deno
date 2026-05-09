@@ -1,6 +1,8 @@
 # hadolint global ignore=DL3008
-# Build:   docker build -t ssr-deno-poc .                          # PoC (stage 2)
-# Base:    docker build -t ssr-deno-builder --target builder .    # for FROM in apps
+# Build:
+#   docker build -t ssr-deno-poc --target poc .           # PoC demo
+#   docker build -t ssr-deno-base --target base .          # reusable base for apps
+#   docker build -t ssr-deno-builder --target builder .    # compile-only
 
 # Stage 1: Build the native extension + Ruby 4.0.3
 FROM ubuntu:26.04 AS builder
@@ -86,8 +88,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
         fi; \
     done
 
-# Stage 2: Minimal runtime (NO Rust, NO V8 source, NO LLVM)
-FROM ubuntu:26.04
+# Stage 2: Base runtime (Ruby + .so + JS deps, no app — for FROM in other projects)
+FROM ubuntu:26.04 AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -112,13 +114,17 @@ COPY --from=builder /app/deno-ext-src/ /root/.cargo/
 COPY --from=builder /app/lib /ssr-deno/lib
 COPY --from=builder /app/ext/ssr_deno/extconf.rb /ssr-deno/ext/ssr_deno/extconf.rb
 COPY --from=builder /app/ssr-deno.gemspec /ssr-deno/
-# Generate minimal JS bundle
+
+# Generate minimal JS bundle for quick smoke-test
 RUN printf '%s\n' \
     'globalThis.render = function(data) {' \
     '  var parsed = typeof data === "string" ? JSON.parse(data) : data;' \
     '  var name = (parsed.data && parsed.data.name) || "world";' \
     '  return "<h1>" + name + "</h1>";' \
     '}' > /ssr-deno/minimal-bundle.js
+
+# Stage 3: PoC demo (extends base with a test app)
+FROM base AS poc
 
 # Create PoC app with Gemfile path source
 RUN mkdir -p /poc && \
