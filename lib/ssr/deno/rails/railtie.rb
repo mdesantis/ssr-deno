@@ -4,7 +4,7 @@ module SSR
   module Deno
     class Railtie < Rails::Railtie
       config.ssr_deno = ActiveSupport::OrderedOptions.new
-      config.ssr_deno.bundles = { application: nil } # name => path, nil = use default path
+      config.ssr_deno.bundles = {}
       config.ssr_deno.enabled = true
       config.ssr_deno.auto_reload = Rails.env.development?
       config.ssr_deno.raise_on_render_error = !Rails.env.production?
@@ -37,9 +37,11 @@ module SSR
         # from +on_worker_boot+ (Puma clustered) or lazily on first render
         # (single mode).
         config.ssr_deno.bundles.each do |name, path|
-          path ||= default_bundle_path(name)
-
-          next unless path
+          unless path
+            Rails.logger.error "[ssr-deno] Bundle #{name.inspect} has no path. " \
+                               'Set a path in config.ssr_deno.bundles.'
+            next
+          end
 
           unless File.exist?(path)
             Rails.logger.error "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
@@ -87,12 +89,6 @@ module SSR
             Rails.logger.debug "[ssr-deno] #{name} completed (#{duration}ms)"
           end
         end
-      end
-
-      private
-
-      def default_bundle_path(name)
-        Rails.root.join("dist/server/#{name}/entry-server.js")
       end
     end
   end

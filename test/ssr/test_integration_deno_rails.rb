@@ -38,7 +38,7 @@ module SSR
         bundles = Rails.application.config.ssr_deno.bundles
 
         assert_empty bundles,
-                     'Bundles should be empty (test overrides railtie default)'
+                     'Bundles should be empty by default'
       end
 
       def test_helper_included_in_action_view

@@ -82,9 +82,6 @@ module SSR
     # Rails-only class — loaded via require: 'ssr/deno/rails'.
     # Superclass Rails::Railtie is not available in standalone RBS validation.
     class Railtie
-      private
-
-      def default_bundle_path: (untyped name) -> untyped
     end
 
     class InstallGenerator
