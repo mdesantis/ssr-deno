@@ -1,0 +1,13 @@
+{
+  "name": "@ssr-deno/vite-hmr-ssr-app",
+  "version": "1.0.0",
+  "exports": "./src/entry-server.ts",
+  "nodeModulesDir": "auto",
+  "exclude": ["dist/", "node_modules/"],
+  "tasks": {
+    "build": "deno run --unstable-bare-node-builtins -A npm:vite build --ssr"
+  },
+  "imports": {
+    "vite": "npm:vite@^8.0.10"
+  }
+}

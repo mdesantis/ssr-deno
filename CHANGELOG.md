@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+- **`vite-hmr-ssr-app` sample** — minimal Vite SSR sample used by the HMR integration test.
+- **HMR integration test** — verifies that `auto_reload` picks up Vite SSR bundle rebuilds (modify source → rebuild → auto-detect via mtime → render updated content).
+
 ### Fixed
 - **Scripts: percentile calculation corrected for even-sized arrays** — uses nearest-rank via `.ceil - 1` instead of index truncation.
 - **Scripts: `--node-builtins` / `--no-node-builtins` flags added** — overrides the heuristic auto-detect regex.

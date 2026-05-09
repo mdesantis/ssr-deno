@@ -4,6 +4,7 @@ SAMPLES = %w[
   vite-react-ssr-app
   vite-react-streaming-ssr-app
   vite-ssr-app
+  vite-hmr-ssr-app
   vite-vue-ssr-app
   vite-svelte-ssr-app
   vite-react-mui-emotion-ssr-app
