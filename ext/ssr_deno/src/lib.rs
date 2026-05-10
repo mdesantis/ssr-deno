@@ -10,6 +10,35 @@ use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Obje
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 use std::sync::{Mutex, OnceLock};
 
+// ---------------------------------------------------------------------------
+// GVL release — rb_thread_call_without_gvl from Ruby's C API
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    fn rb_thread_call_without_gvl(
+        func: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
+        data1: *mut std::ffi::c_void,
+        ubf: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
+        data2: *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+}
+
+struct RenderArgs {
+    pool: &'static IsolatePool,
+    bundle_id: String,
+    args_json: String,
+}
+
+struct RawRenderResult {
+    result: Result<String, SSRDenoError>,
+}
+
+unsafe extern "C" fn render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+    let args = Box::from_raw(data as *mut RenderArgs);
+    let result = args.pool.dispatch_render(&args.bundle_id, &args.args_json);
+    Box::into_raw(Box::new(RawRenderResult { result })) as *mut std::ffi::c_void
+}
+
 static POOL: OnceLock<IsolatePool> = OnceLock::new();
 static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
 static INITIALIZED: OnceLock<()> = OnceLock::new();
@@ -213,11 +242,25 @@ fn native_load_bundle(bundle_id: String, bundle_path: String) -> Result<(), Erro
 
 /// Dispatches a render request to the next available isolate.
 /// Runs the full Deno event loop (macrotasks, timers fire).
+/// Releases GVL during blocking channel recv so other Ruby threads
+/// can enter the FFI boundary concurrently.
 /// Returns the result as a JSON string so any JS type survives the boundary.
 fn native_render(bundle_id: String, args_json: String) -> Result<String, Error> {
-    get_pool()?
-        .dispatch_render(&bundle_id, &args_json)
-        .map_err(map_render_error)
+    let pool = get_pool()?;
+
+    let args = Box::new(RenderArgs {
+        pool,
+        bundle_id,
+        args_json,
+    });
+
+    let result_ptr = unsafe {
+        let ptr = Box::into_raw(args) as *mut std::ffi::c_void;
+        rb_thread_call_without_gvl(render_worker, ptr, None, std::ptr::null_mut())
+    };
+
+    let raw = unsafe { Box::from_raw(result_ptr as *mut RawRenderResult) };
+    raw.result.map_err(map_render_error)
 }
 
 /// Returns the version of the ssr_deno native extension.

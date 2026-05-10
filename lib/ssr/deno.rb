@@ -32,9 +32,8 @@ module SSR
       # Set the number of V8 isolates in the pool before initializing the runtime.
       # Must be called before any Bundle.new call (triggers pool init).
       #
-      # Default: 1. Multiple isolates only benefit Ractor-based concurrency
-      # (bypasses the GVL); thread-based Rails apps see no throughput gain
-      # from larger pools due to GVL serialization.
+      # Default: 1. Multiple isolates benefit both thread and Ractor concurrency
+      # now that native_render releases the GVL during blocking channel recv.
       #
       # @param size [Integer] isolate count (min 1)
       def isolate_pool_size=(size)

@@ -6,6 +6,8 @@ module SSR
   module Deno
     # Parallel SSR via Ractors. Each Ractor runs its own GVL, so native
     # FFI calls (native_render) execute concurrently without serialization.
+    # Thread-based concurrency also benefits: native_render releases the GVL
+    # during its blocking channel recv (see rb_thread_call_without_gvl).
     #
     # Bypasses Bundle + ActiveSupport::Notifications (Ractor-unsafe).
     # Calls native FFI directly. native_load_bundle is idempotent

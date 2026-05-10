@@ -170,12 +170,12 @@ module PerfAssertions
                     "Expected Ractor ops (#{ractor_ops}) > #{factor}x Single ops (#{single_ops})"
   end
 
-  def assert_thread_not_parallel(single_ops, thread_ops, tolerance: 0.3)
+  def assert_thread_parallel(single_ops, thread_ops, min_factor: 1.3)
     ratio = thread_ops.to_f / [single_ops, 1].max
 
-    assert_operator ratio, :<, 1.0 + tolerance,
-                    "Thread/single ratio #{ratio.round(2)} exceeds #{1.0 + tolerance} " \
-                    '(GVL should serialize FFI)'
+    assert_operator ratio, :>, min_factor,
+                    "Thread/single ratio #{ratio.round(2)} is below #{min_factor} " \
+                    '(GVL release should enable parallel FFI)'
   end
 
   def assert_bundle_heavier(fast_ops, slow_ops, fast_label, slow_label)

@@ -29,7 +29,7 @@ module SSR
       assert_no_crash(min_threads[:ops], 'minimal threads')
       assert_no_crash(min_ractor_pool[:ops], 'minimal ractor_pool')
       assert_ractor_faster(min_single[:ops], min_ractor[:ops])
-      assert_thread_not_parallel(min_single[:ops], min_threads[:ops])
+      assert_thread_parallel(min_single[:ops], min_threads[:ops])
 
       # --- React SSR bundle ---
       react_single = benchmark_single(REACT_BUNDLE, iterations: 50, warmup: 10)

@@ -63,7 +63,7 @@ and are skipped. Env vars are read once at `require 'ssr/deno'` time.
 
 The isolate pool distributes renders across V8 isolates in round-robin. Pool
 size defaults to `1`. Multiple isolates only benefit Ractor-based concurrency
-(thread-based Rails apps see no throughput gain due to GVL serialization).
+(thread-based Rails apps now benefit too — native_render releases the GVL during blocking I/O).
 
 ```ruby
 bundle.auto_reload = true  # Reload SSR bundle from disk when file mtime changes
