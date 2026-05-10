@@ -42,6 +42,9 @@ pub(super) fn begin_render(
 ) -> Result<(Watchdog, Arc<AtomicBool>), SSRDenoError> {
     let v8_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     let timeout_triggered = Arc::new(AtomicBool::new(false));
+    // Per-render thread spawn/join costs ~50µs. Worth optimizing only for
+    // minimal-bundle microbenchmarks — real SSR workloads don't notice it.
+    // See plans/archived/watchdog-actor.md for background.
     let watchdog = Watchdog::spawn(v8_handle, render_timeout_ms, timeout_triggered.clone())
         .map_err(SSRDenoError::Render)?;
 
