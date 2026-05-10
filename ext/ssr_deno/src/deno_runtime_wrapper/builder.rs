@@ -124,6 +124,14 @@ pub fn build_worker(
         create_params,
         unsafely_ignore_certificate_errors: None,
         seed: None,
+        // Web Workers are not supported. If JS calls `new Worker()`, this
+        // callback panics inside the worker thread (the V8 isolate thread
+        // spawned in IsolateHandle::spawn). The panic is CONTAINED to that
+        // thread — the worker dies, the reply channel drops, and the main
+        // Ruby thread gets `blocking_recv() -> Err` → `JsRuntimeWorkerError`.
+        // No undefined behavior crosses the FFI boundary because the panic
+        // happens on a separate OS thread. See test:
+        // `test_web_worker_in_ssr_bundle_does_not_crash_process`.
         create_web_worker_cb: Arc::new(|_| unimplemented!("web workers are not supported")),
         format_js_error_fn: None,
         should_break_on_first_statement: false,

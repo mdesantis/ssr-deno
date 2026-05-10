@@ -160,22 +160,25 @@ module SSR
     def test_create_bundles_outer_guard
       original_mutex = SSR::Deno::Bundle.instance_variable_get(:@_create_mutex)
       locked_mutex = Mutex.new
+      blocking = Queue.new
 
       locked_mutex.lock
 
       SSR::Deno::Bundle.instance_variable_set(:@_create_mutex, locked_mutex)
       SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, false)
 
-      t = Thread.new { SSR::Deno::Bundle.create_bundles! }
+      t = Thread.new do
+        # Signal we're about to try locking
+        blocking.push(true)
 
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-      loop do
-        break if t.status == 'sleep'
-        raise 'timeout' if Process.clock_gettime(Process::CLOCK_MONOTONIC) - start > 1
-
-        Thread.pass
+        SSR::Deno::Bundle.create_bundles!
       end
+
+      # Wait for thread to reach the lock attempt
+      blocking.pop
+
+      # Give thread time to block on mutex
+      sleep 0.01
 
       SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, true)
       locked_mutex.unlock
@@ -183,7 +186,7 @@ module SSR
       t.join
     ensure
       begin
-        locked_mutex.unlock
+        locked_mutex.unlock if locked_mutex&.locked?
       rescue StandardError
         nil
       end

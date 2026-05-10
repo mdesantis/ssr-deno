@@ -39,5 +39,29 @@ module SSR
         exit 1
       RUBY
     end
+
+    # See `builder.rs` — the `create_web_worker_cb` for why this doesn't crash.
+    def test_web_worker_in_ssr_bundle_does_not_crash_process
+      assert_subprocess(<<~RUBY, 'Expected JsRuntimeWorkerError from new Worker()')
+        require 'tmpdir'
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'worker-call.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              new Worker("data:text/javascript,", { type: "module" });
+              return "<html/>";
+            };
+          JS
+
+          begin
+            bundle = SSR::Deno::Bundle.new(js_path)
+            bundle.render({})
+          rescue SSR::Deno::JsRuntimeWorkerError, SSR::Deno::RenderError
+            exit 0
+          end
+          exit 1
+        end
+      RUBY
+    end
   end
 end

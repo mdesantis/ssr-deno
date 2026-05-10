@@ -8,9 +8,10 @@ _Excludes: already-documented TODOs, archived plans, known design tradeoffs._
 
 ### HIGH
 
-**`builder.rs:127` — `unimplemented!()` panics Ruby process**
-If any SSR bundle calls `new Worker()`, the entire Ruby process crashes.
-Fix: return a JS `Error` instead of panicking.
+**`builder.rs:127` — `unimplemented!()` panics the worker thread (not the process)**
+The panic is contained to the V8 isolate's OS thread — the worker dies, reply
+channel drops, Ruby gets `JsRuntimeWorkerError`. Added: explanatory comment
+and a test (`test_web_worker_in_ssr_bundle_does_not_crash_process`).
 
 ### MEDIUM
 
@@ -196,10 +197,8 @@ Not actionable, but worth noting.
 
 ### HIGH
 
-**`test/ssr/test_deno_bundle.rb:160-191` — race-prone busy-wait**
-`test_create_bundles_outer_guard` uses `Thread#status == 'sleep'` as a
-synchronization primitive. Flaky on busy CI, fragile across Ruby impls.
-Fix: use `Queue#pop` for thread coordination.
+**`test/ssr/test_deno_bundle.rb:160-191` — race-prone busy-wait** ✅ Fixed
+Replaced `Thread#status == 'sleep'` busy-loop with `Queue` signaling.
 
 ### MEDIUM
 
