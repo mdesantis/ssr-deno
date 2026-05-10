@@ -35,10 +35,8 @@ No cap needed in practice. Added comment explaining rationale.
 
 ### LOW
 
-**`ssr_deno_core/src/lib.rs:33-44` — `SSRDenoError::Display` loses variant identity**
-All variants display only the inner string. `Render("foo")` and `BundleLoad("foo")`
-look identical in logs.
-Fix: prefix Display output with variant name (e.g., `"Render: foo"`).
+**`ssr_deno_core/src/lib.rs:33-44` — `SSRDenoError::Display` loses variant identity** ✅ Fixed
+Each variant now prefixes its name: `Render: timeout`, `BundleLoad: not found`.
 
 **`lib.rs:42-44` — `INITIALIZED` static is redundant**
 Only `POOL_INIT_LOCK` (prevents double-init race) + `POOL` (OnceLock) are needed.

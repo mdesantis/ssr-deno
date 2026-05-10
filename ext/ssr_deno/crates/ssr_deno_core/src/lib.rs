@@ -32,13 +32,13 @@ pub enum SSRDenoError {
 impl std::fmt::Display for SSRDenoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::BundleLoad(msg)
-            | Self::WorkerInit(msg)
-            | Self::WorkerDied(msg)
-            | Self::BundleNotFound(msg)
-            | Self::Render(msg)
-            | Self::OutOfMemory(msg)
-            | Self::HeapStatsSerialization(msg) => write!(f, "{msg}"),
+            Self::BundleLoad(msg) => write!(f, "BundleLoad: {msg}"),
+            Self::WorkerInit(msg) => write!(f, "WorkerInit: {msg}"),
+            Self::WorkerDied(msg) => write!(f, "WorkerDied: {msg}"),
+            Self::BundleNotFound(msg) => write!(f, "BundleNotFound: {msg}"),
+            Self::Render(msg) => write!(f, "Render: {msg}"),
+            Self::OutOfMemory(msg) => write!(f, "OutOfMemory: {msg}"),
+            Self::HeapStatsSerialization(msg) => write!(f, "HeapStatsSerialization: {msg}"),
         }
     }
 }
@@ -160,43 +160,43 @@ mod tests {
     #[test]
     fn deno_error_display_bundle_load() {
         let e = SSRDenoError::BundleLoad("foo".into());
-        assert_eq!(format!("{e}"), "foo");
+        assert_eq!(format!("{e}"), "BundleLoad: foo");
     }
 
     #[test]
     fn deno_error_display_worker_init() {
         let e = SSRDenoError::WorkerInit("bar".into());
-        assert_eq!(format!("{e}"), "bar");
+        assert_eq!(format!("{e}"), "WorkerInit: bar");
     }
 
     #[test]
     fn deno_error_display_worker_died() {
         let e = SSRDenoError::WorkerDied("baz".into());
-        assert_eq!(format!("{e}"), "baz");
+        assert_eq!(format!("{e}"), "WorkerDied: baz");
     }
 
     #[test]
     fn deno_error_display_bundle_not_found() {
         let e = SSRDenoError::BundleNotFound("qux".into());
-        assert_eq!(format!("{e}"), "qux");
+        assert_eq!(format!("{e}"), "BundleNotFound: qux");
     }
 
     #[test]
     fn deno_error_display_render() {
         let e = SSRDenoError::Render("err".into());
-        assert_eq!(format!("{e}"), "err");
+        assert_eq!(format!("{e}"), "Render: err");
     }
 
     #[test]
     fn deno_error_display_out_of_memory() {
         let e = SSRDenoError::OutOfMemory("oom".into());
-        assert_eq!(format!("{e}"), "oom");
+        assert_eq!(format!("{e}"), "OutOfMemory: oom");
     }
 
     #[test]
     fn deno_error_display_heap_stats_serialization() {
         let e = SSRDenoError::HeapStatsSerialization("ser".into());
-        assert_eq!(format!("{e}"), "ser");
+        assert_eq!(format!("{e}"), "HeapStatsSerialization: ser");
     }
 
     #[test]
