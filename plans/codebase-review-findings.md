@@ -51,9 +51,8 @@ Replaced `.unwrap()` with `.expect("pool was just initialized")`.
 - `lib.rs:24` — `rb_thread_call_without_gvl`: FFI constraints
 - `sys.rs:369` — `libc::isatty`: already had `// SAFETY:` comment
 
-**`render_chunked.rs:83` — `inspect_err` requires Rust 1.83+**
-No comment documenting the MSRV requirement.
-Fix: add comment or use `map_err`.
+**`render_chunked.rs:83` — `inspect_err` requires Rust 1.83+** ✅ Fixed
+Added MSRV comment. No code change needed (current toolchain is 1.95).
 
 **`render_chunked.rs:182-191` — silent JSON parse failure in `drain_chunks`**
 ```rust

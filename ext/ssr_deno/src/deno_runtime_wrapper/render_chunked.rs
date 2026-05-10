@@ -80,6 +80,8 @@ pub async fn render_chunked(
         oom_triggered,
         "chunked-render",
     )
+    // inspect_err requires Rust 1.83+ (current toolchain is 1.95). If
+    // supporting older compilers, replace with `.map_err(|e| { ...; e })`.
     .inspect_err(|_| {
         let _ = worker.execute_script(
             "<ssr-deno:render-chunked-cleanup>",
