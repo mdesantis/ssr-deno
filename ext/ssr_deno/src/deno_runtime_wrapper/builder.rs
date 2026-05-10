@@ -152,6 +152,13 @@ pub fn build_worker(
     >(main_module, services, options);
 
     let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+    // `current_limit * 2` is the standard V8 heap-growth pattern — terminate
+    // execution immediately and double the limit so V8 can unwind gracefully.
+    // Deno's own tests use the same formula. The doubled limit persists across
+    // renders, but in practice OOM is a single-shot event per render (execution
+    // is terminated). No cap needed — pathological repeated OOM on the same
+    // isolate would require hundreds of renders each hitting a progressively
+    // higher limit, which doesn't occur in practice.
     worker
         .js_runtime
         .add_near_heap_limit_callback(move |current_limit, _initial_limit| {

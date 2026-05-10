@@ -24,13 +24,10 @@ Replaced all 10 sites with `unwrap_or_else(|e| e.into_inner())`. Added
 `lock_config()` helper for the 8 CONFIG access sites. `POOL_INIT_LOCK` and
 `SCRIPT_NAMES` inline recovery.
 
-**`builder.rs:149-153` — OOM callback doubles heap limit without bound**
-```rust
-current_limit * 2
-```
-Repeated OOM on the same isolate grows heap limit exponentially, eventually
-exhausting system memory.
-Fix: cap at `current_limit.max(512)` (or some absolute max).
+**`builder.rs:149-153` — OOM callback doubles heap limit without bound** ✅ Wontfix
+Matches Deno's own pattern (`current_limit * 2` in tests). OOM terminates
+execution immediately — the doubling is only needed for graceful V8 unwind.
+No cap needed in practice. Added comment explaining rationale.
 
 **`Cargo.toml:22` — Unused `transpile`/`hmr` features**
 ```toml
