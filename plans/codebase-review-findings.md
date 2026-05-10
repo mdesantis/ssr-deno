@@ -59,10 +59,9 @@ Already has a thorough comment (lines 178-183) explaining why: V8's JSON.stringi
 cannot produce invalid JSON for a well-formed array. A corrupt V8 heap is the
 only theoretical path, and logging from within deno_core Ops is impractical.
 
-**`watchdog.rs:69-78` — `Drop` joins watchdog during panic unwind**
-If worker thread panics mid-render, `Watchdog::drop` calls `handle.join()`
-which blocks for up to `render_timeout_ms` during stack unwinding.
-Fix: `handle.detach()` in Drop, or join with timeout.
+**`watchdog.rs:69-78` — `Drop` joins watchdog during panic unwind** ✅ Fixed
+Changed `Drop` to drop the `JoinHandle` instead of joining — detaches the
+watchdog thread during panic unwind. Normal path (`cancel()`) still joins.
 
 **`nop_types.rs:71-72` — `/dev/null` path fails on Windows**
 ```rust

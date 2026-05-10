@@ -57,7 +57,8 @@ impl Watchdog {
     }
 
     /// Cancels the watchdog (render completed in time). Drops the sender to
-    /// wake the watchdog thread, then joins it to ensure cleanup.
+    /// wake the watchdog thread, then joins it to ensure cleanup before the
+    /// next render uses the same isolate.
     pub(super) fn cancel(mut self) {
         drop(self.cancel_tx.take());
         if let Some(h) = self.handle.take() {
@@ -69,11 +70,15 @@ impl Watchdog {
 impl Drop for Watchdog {
     fn drop(&mut self) {
         // Safety net: if cancel() was not called explicitly (e.g., early
-        // return via `?`), still signal the watchdog to avoid a dangling
-        // thread.
+        // return via `?`), signal the watchdog to exit. Detach instead of
+        // joining — during a panic unwind, joining would block the current
+        // thread for the full render timeout while the watchdog's recv_timeout
+        // runs to completion. The watchdog thread exits on its own once
+        // recv_timeout detects the disconnected sender.
+        // Dropping the JoinHandle detaches the thread — no blocking join.
+        // The watchdog thread exits on its own once recv_timeout detects
+        // the disconnected sender.
         drop(self.cancel_tx.take());
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
+        drop(self.handle.take());
     }
 }
