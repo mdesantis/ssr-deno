@@ -54,12 +54,10 @@ Replaced `.unwrap()` with `.expect("pool was just initialized")`.
 **`render_chunked.rs:83` — `inspect_err` requires Rust 1.83+** ✅ Fixed
 Added MSRV comment. No code change needed (current toolchain is 1.95).
 
-**`render_chunked.rs:182-191` — silent JSON parse failure in `drain_chunks`**
-```rust
-if let Ok(chunks) = serde_json::from_str::<Vec<String>>(&json_str)
-```
-If V8 returns malformed JSON, chunks are silently dropped.
-Fix: at minimum log the parse failure.
+**`render_chunked.rs:182-191` — silent JSON parse failure in `drain_chunks`** ✅ Wontfix
+Already has a thorough comment (lines 178-183) explaining why: V8's JSON.stringify
+cannot produce invalid JSON for a well-formed array. A corrupt V8 heap is the
+only theoretical path, and logging from within deno_core Ops is impractical.
 
 **`watchdog.rs:69-78` — `Drop` joins watchdog during panic unwind**
 If worker thread panics mid-render, `Watchdog::drop` calls `handle.join()`
