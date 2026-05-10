@@ -222,7 +222,7 @@ fn get_or_init_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {
     )
     .map_err(|e| js_runtime_initialization_error(ruby, e.to_string()))?;
     let _ = POOL.set(pool);
-    Ok(POOL.get().unwrap())
+    Ok(POOL.get().expect("pool was just initialized"))
 }
 
 fn get_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {

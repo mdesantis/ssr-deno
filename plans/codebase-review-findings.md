@@ -43,10 +43,8 @@ Removed `INITIALIZED` static, replaced `INITIALIZED.get().is_some()` with
 `POOL.get().is_some()`. Also slightly more correct: eliminates a race window
 between `POOL.set()` and `INITIALIZED.set()`.
 
-**`lib.rs:219` — unnecessary `.unwrap()` on just-set `OnceLock`**
-`POOL.set(pool)` just succeeded, but `.unwrap()` is used instead of storing
-the reference from `set`'s return value.
-Fix: use `.expect("pool was just initialized")` or capture the return.
+**`lib.rs:219` — unnecessary `.unwrap()` on just-set `OnceLock`** ✅ Fixed
+Replaced `.unwrap()` with `.expect("pool was just initialized")`.
 
 **Missing `// SAFETY:` comments**
 - `lib.rs:36-40` — `render_worker` raw pointer protocol
