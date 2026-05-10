@@ -63,11 +63,9 @@ only theoretical path, and logging from within deno_core Ops is impractical.
 Changed `Drop` to drop the `JoinHandle` instead of joining — detaches the
 watchdog thread during panic unwind. Normal path (`cancel()`) still joins.
 
-**`nop_types.rs:71-72` — `/dev/null` path fails on Windows**
-```rust
-Url::from_file_path("/dev/null").expect("Valid file path")
-```
-Fix: use a platform-agnostic path or note Unix-only.
+**`nop_types.rs:71-72` — `/dev/null` path fails on Windows** ✅ Fixed
+Replaced `from_file_path("/dev/null")` with `parse("file:///dev/null")`.
+Added comment noting Unix-only constraint.
 
 **`Cargo.toml:28` — `libc` dep could be replaced**
 `libc::isatty` → `std::io::IsTerminal` (stable since Rust 1.70).

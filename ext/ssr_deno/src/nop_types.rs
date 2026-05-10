@@ -67,9 +67,11 @@ impl node_resolver::NpmPackageFolderResolver for NopNpmPackageFolderResolver {
             node_resolver::errors::PackageFolderResolveErrorKind::PackageNotFound(
                 node_resolver::errors::PackageNotFoundError {
                     package_name: specifier.to_string(),
+                    // Unix-only extension (libc::isatty, etc.). This URL is a
+                    // stub for an error type — never actually used as a path.
                     referrer: node_resolver::UrlOrPath::Url(
-                        deno_runtime::deno_core::url::Url::from_file_path("/dev/null")
-                            .expect("Valid file path"),
+                        deno_runtime::deno_core::url::Url::parse("file:///dev/null")
+                            .expect("Valid URL"),
                     ),
                     referrer_extra: None,
                 },
