@@ -16,4 +16,4 @@ Heap leak detection over hours of sustained SSR load. V8 GC behavior under conti
 
 ## GVL release experiment
 
-Wrap FFI call in `magnus::blocking` to release the GVL during native_render. If threads could run renders concurrently (instead of serializing on GVL), thread-based Puma would benefit from multiple isolates without Ractors.
+Moved to `plans/gvl-release-experiment.md`.
