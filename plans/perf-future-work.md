@@ -16,4 +16,4 @@ Heap leak detection over hours of sustained SSR load. V8 GC behavior under conti
 
 ## GVL release experiment
 
-Moved to `plans/gvl-release-experiment.md`.
+Moved to `plans/archived/gvl-release-experiment.md`.
