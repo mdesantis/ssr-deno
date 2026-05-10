@@ -45,6 +45,7 @@ module SSR
       def render(data = nil, raw_input: false, raw_output: false)
         worker = next_worker
         reply = Ractor.new { Ractor.receive }
+
         worker.send({ type: :render, data:, raw_input:, raw_output:, reply: })
         ractor_result(reply)
       end
@@ -52,8 +53,11 @@ module SSR
       def render_chunks(data = nil, raw_input: false, &block)
         worker = next_worker
         reply = Ractor.new { Ractor.receive }
+
         worker.send({ type: :render_chunks, data:, raw_input:, reply: })
+
         chunks = ractor_result(reply)
+
         chunks.each(&block) if block
         chunks
       end
@@ -61,6 +65,7 @@ module SSR
       def reload
         @workers.each do |worker|
           reply = Ractor.new { Ractor.receive }
+
           worker.send({ type: :reload, reply: })
           ractor_result(reply)
         end
@@ -101,6 +106,7 @@ module SSR
                 cur = File.mtime(path)
                 if cur > mtime
                   mtime = cur
+
                   SSR::Deno.native_load_bundle(bundle_id, path)
                 end
               end
@@ -113,14 +119,17 @@ module SSR
                 when :render
                   json_input = msg[:raw_input] ? msg[:data] : JSON.generate(msg[:data])
                   result = SSR::Deno.native_render(bundle_id, json_input)
+
                   msg[:reply].send(msg[:raw_output] ? result : JSON.parse(result))
                 when :render_chunks
                   json_input = msg[:raw_input] ? msg[:data] : JSON.generate(msg[:data])
                   chunks = []
+
                   SSR::Deno.native_render_chunks(bundle_id, json_input) { |c| chunks << c }
                   msg[:reply].send(chunks)
                 when :reload
                   mtime = File.mtime(path)
+
                   SSR::Deno.native_load_bundle(bundle_id, path)
                   msg[:reply].send(:ok)
                 end
@@ -135,6 +144,7 @@ module SSR
 
       def next_worker
         @counter = (@counter + 1) % @workers.size
+
         @workers[@counter]
       end
     end

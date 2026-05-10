@@ -29,9 +29,11 @@ module SSR
         rescue SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
                SSR::Deno::JsRuntimeOutOfMemoryError => error
           payload[:error] = error.message
+
           fallback_or_raise(error, bundle_name, :raise_on_render_error)
         rescue SSR::Deno::BundleNotFoundError => error
           payload[:error] = error.message
+
           fallback_or_raise(error, bundle_name, :raise_on_bundle_error)
         end
       end

@@ -136,6 +136,7 @@ module SSR
 
       def apply_integer_env(env_var, setter)
         value = ENV.fetch(env_var, nil)
+
         return if value.nil? || value.empty?
 
         begin

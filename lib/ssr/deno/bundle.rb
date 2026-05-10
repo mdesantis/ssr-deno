@@ -21,6 +21,7 @@ module SSR
             @registry.transform_values! do |cfg|
               bundle = new(cfg[:path])
               bundle.auto_reload = true if cfg[:auto_reload]
+
               bundle
             end
 
@@ -93,6 +94,7 @@ module SSR
           raw_output ? result : JSON.parse(result)
         rescue StandardError => error
           payload[:error] = error.message if payload
+
           raise
         end
       end
