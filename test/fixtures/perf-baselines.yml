@@ -1,6 +1,6 @@
 ---
 meta:
-  generated: '2026-05-06'
+  generated: '2026-05-10'
   ruby: 4.0.3
   cpu: 24
 thresholds:
@@ -8,8 +8,14 @@ thresholds:
   p99_mult: 5.0
 baselines:
   minimal_single:
-    ops: 8963
+    ops: 9737
+  minimal_ractor_pool:
+    ops: 5519
   react_single:
-    ops: 1254
+    ops: 1205
+  react_ractor_pool:
+    ops: 1240
   mui_emotion_single:
-    ops: 119
+    ops: 134
+  mui_emotion_ractor_pool:
+    ops: 118

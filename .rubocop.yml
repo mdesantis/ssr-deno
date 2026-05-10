@@ -25,6 +25,7 @@ Layout/LineLength:
 
 Metrics/AbcSize:
   Exclude:
+    - 'scripts/**/*'
     - 'test/**/*'
     - 'rakelib/**/*'
 
@@ -32,6 +33,7 @@ Metrics/BlockLength:
   Exclude:
     - 'Rakefile'
     - 'rakelib/**/*'
+    - 'scripts/**/*'
     - 'ssr-deno.gemspec'
 
 Metrics/ClassLength:
@@ -40,6 +42,7 @@ Metrics/ClassLength:
 
 Metrics/CyclomaticComplexity:
   Exclude:
+    - 'scripts/**/*'
     - 'test/**/*'
     - 'rakelib/**/*'
 
@@ -50,11 +53,13 @@ Metrics/MethodLength:
     - hash
     - heredoc
   Exclude:
+    - 'scripts/**/*'
     - 'test/**/*'
     - 'rakelib/**/*'
 
 Metrics/PerceivedComplexity:
   Exclude:
+    - 'scripts/**/*'
     - 'test/**/*'
     - 'rakelib/**/*'
 
@@ -63,9 +68,12 @@ Naming/RescuedExceptionsVariableName:
 
 ThreadSafety/NewThread:
   Exclude:
+    - 'scripts/**/*'
     - 'test/**/*'
 Naming/VariableNumber:
   EnforcedStyle: snake_case
+  Exclude:
+    - 'scripts/**/*'
 
 Style/ClassAndModuleChildren:
   EnforcedStyle: nested

@@ -97,6 +97,33 @@ module PerfHelpers
     { ops: ops, total_renders: total, elapsed_ms: (elapsed * 1000).round(1) }
   end
 
+  def benchmark_ractor_pool(bundle_path, iterations:, size: 4, warmup: 20)
+    payload = { data: { name: 'perf' } }
+
+    pool = SSR::Deno::RactorPool.new(bundle_path:, size:)
+    warmup.times { pool.render(payload) }
+
+    timings = []
+    start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    iterations.times do
+      tc = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      pool.render(payload)
+      timings << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - tc)
+    end
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+
+    sorted = timings.sort
+    ops = fmt_ops(iterations, elapsed).to_i
+    p50_ms = (percentile(sorted, 50) * 1000).round(2)
+    p99_ms = (percentile(sorted, 99) * 1000).round(2)
+
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
+         "| #{ops} ops/sec | p50: #{fmt_ms(percentile(sorted, 50))}ms " \
+         "p99: #{fmt_ms(percentile(sorted, 99))}ms"
+
+    { ops: ops, p50_ms: p50_ms, p99_ms: p99_ms }
+  end
+
   # -------------------------------------------------------------------------
   # Baseline I/O
   # -------------------------------------------------------------------------

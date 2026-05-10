@@ -75,7 +75,7 @@ OptionParser.new do |opts|
     options[:pool_size] = n
   end
 
-  opts.on('--mode MODE', %w[single threads ractors all], 'Concurrency mode (default: single)') do |m|
+  opts.on('--mode MODE', %w[single threads ractors ractor_pool all], 'Concurrency mode (default: single)') do |m|
     options[:mode] = m.to_sym
   end
 
@@ -206,8 +206,19 @@ def run_single_config(options)
   payload = { data: { name: 'benchmark' } }
 
   # Warmup: initialize pool and let V8 reach steady state.
-  bundle = SSR::Deno::Bundle.new(bundle_path)
-  warmup.times { bundle.render(payload) }
+  use_bundle = %i[single threads ractors all].include?(mode_filter)
+  use_pool = %i[ractor_pool all].include?(mode_filter)
+  pool = nil
+
+  if use_bundle
+    bundle = SSR::Deno::Bundle.new(bundle_path)
+    warmup.times { bundle.render(payload) }
+  end
+
+  if use_pool
+    pool = SSR::Deno::RactorPool.new(bundle_path:, size: pool_size)
+    warmup.times { pool.render(payload) }
+  end
 
   initial_heap = SSR::Deno.heap_stats['used_heap_size']
 
@@ -223,6 +234,7 @@ def run_single_config(options)
   puts "Mode: #{mode_label}"
   puts "Threads: #{thread_count}" if %w[threads all].include?(mode_label)
   puts "Ractors: #{ractor_count}" if %w[ractors all].include?(mode_label)
+  puts "RactorPool workers: #{pool_size}" if %w[ractor_pool all].include?(mode_label)
   puts "Iterations: #{iterations}"
   puts "Warm: #{warmup}"
   puts "Timeout: #{options[:timeout_ms]}ms" if options[:timeout_ms]
@@ -303,6 +315,27 @@ def run_single_config(options)
     puts "  Multi-Ractor (#{ractor_count} Ractors):"
     puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
          "| #{fmt_ops(iterations, elapsed)} ops/sec"
+    puts
+  end
+
+  # ----- Mode 4: RactorPool (managed Ractors via RactorPool API) -----
+  if %i[ractor_pool all].include?(mode_filter)
+    timings = []
+
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    iterations.times do
+      tc = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      pool.render(payload)
+      timings << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - tc)
+    end
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+
+    sorted = timings.sort
+    puts "  RactorPool (#{pool_size} workers):"
+    puts "    #{iterations} renders in #{fmt_ms(elapsed)}ms " \
+         "| #{fmt_ops(iterations, elapsed)} ops/sec " \
+         "| p50: #{fmt_ms(percentile(sorted, 50))}ms " \
+         "p99: #{fmt_ms(percentile(sorted, 99))}ms"
     puts
   end
 

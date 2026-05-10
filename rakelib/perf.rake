@@ -31,7 +31,9 @@ task 'perf:baseline:update' do
     ].each do |cfg|
       r = benchmark_single(cfg[:path], iterations: cfg[:iters], warmup: cfg[:warmup])
       results["\#{cfg[:bundle]}_single"] = r[:ops]
-      puts "  \#{cfg[:bundle]}: \#{r[:ops]} ops/sec"
+      rp = benchmark_ractor_pool(cfg[:path], iterations: cfg[:iters], warmup: cfg[:warmup], size: 4)
+      results["\#{cfg[:bundle]}_ractor_pool"] = rp[:ops]
+      puts "  \#{cfg[:bundle]} single: \#{r[:ops]} ops/sec | ractor_pool: \#{rp[:ops]} ops/sec"
     end
 
     PerfHelpers.write_baselines(results, '#{fixtures}')

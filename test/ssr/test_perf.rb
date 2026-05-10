@@ -24,7 +24,10 @@ module SSR
 
       assert_no_crash(min_single[:ops], 'minimal single')
       assert_no_crash(min_ractor[:ops], 'minimal ractor')
+      min_ractor_pool = benchmark_ractor_pool(MINIMAL, iterations: 100, warmup: 20)
+
       assert_no_crash(min_threads[:ops], 'minimal threads')
+      assert_no_crash(min_ractor_pool[:ops], 'minimal ractor_pool')
       assert_ractor_faster(min_single[:ops], min_ractor[:ops])
       assert_thread_not_parallel(min_single[:ops], min_threads[:ops])
 
@@ -38,13 +41,17 @@ module SSR
 
       # --- MUI emotion bundle (node_builtins) ---
       mui_single = benchmark_single(MUI_EMOTION_BUNDLE, iterations: 20, warmup: 5)
+      mui_ractor_pool = benchmark_ractor_pool(MUI_EMOTION_BUNDLE, iterations: 20, warmup: 5)
 
       assert_no_crash(mui_single[:ops], 'MUI emotion single')
+      assert_no_crash(mui_ractor_pool[:ops], 'MUI emotion ractor_pool')
 
       # --- Baseline checks (optional) ---
       assert_within_baseline(min_single[:ops], 'minimal_single')
+      assert_within_baseline(min_ractor_pool[:ops], 'minimal_ractor_pool')
       assert_within_baseline(react_single[:ops], 'react_single', pct: 50)
       assert_within_baseline(mui_single[:ops], 'mui_emotion_single', pct: 50)
+      assert_within_baseline(mui_ractor_pool[:ops], 'mui_emotion_ractor_pool', pct: 50)
     end
   end
 end
