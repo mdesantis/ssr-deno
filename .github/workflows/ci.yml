@@ -70,7 +70,7 @@ jobs:
           echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> $GITHUB_ENV
       - uses: mozilla/sccache-action@v0.0.10
       - name: Cache Cargo registry + git deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -79,7 +79,7 @@ jobs:
           restore-keys: |
             cargo-deps-
       - name: Cache Cargo build artifacts (target dir)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: tmp/cargo-target
           key: cargo-target-${{ runner.os }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
