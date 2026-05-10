@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.6] - 2026-05-10
+
 ### Added
 - **`SSR::Deno::RactorPool`** — parallel SSR via Ractors. Each Ractor runs its own GVL, so native FFI calls execute concurrently without serialization. Bypasses Bundle + ActiveSupport::Notifications (Ractor-unsafe). Supports `render`, `render_chunks`, `reload`, auto_reload, and graceful shutdown.
 - **`vite-hmr-ssr-app` sample** — minimal Vite SSR sample used by the HMR integration test.
