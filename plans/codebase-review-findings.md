@@ -15,10 +15,9 @@ and a test (`test_web_worker_in_ssr_bundle_does_not_crash_process`).
 
 ### MEDIUM
 
-**`lib.rs` — `Ruby::get().unwrap()` can panic off-Ruby-thread**
-3 sites (`deno_exception_class`, `native_set_max_heap_size_mb`, `native_set_render_timeout_ms`).
-If ever called from a non-Ruby thread, panics instead of clean error.
-Fix: cache `ExceptionClass` at init time.
+**`lib.rs` — `Ruby::get().unwrap()` can panic off-Ruby-thread** ✅ Fixed
+Threated `ruby: &Ruby` through all error helpers and native functions.
+Removed all 3 `Ruby::get().unwrap()` sites. No more hidden panics.
 
 **`lib.rs` + `mod.rs` — `Mutex::lock().unwrap()` poisoned-mutex risk**
 10 sites across `CONFIG` and `SCRIPT_NAMES`. If any thread panics while holding
