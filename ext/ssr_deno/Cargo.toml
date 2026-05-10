@@ -19,7 +19,9 @@ magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-deno_runtime = { version = "0.255.0", features = ["transpile", "hmr"] }
+# hmr: required by deno_telemetry (SyntaxError without it).
+# transpile: not needed (no remote module transpilation, all bundles pre-built).
+deno_runtime = { version = "0.255.0", features = ["hmr"] }
 deno_core = "=0.400.0"
 deno_semver = "=0.9.1"
 deno_error = "=0.7.1"
