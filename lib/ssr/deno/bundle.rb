@@ -45,20 +45,29 @@ module SSR
         @bundle_id = @bundle_path
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
+        @_bundle_mutex = Mutex.new
 
         instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
           load
         end
       end
 
+      # @return [Boolean] Reader is unsynchronized — benign on MRI (GVL),
+      #   atomic in practice on JRuby/TruffleRuby (single-word write).
+      attr_reader :auto_reload
+
       # Enable or disable auto-reload (mtime check before each render).
       # @param value [Boolean]
-      attr_writer :auto_reload
+      def auto_reload=(value)
+        @_bundle_mutex.synchronize { @auto_reload = value }
+      end
 
       # Reload the bundle from disk. Called automatically when +auto_reload+
       # is enabled and the file mtime has changed.
       def reload
-        @mtime = File.mtime(@bundle_path)
+        @_bundle_mutex.synchronize do
+          @mtime = File.mtime(@bundle_path)
+        end
 
         instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
           load
@@ -140,14 +149,21 @@ module SSR
       end
 
       # Reload the bundle if the file has changed on disk.
-      # Not thread-safe: benign on MRI (GVL serializes), unsound on
-      # JRuby/TruffleRuby without external synchronization.
+      # Thread-safe (@_bundle_mutex guards @mtime read-check-write).
       def reload_if_changed
-        current_mtime = File.mtime(@bundle_path)
+        needs_reload = @_bundle_mutex.synchronize do
+          current_mtime = File.mtime(@bundle_path)
 
-        return unless current_mtime > @mtime
+          if current_mtime > @mtime
+            @mtime = current_mtime
 
-        reload
+            true
+          else
+            false
+          end
+        end
+
+        reload if needs_reload
       end
     end
   end

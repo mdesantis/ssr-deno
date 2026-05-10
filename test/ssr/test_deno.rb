@@ -42,6 +42,38 @@ module SSR
       klass.remove_method(:original_native_heap_stats)
     end
 
+    def test_heap_stats_bang_raises_on_malformed_json
+      klass = SSR::Deno.singleton_class
+      klass.alias_method(:original_native_heap_stats, :native_heap_stats)
+      klass.define_method(:native_heap_stats) do
+        'not-json'
+      end
+
+      assert_raises(SSR::Deno::HeapStatsSerializationError) do
+        SSR::Deno.heap_stats!
+      end
+    ensure
+      klass.alias_method(:native_heap_stats, :original_native_heap_stats)
+      klass.remove_method(:original_native_heap_stats)
+    end
+
+    def test_heap_stats_returns_empty_hash_on_malformed_json
+      klass = SSR::Deno.singleton_class
+      klass.alias_method(:original_native_heap_stats, :native_heap_stats)
+      klass.define_method(:native_heap_stats) do
+        'not-json'
+      end
+
+      assert_output(nil, /unexpected token/) do
+        stats = SSR::Deno.heap_stats
+
+        assert_equal({}, stats)
+      end
+    ensure
+      klass.alias_method(:native_heap_stats, :original_native_heap_stats)
+      klass.remove_method(:original_native_heap_stats)
+    end
+
     def test_heap_stats_before_initialization_returns_empty_hash
       klass = SSR::Deno.singleton_class
 

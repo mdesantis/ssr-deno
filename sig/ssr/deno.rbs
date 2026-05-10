@@ -37,6 +37,7 @@ module SSR
   @bundle_id: String
   @mtime: Time
       @auto_reload: bool
+      @_bundle_mutex: Thread::Mutex
 
       self.@registry: Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
       self.@_create_mutex: Thread::Mutex
@@ -48,7 +49,9 @@ module SSR
 
       def initialize: (String bundle_path) -> void
 
-      attr_writer auto_reload: bool
+      attr_reader auto_reload: bool
+
+      def auto_reload=: (bool value) -> void
 
       def reload: () -> void
 

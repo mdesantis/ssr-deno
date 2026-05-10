@@ -90,15 +90,11 @@ Fix: separate low-priority channel, or document the limitation.
 Wrapped `JSON.parse` in rescue converting to `HeapStatsSerializationError`.
 Also added `HeapStatsSerializationError` to `heap_stats` rescue list.
 
-**`lib/ssr/deno/bundle.rb:145-151` — thread-unsafe `@mtime`**
-`reload_if_changed` reads `@mtime` while `reload` writes it. No synchronization.
-Comment acknowledges "benign on MRI (GVL serializes)" but this is unsound on
-JRuby/TruffleRuby.
-Fix: `Mutex` around the read-check-write, or `MonitorMixin`.
+**`lib/ssr/deno/bundle.rb:145-151` — thread-unsafe `@mtime`** ✅ Fixed
+`Mutex` guards `@mtime` read-check-write in `reload_if_changed` and write in `reload`.
 
-**`lib/ssr/deno/bundle.rb:56,87,121,148` — thread-unsafe `@auto_reload`**
-Read/written across threads without synchronization.
-Fix: same as above — synchronize or document.
+**`lib/ssr/deno/bundle.rb:56,87,121,148` — thread-unsafe `@auto_reload`** ✅ Fixed
+`attr_reader :auto_reload` (zero-overhead read on hot path), `auto_reload=` synchronizes on `@_bundle_mutex`.
 
 **`lib/ssr/deno/instrumenter.rb:20` — `yield` without block guard**
 ```ruby

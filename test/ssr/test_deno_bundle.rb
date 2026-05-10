@@ -107,6 +107,9 @@ module SSR
         JS
 
         assert_includes bundle.render({}), 'v2'
+
+        # Third render — no file change, exercises "unchanged" branch of reload_if_changed
+        assert_includes bundle.render({}), 'v2'
       end
     end
 
