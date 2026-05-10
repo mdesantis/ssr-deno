@@ -206,7 +206,7 @@ After the split, run an exceptionally thorough search for stale content:
 
 - **Module path comments** — any doc/comment referencing old functions/types by their `mod.rs` location (e.g. "see `mod.rs:120`" or "defined in `mod.rs`"). These need updating to the new file path.
 - **`use crate::deno_runtime_wrapper` imports** — check no path broke (`lib.rs` only, but verify).
-- **Plans** — `plans/rust-future-work.md` references `mod.rs` line numbers for the future items. Update those.
+- **Plans** — `plans/archived/rust-future-work.md` references `mod.rs` line numbers for the future items. Update those.
 - **AGENTS.md** — any mention of `mod.rs` line numbers or file structure.
 - **CHANGELOG.md** — verify no stale path references.
 - **Source comments inside the moved code blocks** — any comment that says "see mod.rs" or references relative position within `mod.rs` will be misleading in its new file.

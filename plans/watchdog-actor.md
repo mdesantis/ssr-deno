@@ -1,6 +1,6 @@
 # Watchdog — Long-lived actor replacing per-render thread spawn
 
-_Extracted from `plans/rust-future-work.md` on 2026-05-10._
+_Extracted from `plans/archived/rust-future-work.md` on 2026-05-10._
 
 ## Problem
 
