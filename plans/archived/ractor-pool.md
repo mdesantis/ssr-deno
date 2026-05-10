@@ -187,4 +187,4 @@ scheduling.
 - [x] Update `sig/ssr/deno.rbs` with RactorPool signatures
 - [x] Add tests in `test/ssr/test_ractor_pool.rb`
 - [x] Run `bundle exec rake` — all pass
-- [ ] Archive this plan
+- [x] Archive this plan
