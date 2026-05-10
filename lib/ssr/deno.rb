@@ -7,6 +7,7 @@ require_relative 'deno/version'
 require_relative 'deno/ssr_deno'
 require_relative 'deno/instrumenter'
 require_relative 'deno/bundle'
+require_relative 'deno/ractor_pool'
 
 module SSR
   module Deno

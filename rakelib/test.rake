@@ -23,7 +23,7 @@ tmp = File.join(root, 'tmp')
 EXCLUDED_MAIN = %w[
   _node_builtins _async_render _setters
   _env_config _deno_rails _perf _puma
-  test_helper
+  _ractor_pool test_helper
 ].freeze
 
 desc 'Run tests without Node.js builtin support (default config)'
@@ -99,6 +99,22 @@ task 'test:env_config' do
      Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_env_config.rb'))
 end
 
+desc 'Run RactorPool tests (isolate_pool_size=4, long timeout)'
+task 'test:ractor' do
+  ractor_test = File.join(test_dir, 'ssr', 'test_ractor_pool.rb')
+  runner = <<~RUBY
+    require '#{helper}'
+    Warning[:experimental] = false if Warning.respond_to?(:[])
+    SSR::Deno.isolate_pool_size = 4
+    SSR::Deno.render_timeout_ms = 5000
+    require '#{ractor_test}'
+  RUBY
+
+  File.write(File.join(tmp, 'test_runner_ractor.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:ractor' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_ractor.rb'))
+end
+
 desc 'Run Puma integration tests (in-process single mode + clustered subprocess)'
 task 'test:puma' do
   puma_test = File.join(test_dir, 'ssr', 'test_integration_puma.rb')
@@ -145,7 +161,7 @@ task 'test:rails' do
 end
 
 desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:puma test:rails]
+task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:ractor test:puma test:rails]
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do

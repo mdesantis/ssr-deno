@@ -17,6 +17,7 @@ unless ENV['SSR_DENO_SKIP_COVERAGE']
     add_filter 'test/'
     add_filter 'lib/ssr/deno/rails.rb'
     add_filter 'lib/ssr/deno/rails/'
+    add_filter 'lib/ssr/deno/ractor_pool.rb' # SimpleCov can't trace inside Ractors
     formatter SimpleCov::Formatter::MultiFormatter.new(
       [
         SimpleCov::Formatter::SimpleFormatter,

@@ -84,6 +84,38 @@ module SSR
     class Railtie
     end
 
+    class RactorPool
+      RACTOR_RESULT_METHOD: untyped
+
+      @auto_reload: boolish
+      @size: Integer
+      @counter: Integer
+      @workers: Array[Ractor]
+
+      def initialize: (bundle_path: String, ?size: Integer?, ?auto_reload: boolish) -> void
+
+      def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
+
+      def render_chunks: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) -> Array[String]
+                        | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> Array[String]
+
+      def reload: () -> void
+
+      def shutdown: () -> void
+
+      def size: () -> Integer
+
+      private
+
+      def ractor_result: (untyped ractor) -> untyped
+
+      def init_pool: (untyped bundle_path) -> void
+
+      def spawn_workers: (untyped bundle_path) -> void
+
+      def next_worker: () -> untyped
+    end
+
     class InstallGenerator
       def create_initializer: () -> void
 
