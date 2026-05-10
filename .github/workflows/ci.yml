@@ -21,6 +21,7 @@ env:
   RB_SYS_CARGO_PROFILE: 'release'
   SCCACHE: /home/runner/.cargo/bin/sccache
   RUSTFLAGS: '-C link-arg=-fuse-ld=mold'
+  CARGO_TARGET_DIR: tmp/cargo-target
 
 jobs:
   build-and-test:
@@ -75,6 +76,23 @@ jobs:
             core.exportVariable('SCCACHE_GHA_ENABLED', 'on');
             core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: Cache Cargo registry + git deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          restore-keys: |
+            cargo-deps-
+      - name: Cache Cargo build artifacts (target dir)
+        uses: actions/cache@v4
+        with:
+          path: tmp/cargo-target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
