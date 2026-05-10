@@ -23,6 +23,7 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 - **`bundle exec rake` — only valid full-pipeline command.** Runs: Rust compile + `cargo test -p ssr_deno_core` + Vite build + Ruby tests + RuboCop + SimpleCov (100% line + 100% branch) + RBS validation. Never `bundle exec rake test` or subset.
 - **Check assignment-blank-line rule before running rake.** Read every modified Ruby file. Fix violations first.
 - **Never auto-commit.** Only commit when asked ("commit please"). Show `git diff --cached` and wait for confirmation.
+- **Fixup before push.** If staged changes are strictly related to the previous commit and that commit wasn't pushed yet, amend instead of creating a new commit. Exception: archival always gets its own commit (rename + reference updates together).
 - **Use `caveman-commit` skill for commit messages.** Conventional Commits, subject ≤50 chars, body only for non-obvious why.
 - **Compile with `bundle exec rake compile`.** Never raw `cargo build` — skips linker flags, Ruby can't load result.
 - **Keep `sig/ssr/deno.rbs` in sync.** Update in same step as any method signature/type/exception change.
