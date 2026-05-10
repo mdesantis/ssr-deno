@@ -29,13 +29,9 @@ Matches Deno's own pattern (`current_limit * 2` in tests). OOM terminates
 execution immediately — the doubling is only needed for graceful V8 unwind.
 No cap needed in practice. Added comment explaining rationale.
 
-**`Cargo.toml:22` — Unused `transpile`/`hmr` features**
-```toml
-deno_runtime = { version = "0.255.0", features = ["transpile", "hmr"] }
-```
-Neither feature is referenced anywhere in `src/`. They pull in extra deps
-and increase compile time.
-Fix: remove both features, verify tests still pass.
+**`Cargo.toml:22` — Unused `transpile`/`hmr` features** ✅ `transpile` removed
+`transpile`: removed — no remote module transpilation, all bundles pre-built.
+`hmr`: kept — required by `deno_telemetry` (crashes with SyntaxError at boot).
 
 ### LOW
 
