@@ -35,9 +35,9 @@ Default `isolate_pool_size = 1` stays unchanged.
 | `plans/memory-performance-analysis.md:213` | `(up to MAX_ISOLATES=8)` | remove |
 | `plans/memory-performance-analysis.md:439` | `max 8` | remove |
 | `plans/memory-performance-analysis.md:460` | `MAX_ISOLATES (8)` | remove |
-| `plans/performance-report.md:241` | `pool cap of 8 isolates` | remove |
-| `plans/performance-report.md:311-312` | `MAX_ISOLATES = 8` / `Capped at` | remove |
-| `plans/performance-report.md:470` | `Increase MAX_ISOLATES cap` | mark `[x]` |
+| `plans/archived/performance-report.md:241` | `pool cap of 8 isolates` | remove |
+| `plans/archived/performance-report.md:311-312` | `MAX_ISOLATES = 8` / `Capped at` | remove |
+| `plans/archived/performance-report.md:470` | `Increase MAX_ISOLATES cap` | mark `[x]` |
 
 ### Auto-detect
 

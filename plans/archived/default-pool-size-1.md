@@ -2,7 +2,7 @@
 
 **Status:** Completed
 
-**Rationale:** Performance report (`plans/performance-report.md`) confirms
+**Rationale:** Performance report (`plans/archived/performance-report.md`) confirms
 threads don't scale (GVL serialization). Auto-detect wastes ~10MB/isolate
 with zero throughput benefit for the dominant use case (thread-based Rails).
 
@@ -39,7 +39,7 @@ with zero throughput benefit for the dominant use case (thread-based Rails).
 - `README.md`: update `isolate_pool_size = 4` example, remove "0 = auto-detect"
 - `docs/architecture.md`: update config descriptions
 - `plans/memory-performance-analysis.md`: update auto-detect references
-- `plans/performance-report.md`: already consistent (recommends pool=1)
+- `plans/archived/performance-report.md`: already consistent (recommends pool=1)
 
 ---
 
