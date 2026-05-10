@@ -8,7 +8,7 @@ _Excludes: already-documented TODOs, archived plans, known design tradeoffs._
 
 ### HIGH
 
-**`builder.rs:127` — `unimplemented!()` panics the worker thread (not the process)**
+**`builder.rs:127` — `unimplemented!()` panics the worker thread (not the process)** ✅ Wontfix
 The panic is contained to the V8 isolate's OS thread — the worker dies, reply
 channel drops, Ruby gets `JsRuntimeWorkerError`. Added: explanatory comment
 and a test (`test_web_worker_in_ssr_bundle_does_not_crash_process`).
