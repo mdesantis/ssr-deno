@@ -39,7 +39,7 @@ static SCRIPT_NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::
 /// and avoids the complexity of `HashMap<&'static str, &'static str>`.
 fn intern_script_name(name: &str) -> &'static str {
     let map = SCRIPT_NAMES.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = map.lock().unwrap();
+    let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(&cached) = guard.get(name) {
         return cached;

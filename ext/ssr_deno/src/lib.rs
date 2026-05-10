@@ -8,7 +8,14 @@ use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+// Recover from poisoned mutex instead of panicking. Poison happens if a thread
+// panics while holding the lock — extremely rare, but unrecoverable if we
+// propagate via `.unwrap()`.
+fn lock_config() -> MutexGuard<'static, Config> {
+    CONFIG.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 // ---------------------------------------------------------------------------
 // GVL release — rb_thread_call_without_gvl from Ruby's C API
@@ -133,7 +140,7 @@ fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
 /// which is far beyond any practical V8 heap limit.
 fn native_set_node_builtins_enabled(ruby: &Ruby, enabled: bool) -> Result<(), Error> {
     check_not_initialized(ruby)?;
-    CONFIG.lock().unwrap().node_builtins = enabled;
+    lock_config().node_builtins = enabled;
     Ok(())
 }
 
@@ -146,14 +153,14 @@ fn native_set_max_heap_size_mb(ruby: &Ruby, mb: usize) -> Result<(), Error> {
     }
 
     check_not_initialized(ruby)?;
-    CONFIG.lock().unwrap().max_heap_size_mb = mb;
+    lock_config().max_heap_size_mb = mb;
     Ok(())
 }
 
 /// Called by Ruby before the first Bundle.new to configure the isolate pool size.
 fn native_set_isolate_pool_size(ruby: &Ruby, size: usize) -> Result<(), Error> {
     check_not_initialized(ruby)?;
-    CONFIG.lock().unwrap().isolate_pool_size = size;
+    lock_config().isolate_pool_size = size;
     Ok(())
 }
 
@@ -165,7 +172,7 @@ fn native_set_render_timeout_ms(ruby: &Ruby, ms: u64) -> Result<(), Error> {
         return Err(Error::new(ruby.exception_arg_error(), msg));
     }
     check_not_initialized(ruby)?;
-    CONFIG.lock().unwrap().render_timeout_ms = ms;
+    lock_config().render_timeout_ms = ms;
     Ok(())
 }
 
@@ -174,19 +181,19 @@ fn native_set_render_timeout_ms(ruby: &Ruby, ms: u64) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 fn native_get_max_heap_size_mb() -> usize {
-    CONFIG.lock().unwrap().max_heap_size_mb
+    lock_config().max_heap_size_mb
 }
 
 fn native_get_isolate_pool_size() -> usize {
-    CONFIG.lock().unwrap().isolate_pool_size
+    lock_config().isolate_pool_size
 }
 
 fn native_get_render_timeout_ms() -> u64 {
-    CONFIG.lock().unwrap().render_timeout_ms
+    lock_config().render_timeout_ms
 }
 
 fn native_get_node_builtins_enabled() -> bool {
-    CONFIG.lock().unwrap().node_builtins
+    lock_config().node_builtins
 }
 
 // ---------------------------------------------------------------------------
@@ -197,12 +204,12 @@ fn get_or_init_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {
     if let Some(p) = POOL.get() {
         return Ok(p);
     }
-    let _guard = POOL_INIT_LOCK.lock().unwrap();
+    let _guard = POOL_INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(p) = POOL.get() {
         return Ok(p);
     }
 
-    let config = *CONFIG.lock().unwrap();
+    let config = *lock_config();
     let pool_size = ssr_deno_core::resolve_pool_size(config);
     let max_heap_size_mb = config.max_heap_size_mb;
     let render_timeout_ms = config.render_timeout_ms;

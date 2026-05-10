@@ -19,10 +19,10 @@ and a test (`test_web_worker_in_ssr_bundle_does_not_crash_process`).
 Threated `ruby: &Ruby` through all error helpers and native functions.
 Removed all 3 `Ruby::get().unwrap()` sites. No more hidden panics.
 
-**`lib.rs` + `mod.rs` — `Mutex::lock().unwrap()` poisoned-mutex risk**
-10 sites across `CONFIG` and `SCRIPT_NAMES`. If any thread panics while holding
-the lock, all subsequent `.lock()` calls panic.
-Fix: use `.lock().map_err()` or switch to `parking_lot::Mutex` (no poisoning).
+**`lib.rs` + `mod.rs` — `Mutex::lock().unwrap()` poisoned-mutex risk** ✅ Fixed
+Replaced all 10 sites with `unwrap_or_else(|e| e.into_inner())`. Added
+`lock_config()` helper for the 8 CONFIG access sites. `POOL_INIT_LOCK` and
+`SCRIPT_NAMES` inline recovery.
 
 **`builder.rs:149-153` — OOM callback doubles heap limit without bound**
 ```rust
