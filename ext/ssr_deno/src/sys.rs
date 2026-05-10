@@ -365,9 +365,8 @@ impl std::io::Seek for RealFile {
 
 impl sys_traits::FsFileIsTerminal for RealFile {
     fn fs_file_is_terminal(&self) -> bool {
-        use std::os::unix::io::AsRawFd;
-        // SAFETY: isatty is safe to call with a valid fd
-        unsafe { libc::isatty(self.0.as_raw_fd()) != 0 }
+        use std::io::IsTerminal;
+        self.0.is_terminal()
     }
 }
 

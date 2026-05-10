@@ -6916,7 +6916,6 @@ dependencies = [
  "deno_error",
  "deno_runtime",
  "deno_semver",
- "libc",
  "magnus",
  "node_resolver",
  "serde",

@@ -27,7 +27,6 @@ deno_semver = "=0.9.1"
 deno_error = "=0.7.1"
 node_resolver = "=0.85.0"
 sys_traits = "=0.1.27"
-libc = "0.2"
 
 [profile.release]
 lto = true

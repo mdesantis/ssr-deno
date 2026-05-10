@@ -67,9 +67,9 @@ watchdog thread during panic unwind. Normal path (`cancel()`) still joins.
 Replaced `from_file_path("/dev/null")` with `parse("file:///dev/null")`.
 Added comment noting Unix-only constraint.
 
-**`Cargo.toml:28` — `libc` dep could be replaced**
-`libc::isatty` → `std::io::IsTerminal` (stable since Rust 1.70).
-Fix: remove `libc` dependency, use std instead.
+**`Cargo.toml:28` — `libc` dep could be replaced** ✅ Fixed
+Replaced `libc::isatty(fd)` with `File::is_terminal()` (std::io::IsTerminal).
+Removed `libc` dependency from Cargo.toml.
 
 **`handle.rs:32` — channel capacity 1 causes head-of-line blocking**
 `HeapStats` request blocks behind any running render. For pool of N isolates,
