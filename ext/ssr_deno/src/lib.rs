@@ -21,6 +21,10 @@ fn lock_config() -> MutexGuard<'static, Config> {
 // GVL release — rb_thread_call_without_gvl from Ruby's C API
 // ---------------------------------------------------------------------------
 
+// SAFETY: `rb_thread_call_without_gvl` is part of Ruby's C API (`<ruby/thread.h>`).
+// The callback (`func`) must not touch Ruby objects, use Ruby APIs, or panic
+// through the FFI boundary. `ubf` (unblock function) must be signal-safe if set.
+// We pass `None` for `ubf`, so no unblock-function constraint applies.
 extern "C" {
     fn rb_thread_call_without_gvl(
         func: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
@@ -40,6 +44,11 @@ struct RawRenderResult {
     result: Result<String, SSRDenoError>,
 }
 
+// SAFETY: `data` is a `Box<RenderArgs>` leaked by `Box::into_raw` in `native_render`.
+// Ownership is reclaimed here via `Box::from_raw`. The `RenderArgs` contain a
+// `&'static IsolatePool` and owned `String`s — no Ruby objects, so the callback
+// is safe to run without the GVL (as required by `rb_thread_call_without_gvl`).
+// The returned `Box<RawRenderResult>` is re-boxed as a raw pointer for the caller.
 unsafe extern "C" fn render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
     let args = Box::from_raw(data as *mut RenderArgs);
     let result = args.pool.dispatch_render(&args.bundle_id, &args.args_json);

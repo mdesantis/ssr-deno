@@ -46,11 +46,10 @@ between `POOL.set()` and `INITIALIZED.set()`.
 **`lib.rs:219` — unnecessary `.unwrap()` on just-set `OnceLock`** ✅ Fixed
 Replaced `.unwrap()` with `.expect("pool was just initialized")`.
 
-**Missing `// SAFETY:` comments**
-- `lib.rs:36-40` — `render_worker` raw pointer protocol
-- `lib.rs:17-24` — `rb_thread_call_without_gvl` FFI constraints
-- `sys.rs:370` — `libc::isatty` raw fd
-Fix: add `// SAFETY:` on each.
+**Missing `// SAFETY:` comments** ✅ Fixed (2 added, 1 was already present)
+- `lib.rs:43` — `render_worker`: raw pointer protocol + GVL-free constraints
+- `lib.rs:24` — `rb_thread_call_without_gvl`: FFI constraints
+- `sys.rs:369` — `libc::isatty`: already had `// SAFETY:` comment
 
 **`render_chunked.rs:83` — `inspect_err` requires Rust 1.83+**
 No comment documenting the MSRV requirement.
