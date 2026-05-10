@@ -24,6 +24,7 @@ SAMPLES.each do |sample|
   task "samples:build:#{sample}" do
     sample_dir = File.join(__dir__, '..', 'samples', sample)
     if File.exist?(File.join(sample_dir, 'package.json'))
+      sh 'npm', 'install', chdir: sample_dir
       sh 'npm', 'run', 'build', chdir: sample_dir
     else
       sh 'deno', 'task', 'build', chdir: sample_dir
