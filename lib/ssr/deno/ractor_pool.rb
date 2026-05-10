@@ -28,7 +28,7 @@ module SSR
       def initialize(bundle_path:, size: nil, auto_reload: false)
         bundle_path = bundle_path.to_s
         @auto_reload = auto_reload
-        @size = (size || Etc.nprocessors).to_i.clamp(1, 128)
+        @size = (size || 1).to_i
 
         @counter = -1
 

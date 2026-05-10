@@ -20,6 +20,7 @@ options = {
   workers: 0,
   isolate_pool_size: nil,
   ractor_pool: false,
+  ractor_pool_size: nil,
   bundle_path: MINIMAL_BUNDLE,
   clients: 10,
   duration: 10,
@@ -52,6 +53,9 @@ OptionParser.new do |opts|
   opts.on('--isolate-pool-size N', Integer, 'V8 isolate pool size (default: threads × (workers + 1))') do |v|
     options[:isolate_pool_size] = v
   end
+  opts.on('--ractor-pool-size N', Integer, 'Number of Ractor workers (default: Etc.nprocessors)') do |v|
+    options[:ractor_pool_size] = v
+  end
   opts.on('--bundle PATH', 'Bundle path (default: minimal fixture)') { |v| options[:bundle_path] = v }
   opts.on('--clients N', Integer, "Concurrent clients (default: #{options[:clients]})") { |v| options[:clients] = v }
   opts.on('--duration N', Integer, "Benchmark seconds (default: #{options[:duration]})") { |v| options[:duration] = v }
@@ -68,19 +72,24 @@ end.parse!
 # Rack app factory
 # ---------------------------------------------------------------------------
 
-def build_app(bundle_path, ractor_pool)
+def build_app(bundle_path, ractor_pool, ractor_pool_size: nil)
   if ractor_pool
     pool_mutex = Mutex.new
     pool = nil
+    pool_args = { bundle_path: }
+    pool_args[:size] = ractor_pool_size if ractor_pool_size
 
     lambda do |_env|
-      pool_mutex.synchronize { pool ||= SSR::Deno::RactorPool.new(bundle_path:) }
+      pool_mutex.synchronize { pool ||= SSR::Deno::RactorPool.new(**pool_args) }
       body = pool.render({ data: { name: 'bench' } })
       [200, { 'content-type' => 'text/html' }, [body]]
     end
   else
+    bundle_mutex = Mutex.new
+    bundle = nil
+
     lambda do |_env|
-      bundle = SSR::Deno::Bundle.new(bundle_path)
+      bundle_mutex.synchronize { bundle ||= SSR::Deno::Bundle.new(bundle_path) }
       body = bundle.render({ data: { name: 'bench' } })
       [200, { 'content-type' => 'text/html' }, [body]]
     end
@@ -313,6 +322,7 @@ begin
     left_argv.push('--workers', options[:workers].to_s) if options[:workers].positive?
     left_argv.push('--threads', options[:threads].to_s) if options[:threads] != 5
     left_argv.push('--isolate-pool-size', options[:isolate_pool_size].to_s) if options[:isolate_pool_size]
+    left_argv.push('--ractor-pool-size', options[:ractor_pool_size].to_s) if options[:ractor_pool_size]
 
     right_argv = [*global, '--no-ractor-pool', *options[:second_extra]]
 
@@ -354,10 +364,11 @@ begin
     $LOAD_PATH.unshift File.join(BENCH_ROOT, 'lib')
     Warning[:experimental] = false if Warning.respond_to?(:[])
     require 'ssr/deno'
+    SSR::Deno.node_builtins_enabled = true
     SSR::Deno.isolate_pool_size = options[:isolate_pool_size] || (options[:threads] * (options[:workers] + 1))
     SSR::Deno.render_timeout_ms = 2000
 
-    app = build_app(options[:bundle_path], options[:ractor_pool])
+    app = build_app(options[:bundle_path], options[:ractor_pool], ractor_pool_size: options[:ractor_pool_size])
     launcher, thr, addr = start_puma(app, options)
     label = options[:ractor_pool] ? 'RactorPool' : 'Bundle'
     puts "Server at #{addr_label(addr)} (#{label})"
