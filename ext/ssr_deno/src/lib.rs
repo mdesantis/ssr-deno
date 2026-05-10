@@ -48,7 +48,6 @@ unsafe extern "C" fn render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi
 
 static POOL: OnceLock<IsolatePool> = OnceLock::new();
 static POOL_INIT_LOCK: Mutex<()> = Mutex::new(());
-static INITIALIZED: OnceLock<()> = OnceLock::new();
 
 // Defaults: 64 MB heap, 1 isolate pool.
 static CONFIG: Mutex<Config> = Mutex::new(Config::default());
@@ -56,7 +55,7 @@ static CONFIG: Mutex<Config> = Mutex::new(Config::default());
 /// Returns an error if the runtime has already been initialized.
 /// All config setters call this before modifying CONFIG.
 fn check_not_initialized(ruby: &Ruby) -> Result<(), Error> {
-    if INITIALIZED.get().is_some() {
+    if POOL.get().is_some() {
         Err(Error::new(
             deno_exception_class(ruby, "JsRuntimeInitializationError"),
             "Cannot set config after runtime is already initialized",
@@ -223,7 +222,6 @@ fn get_or_init_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {
     )
     .map_err(|e| js_runtime_initialization_error(ruby, e.to_string()))?;
     let _ = POOL.set(pool);
-    let _ = INITIALIZED.set(());
     Ok(POOL.get().unwrap())
 }
 

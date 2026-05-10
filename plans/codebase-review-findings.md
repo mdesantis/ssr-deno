@@ -38,10 +38,10 @@ No cap needed in practice. Added comment explaining rationale.
 **`ssr_deno_core/src/lib.rs:33-44` — `SSRDenoError::Display` loses variant identity** ✅ Fixed
 Each variant now prefixes its name: `Render: timeout`, `BundleLoad: not found`.
 
-**`lib.rs:42-44` — `INITIALIZED` static is redundant**
-Only `POOL_INIT_LOCK` (prevents double-init race) + `POOL` (OnceLock) are needed.
-`INITIALIZED` duplicates `POOL.get().is_some()`.
-Fix: remove `INITIALIZED`.
+**`lib.rs:42-44` — `INITIALIZED` static is redundant** ✅ Fixed
+Removed `INITIALIZED` static, replaced `INITIALIZED.get().is_some()` with
+`POOL.get().is_some()`. Also slightly more correct: eliminates a race window
+between `POOL.set()` and `INITIALIZED.set()`.
 
 **`lib.rs:219` — unnecessary `.unwrap()` on just-set `OnceLock`**
 `POOL.set(pool)` just succeeded, but `.unwrap()` is used instead of storing
