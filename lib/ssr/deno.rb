@@ -107,14 +107,18 @@ module SSR
       # @return [Hash<String, Integer>]
       # @raise [JsRuntimeNotInitializedError] if pool not initialized
       # @raise [JsRuntimeWorkerError] if worker thread has exited
+      # @raise [HeapStatsSerializationError] if native JSON is malformed
       def heap_stats!
         JSON.parse(native_heap_stats)
+      rescue JSON::ParserError => error
+        raise SSR::Deno::HeapStatsSerializationError, error.message
       end
 
       # @return [Hash<String, Integer>]
       def heap_stats
         heap_stats!
-      rescue JsRuntimeNotInitializedError, JsRuntimeWorkerError => error
+      rescue JsRuntimeNotInitializedError, JsRuntimeWorkerError,
+             HeapStatsSerializationError => error
         warn "[ssr-deno] #{error.message}"
         {}
       end

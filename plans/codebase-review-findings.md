@@ -86,10 +86,9 @@ Fix: separate low-priority channel, or document the limitation.
 
 ### MEDIUM
 
-**`lib/ssr/deno.rb:111` — `heap_stats!` raises `JSON::ParserError`**
-Not a `SSR::Deno::Error` descendant. Callers catching `SSR::Deno::Error`
-would miss it.
-Fix: wrap `JSON.parse` and convert to `HeapStatsSerializationError`.
+**`lib/ssr/deno.rb:111` — `heap_stats!` raises `JSON::ParserError`** ✅ Fixed
+Wrapped `JSON.parse` in rescue converting to `HeapStatsSerializationError`.
+Also added `HeapStatsSerializationError` to `heap_stats` rescue list.
 
 **`lib/ssr/deno/bundle.rb:145-151` — thread-unsafe `@mtime`**
 `reload_if_changed` reads `@mtime` while `reload` writes it. No synchronization.
