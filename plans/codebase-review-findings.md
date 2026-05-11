@@ -110,14 +110,13 @@ concurrent read-during-transform_values! window.
 `assert_known_ssr_render_options!` validates options after `:bundle` is removed.
 Unknown keys raise `ArgumentError` with names listed before the render attempt.
 
-**`lib/ssr/deno/rails/install_generator.rb:14-23` — duplicate Puma content**
-`append_to_file 'config/puma.rb'` runs every time the generator runs.
-Running `rails generate ssr:deno:install` twice = duplicate `on_worker_boot` blocks.
-Fix: check for existing content before appending.
+**`lib/ssr/deno/rails/install_generator.rb:14-23` — duplicate Puma content** ✅ Fixed
+`add_puma_on_worker_boot` now checks for the sentinel string before appending.
+Idempotent: re-running the generator is a no-op when block already present.
 
-**`lib/ssr/deno/rails/install_generator.rb:15` — overwrites existing Puma config**
-`create_file 'config/puma.rb'` destroys any existing Puma config.
-Fix: use `inject_into_file` with sentinel, or `create_file` only if missing.
+**`lib/ssr/deno/rails/install_generator.rb:15` — overwrites existing Puma config** ✅ Fixed
+Removed unconditional `create_file`. File created only when missing (`unless
+File.exist?`). Existing puma.rb is preserved; on_worker_boot block is appended.
 
 **`sig/ssr/deno.rbs:32` — `Instrumenter.instrument` block signature** ✅ Fixed
 Block type updated to `?{ (::Hash[untyped, untyped]) -> untyped }` (optional block,

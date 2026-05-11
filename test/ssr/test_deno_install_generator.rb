@@ -41,6 +41,37 @@ module SSR
           assert_match(/#.*ssr_deno\.raise_on_render_error/, content)
         end
       end
+
+      def test_generates_puma_config_with_on_worker_boot
+        run_generator
+
+        assert_file 'config/puma.rb' do |content|
+          assert_match(/SSR::Deno::Bundle\.create_bundles!/, content)
+        end
+      end
+
+      def test_puma_config_not_duplicated_on_rerun
+        run_generator
+        run_generator
+
+        assert_file 'config/puma.rb' do |content|
+          assert_equal 1, content.scan('SSR::Deno::Bundle.create_bundles!').size
+        end
+      end
+
+      def test_existing_puma_config_not_overwritten
+        destination_path = File.join(destination_root, 'config/puma.rb')
+
+        FileUtils.mkdir_p(File.dirname(destination_path))
+        File.write(destination_path, "# existing puma config\nmax_threads_count = 5\n")
+
+        run_generator
+
+        assert_file 'config/puma.rb' do |content|
+          assert_match(/existing puma config/, content)
+          assert_match(/SSR::Deno::Bundle\.create_bundles!/, content)
+        end
+      end
     end
   end
 end
