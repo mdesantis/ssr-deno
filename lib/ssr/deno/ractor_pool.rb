@@ -117,26 +117,23 @@ module SSR
               msg = Ractor.receive
 
               case msg
-              when Hash
-                case msg[:type]
-                when :render
-                  json_input = msg[:raw_input] ? msg[:data] : JSON.generate(msg[:data])
-                  result = SSR::Deno.native_render(bundle_id, json_input)
+              in { type: :render, raw_input:, data:, raw_output:, reply: }
+                json_input = raw_input ? data : JSON.generate(data)
+                result = SSR::Deno.native_render(bundle_id, json_input)
 
-                  msg[:reply].send(msg[:raw_output] ? result : JSON.parse(result))
-                when :render_chunks
-                  json_input = msg[:raw_input] ? msg[:data] : JSON.generate(msg[:data])
-                  chunks = []
+                reply.send(raw_output ? result : JSON.parse(result))
+              in { type: :render_chunks, raw_input:, data:, reply: }
+                json_input = raw_input ? data : JSON.generate(data)
+                chunks = []
 
-                  SSR::Deno.native_render_chunks(bundle_id, json_input) { |c| chunks << c }
-                  msg[:reply].send(chunks)
-                when :reload
-                  mtime = File.mtime(path)
+                SSR::Deno.native_render_chunks(bundle_id, json_input) { |c| chunks << c }
+                reply.send(chunks)
+              in { type: :reload, reply: }
+                mtime = File.mtime(path)
 
-                  SSR::Deno.native_load_bundle(bundle_id, path)
-                  msg[:reply].send(:ok)
-                end
-              when :shutdown
+                SSR::Deno.native_load_bundle(bundle_id, path)
+                reply.send(:ok)
+              in :shutdown
                 break
               end
             end

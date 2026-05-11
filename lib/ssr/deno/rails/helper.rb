@@ -45,10 +45,9 @@ module SSR
       def fallback_or_raise(error, bundle_name, config_key)
         raise if Rails.application.config.ssr_deno.send(config_key)
 
-        prefix = if error.is_a?(SSR::Deno::BundleNotFoundError)
-                   'not found'
-                 else
-                   'render failed'
+        prefix = case error
+                 in SSR::Deno::BundleNotFoundError then 'not found'
+                 else 'render failed'
                  end
 
         Rails.logger.error "[ssr-deno] Bundle #{bundle_name.inspect} #{prefix}, " \
