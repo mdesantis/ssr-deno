@@ -35,10 +35,10 @@ module SSR
         end
 
         # @return [Hash<String, Integer>]
+        # @note Never raises — rescues all {SSR::Deno::Error} and warns to STDERR.
         def fetch
           fetch!
-        rescue JsRuntimeNotInitializedError, JsRuntimeWorkerError,
-               HeapStatsSerializationError => error
+        rescue SSR::Deno::Error => error
           warn "[ssr-deno] #{error.message}"
           {}
         end

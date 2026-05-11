@@ -10,6 +10,8 @@
 - **README restructured** — Rails docs consolidated under "Using with Rails", CSP nonce extracted to standalone render usage section, all config under single Configuration section with Runtime settings / Rails settings / Heap Statistics subsections.
 
 ### Fixed
+- **`SSR::Deno::Error` base class documented** — all gem exceptions inherit from it; users can `rescue SSR::Deno::Error` to catch any gem error without enumerating specific subtypes.
+- **`HeapStats.fetch` rescue simplified** — now rescues `SSR::Deno::Error` (base class) instead of listing specific subtypes. Same behaviour, future-proof.
 - **`Instrumenter.instrument` called without a block no longer raises `LocalJumpError`** — no-AS mode now uses `elsif block_given?` and yields the payload hash to the block (matching AS behaviour).
 - **`find_bundle!` registry read is now thread-safe** — always calls `create_bundles!` before reading, eliminating the concurrent read-during-`transform_values!` window.
 - **`ssr_render` raises `ArgumentError` on unknown options** — typos like `raw_ouputput: true` now fail immediately with the unknown key named, instead of silently passing to `bundle.render`.

@@ -171,6 +171,29 @@ bundle.render({ page: 'home', nonce: 'abc123' })
 
 See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
 
+## Error handling
+
+All gem exceptions inherit from `SSR::Deno::Error` (`< StandardError`).
+Rescue the base class to catch any gem error:
+
+```ruby
+rescue SSR::Deno::Error => e
+  # covers all gem exceptions
+end
+```
+
+Specific subclasses for targeted rescue:
+
+| Class | When raised |
+|-------|-------------|
+| `SSR::Deno::RenderError` | JS render function throws or times out |
+| `SSR::Deno::BundleNotFoundError` | named bundle not registered |
+| `SSR::Deno::JsRuntimeWorkerError` | Deno worker thread died |
+| `SSR::Deno::JsRuntimeOutOfMemoryError` | V8 heap limit exceeded |
+| `SSR::Deno::JsRuntimeInitializationError` | config changed after init |
+| `SSR::Deno::JsRuntimeNotInitializedError` | render called before init |
+| `SSR::Deno::HeapStatsSerializationError` | heap stats JSON malformed |
+
 ## Using with Vite
 
 The shared SSR build setup for all Vite-based samples:
