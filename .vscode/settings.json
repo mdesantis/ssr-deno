@@ -35,4 +35,7 @@
   "search.exclude": {
     "vendor/**/*": true
   },
+  "git.ignoredRepositories": [
+    "vendor/rusty_v8"
+  ],
 }
