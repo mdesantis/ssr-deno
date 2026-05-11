@@ -146,7 +146,7 @@ See `samples/` for complete working examples covering: barebone (plain JS), deno
 
 ## Node.js Builtin Support
 
-**Disabled by default.** Enable with `SSR::Deno.node_builtins_enabled = true` before pool init.
+**Disabled by default.** Enable with `SSR::Deno::Config.node_builtins_enabled = true` before pool init.
 
 When enabled:
 1. `build_worker` uses `NodeBuiltinOnlyModuleLoader` (allows `node:` scheme URLs) instead of `NoopModuleLoader`.
@@ -167,7 +167,7 @@ between suites. Each suite sets its own config before pool init:
 | Suite | Config differences | Covers |
 |-------|-------------------|--------|
 | `test:main` | Defaults | Core, all integrations, stability |
-| `test:setters` | `max_heap_size_mb=128`, `pool_size=2` | Setter guards before/after init |
+| `test:config` | `max_heap_size_mb=128`, `pool_size=2` | Config setter guards before/after init |
 | `test:node_builtins` | `node_builtins_enabled=true`, `render_timeout_ms=2000` | Node builtin modules |
 | `test:async` | `render_timeout_ms=100` | Async render, promise polling |
 | `test:env_config` | Env vars only | `SSR_DENO_*` env var loading |

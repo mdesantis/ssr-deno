@@ -16,8 +16,8 @@ module SSR
     def test_render_timeout_raises_render_error
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::RenderError on hung render')
         require 'tmpdir'
-        SSR::Deno.render_timeout_ms = 200
-        SSR::Deno.isolate_pool_size = 1
+        SSR::Deno::Config.render_timeout_ms = 200
+        SSR::Deno::Config.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
           File.write(bundle_path, #{HANG_JS.inspect})
@@ -40,8 +40,8 @@ module SSR
       JS
       assert_subprocess(<<~RUBY, 'Expected timeout at ~100ms')
         require 'tmpdir'
-        SSR::Deno.render_timeout_ms = 100
-        SSR::Deno.isolate_pool_size = 1
+        SSR::Deno::Config.render_timeout_ms = 100
+        SSR::Deno::Config.isolate_pool_size = 1
         Dir.mktmpdir do |dir|
           bundle_path = File.join(dir, 'hung-bundle.js')
           File.write(bundle_path, #{slow_js.inspect})
@@ -65,8 +65,8 @@ module SSR
     def test_render_works_after_timeout
       assert_subprocess(<<~RUBY, 'Expected recovery render to succeed after timeout on another isolate')
         require 'tmpdir'
-        SSR::Deno.render_timeout_ms = 200
-        SSR::Deno.isolate_pool_size = 2
+        SSR::Deno::Config.render_timeout_ms = 200
+        SSR::Deno::Config.isolate_pool_size = 2
         Dir.mktmpdir do |dir|
           hang_path = File.join(dir, 'hang-bundle.js')
           File.write(hang_path, #{HANG_JS.inspect})

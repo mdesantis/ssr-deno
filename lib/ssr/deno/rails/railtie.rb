@@ -26,11 +26,11 @@ module SSR
 
         # Apply config before runtime initialization.
         # Must be set before any Bundle.new call (triggers pool init).
-        SSR::Deno.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
-        SSR::Deno.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
-        SSR::Deno.render_timeout_ms = config.ssr_deno.render_timeout_ms if config.ssr_deno.render_timeout_ms
+        SSR::Deno::Config.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
+        SSR::Deno::Config.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
+        SSR::Deno::Config.render_timeout_ms = config.ssr_deno.render_timeout_ms if config.ssr_deno.render_timeout_ms
         unless config.ssr_deno.node_builtins_enabled.nil?
-          SSR::Deno.node_builtins_enabled = config.ssr_deno.node_builtins_enabled
+          SSR::Deno::Config.node_builtins_enabled = config.ssr_deno.node_builtins_enabled
         end
 
         # Store bundle configs in +registry+. Actual +Bundle.new+ is called

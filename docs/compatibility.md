@@ -104,7 +104,7 @@ Deno permissions. Deno-specific APIs are not registered.
 
 ### Node.js builtins (conditional)
 
-Enabled via `SSR::Deno.node_builtins_enabled = true` or
+Enabled via `SSR::Deno::Config.node_builtins_enabled = true` or
 `SSR_DENO_NODE_BUILTINS_ENABLED=true` before pool init.
 
 | API | Supported | Notes |

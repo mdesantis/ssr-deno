@@ -17,8 +17,8 @@ module SSR
     # and 4.0 value-based API).
     #
     # Usage:
-    #   SSR::Deno.isolate_pool_size = 4
-    #   SSR::Deno.node_builtins_enabled = true
+    #   SSR::Deno::Config.isolate_pool_size = 4
+    #   SSR::Deno::Config.node_builtins_enabled = true
     #   pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
     #   html = pool.render({ name: 'World' })
     #

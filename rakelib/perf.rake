@@ -16,9 +16,9 @@ task 'perf:baseline:update' do
   File.write(runner_path, <<~RUBY)
     require '#{helper}'
     Warning[:experimental] = false
-    SSR::Deno.isolate_pool_size = 4
-    SSR::Deno.render_timeout_ms = 5000
-    SSR::Deno.node_builtins_enabled = true
+    SSR::Deno::Config.isolate_pool_size = 4
+    SSR::Deno::Config.render_timeout_ms = 5000
+    SSR::Deno::Config.node_builtins_enabled = true
     require 'support/perf_helpers'
     include PerfHelpers
     include TestFixturePaths

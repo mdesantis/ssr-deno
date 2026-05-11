@@ -13,7 +13,7 @@ module SSR
     end
 
     def test_max_heap_size_mb_from_env
-      script = 'exit 0 if SSR::Deno.max_heap_size_mb == 128; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.max_heap_size_mb == 128; exit 1'
 
       assert_subprocess(script,
                         'Expected max_heap_size_mb=128 from env',
@@ -21,7 +21,7 @@ module SSR
     end
 
     def test_isolate_pool_size_from_env
-      script = 'exit 0 if SSR::Deno.isolate_pool_size == 4; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.isolate_pool_size == 4; exit 1'
 
       assert_subprocess(script,
                         'Expected isolate_pool_size=4 from env',
@@ -29,7 +29,7 @@ module SSR
     end
 
     def test_render_timeout_ms_from_env
-      script = 'exit 0 if SSR::Deno.render_timeout_ms == 1000; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.render_timeout_ms == 1000; exit 1'
 
       assert_subprocess(script,
                         'Expected render_timeout_ms=1000 from env',
@@ -37,7 +37,7 @@ module SSR
     end
 
     def test_node_builtins_enabled_from_env_true
-      script = 'exit 0 if SSR::Deno.node_builtins_enabled?; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.node_builtins_enabled?; exit 1'
 
       assert_subprocess(script,
                         'Expected node_builtins_enabled?=true from env',
@@ -45,7 +45,7 @@ module SSR
     end
 
     def test_node_builtins_enabled_from_env_false
-      script = 'exit 0 unless SSR::Deno.node_builtins_enabled?; exit 1'
+      script = 'exit 0 unless SSR::Deno::Config.node_builtins_enabled?; exit 1'
 
       assert_subprocess(script,
                         'Expected node_builtins_enabled?=false from env',
@@ -54,8 +54,8 @@ module SSR
 
     def test_setter_overrides_env_var
       script = <<~RUBY
-        SSR::Deno.max_heap_size_mb = 256
-        exit 0 if SSR::Deno.max_heap_size_mb == 256; exit 1
+        SSR::Deno::Config.max_heap_size_mb = 256
+        exit 0 if SSR::Deno::Config.max_heap_size_mb == 256; exit 1
       RUBY
 
       assert_subprocess(script,
@@ -65,7 +65,7 @@ module SSR
 
     def test_boolean_true_variants
       %w[true 1 yes TRUE True Yes].each do |val|
-        script = 'exit 0 if SSR::Deno.node_builtins_enabled?; exit 1'
+        script = 'exit 0 if SSR::Deno::Config.node_builtins_enabled?; exit 1'
 
         assert_subprocess(script,
                           "Expected true for #{val}",
@@ -75,7 +75,7 @@ module SSR
 
     def test_boolean_false_variants
       %w[false 0 no False No].each do |val|
-        script = 'exit 0 unless SSR::Deno.node_builtins_enabled?; exit 1'
+        script = 'exit 0 unless SSR::Deno::Config.node_builtins_enabled?; exit 1'
 
         assert_subprocess(script,
                           "Expected false for #{val}",
@@ -84,7 +84,7 @@ module SSR
     end
 
     def test_boolean_empty_string_is_false
-      script = 'exit 0 unless SSR::Deno.node_builtins_enabled?; exit 1'
+      script = 'exit 0 unless SSR::Deno::Config.node_builtins_enabled?; exit 1'
 
       assert_subprocess(script,
                         'Expected false for empty string',
@@ -93,7 +93,7 @@ module SSR
 
     def test_boolean_unrecognised_value_warns
       _, stderr, status = run_subprocess(
-        'exit 0 unless SSR::Deno.node_builtins_enabled?; exit 1',
+        'exit 0 unless SSR::Deno::Config.node_builtins_enabled?; exit 1',
         env: { 'SSR_DENO_NODE_BUILTINS_ENABLED' => 'treu' }
       )
 
@@ -103,7 +103,7 @@ module SSR
     end
 
     def test_invalid_integer_format_warns_and_skips
-      script = 'exit 0 if SSR::Deno.max_heap_size_mb == 64; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.max_heap_size_mb == 64; exit 1'
 
       assert_subprocess(script,
                         'Expected default 64 when env var is invalid',
@@ -117,7 +117,7 @@ module SSR
         'SSR_DENO_RENDER_TIMEOUT_MS' => nil,
         'SSR_DENO_NODE_BUILTINS_ENABLED' => nil
       }
-      script = 'exit 0 if SSR::Deno.max_heap_size_mb == 64; exit 1'
+      script = 'exit 0 if SSR::Deno::Config.max_heap_size_mb == 64; exit 1'
 
       assert_subprocess(script,
                         'Expected default 64 when env var not set',
@@ -142,7 +142,7 @@ module SSR
         bundle_path = File.join('#{TestFixturePaths::GEM_ROOT}', 'test', 'fixtures', 'minimal-bundle.js')
         bundle = SSR::Deno::Bundle.new(bundle_path)
         begin
-          SSR::Deno.max_heap_size_mb = 256
+          SSR::Deno::Config.max_heap_size_mb = 256
           exit 1
         rescue SSR::Deno::JsRuntimeInitializationError
           exit 0

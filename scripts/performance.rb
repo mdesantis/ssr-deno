@@ -191,16 +191,16 @@ def run_single_config(options)
   $LOAD_PATH.unshift File.join(BENCH_ROOT, 'lib')
   require 'ssr/deno'
 
-  SSR::Deno.render_timeout_ms = options[:timeout_ms] if options[:timeout_ms]
+  SSR::Deno::Config.render_timeout_ms = options[:timeout_ms] if options[:timeout_ms]
 
   # Auto-infer node_builtins from bundle content.
   # Heuristic: scans for CommonJS require() of known Node.js builtins.
   # Misses: require('node:stream'), import ... from 'stream', dynamic
   # require(varName). Use --node-builtins / --no-node-builtins to override.
   if options.key?(:node_builtins)
-    SSR::Deno.node_builtins_enabled = options[:node_builtins]
+    SSR::Deno::Config.node_builtins_enabled = options[:node_builtins]
   elsif File.read(bundle_path).match?(/(__)?require\(["'](stream|buffer|events|async_hooks|util)["']\)/)
-    SSR::Deno.node_builtins_enabled = true
+    SSR::Deno::Config.node_builtins_enabled = true
   end
 
   payload = { data: { name: 'benchmark' } }

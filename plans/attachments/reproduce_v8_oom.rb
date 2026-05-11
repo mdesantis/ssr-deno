@@ -30,8 +30,8 @@ puts "max_heap_size_mb: #{MAX_HEAP_MB} MB"
 puts "leak per render:  #{LEAK_KB_PER_RENDER} KB"
 puts
 
-SSR::Deno.max_heap_size_mb = MAX_HEAP_MB
-SSR::Deno.isolate_pool_size = 1
+SSR::Deno::Config.max_heap_size_mb = MAX_HEAP_MB
+SSR::Deno::Config.isolate_pool_size = 1
 
 Dir.mktmpdir('ssr-deno-oom') do |dir|
   bundle_path = File.join(dir, 'leak-bundle.js')

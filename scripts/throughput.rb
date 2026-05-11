@@ -364,9 +364,9 @@ begin
     $LOAD_PATH.unshift File.join(BENCH_ROOT, 'lib')
     Warning[:experimental] = false if Warning.respond_to?(:[])
     require 'ssr/deno'
-    SSR::Deno.node_builtins_enabled = true
-    SSR::Deno.isolate_pool_size = options[:isolate_pool_size] || (options[:threads] * (options[:workers] + 1))
-    SSR::Deno.render_timeout_ms = 2000
+    SSR::Deno::Config.node_builtins_enabled = true
+    SSR::Deno::Config.isolate_pool_size = options[:isolate_pool_size] || (options[:threads] * (options[:workers] + 1))
+    SSR::Deno::Config.render_timeout_ms = 2000
 
     app = build_app(options[:bundle_path], options[:ractor_pool], ractor_pool_size: options[:ractor_pool_size])
     launcher, thr, addr = start_puma(app, options)

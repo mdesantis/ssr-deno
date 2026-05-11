@@ -49,8 +49,8 @@ module SSR
     def test_oom_produces_out_of_memory_error
       assert_subprocess(<<~RUBY, 'Expected SSR::Deno::JsRuntimeOutOfMemoryError on OOM', env: {})
         require 'tmpdir'
-        SSR::Deno.max_heap_size_mb = 16
-        SSR::Deno.isolate_pool_size = 1
+        SSR::Deno::Config.max_heap_size_mb = 16
+        SSR::Deno::Config.isolate_pool_size = 1
         begin
           Dir.mktmpdir do |dir|
             bundle_path = File.join(dir, 'leak-bundle.js')

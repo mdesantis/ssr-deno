@@ -139,13 +139,13 @@ module SSR
 
       def test_railtie_config_nil_defaults_do_not_override_native_defaults
         assert_nil Rails.application.config.ssr_deno.max_heap_size_mb
-        assert_equal 64, SSR::Deno.max_heap_size_mb
+        assert_equal 64, SSR::Deno::Config.max_heap_size_mb
 
         assert_nil Rails.application.config.ssr_deno.isolate_pool_size
-        assert_equal 1, SSR::Deno.isolate_pool_size
+        assert_equal 1, SSR::Deno::Config.isolate_pool_size
 
         assert_nil Rails.application.config.ssr_deno.render_timeout_ms
-        assert_equal 500, SSR::Deno.render_timeout_ms
+        assert_equal 500, SSR::Deno::Config.render_timeout_ms
       end
 
       def test_render_chunks_instrumentation_fires_render_event

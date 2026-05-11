@@ -38,10 +38,10 @@ puts html
 Set **before** creating any `Bundle` instance:
 
 ```ruby
-SSR::Deno.max_heap_size_mb = 128   # Per-isolate V8 heap (default: 64 MB)
-SSR::Deno.isolate_pool_size = 4    # V8 isolate count (default: 1)
-SSR::Deno.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, max 300000)
-SSR::Deno.node_builtins_enabled = true  # Node.js built-in modules (default: false)
+SSR::Deno::Config.max_heap_size_mb = 128   # Per-isolate V8 heap (default: 64 MB)
+SSR::Deno::Config.isolate_pool_size = 4    # V8 isolate count (default: 1)
+SSR::Deno::Config.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, max 300000)
+SSR::Deno::Config.node_builtins_enabled = true  # Node.js built-in modules (default: false)
 ```
 
 ```ruby
@@ -201,8 +201,8 @@ Check the next section for examples and framework-specific setup.
 For concurrent SSR under Ractors (Ruby 3.3+) without the GVL bottleneck:
 
 ```ruby
-SSR::Deno.isolate_pool_size = 4
-SSR::Deno.node_builtins_enabled = true
+SSR::Deno::Config.isolate_pool_size = 4
+SSR::Deno::Config.node_builtins_enabled = true
 pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
 html = pool.render({ name: 'World' })
 ```

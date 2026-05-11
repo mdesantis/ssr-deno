@@ -7,7 +7,7 @@ Minitest::TestTask.create
 
 # Override test: clears the default Minitest task and splits into suites:
 #   test:main         — default config
-#   test:setters      — before pool init
+#   test:config       — before pool init
 #   test:node_builtins — node_builtins enabled, 2000ms timeout
 #   test:async        — short 100ms timeout
 #   test:env_config   — env var config
@@ -21,7 +21,7 @@ helper = File.join(test_dir, 'test_helper.rb')
 tmp = File.join(root, 'tmp')
 
 EXCLUDED_MAIN = %w[
-  _node_builtins _async_render _setters
+  _node_builtins _async_render _config
   _env_config _deno_rails _perf _puma
   _ractor_pool test_helper
 ].freeze
@@ -32,7 +32,7 @@ task 'test:main' do
              .reject { |f| EXCLUDED_MAIN.any? { |p| f.include?(p) } }
   runner = <<~RUBY
     require '#{helper}'
-    SSR::Deno.isolate_pool_size = 1
+    SSR::Deno::Config.isolate_pool_size = 1
   RUBY
   files.each { |f| runner << "require '#{f}'\n" }
   File.write(File.join(tmp, 'test_runner_main.rb'), runner)
@@ -44,9 +44,9 @@ task 'test:node_builtins' do
   node_test = File.join(test_dir, 'ssr', 'test_integration_node_builtins.rb')
   runner = <<~RUBY
     require '#{helper}'
-    SSR::Deno.isolate_pool_size = 1
-    SSR::Deno.render_timeout_ms = 2000
-    SSR::Deno.node_builtins_enabled = true
+    SSR::Deno::Config.isolate_pool_size = 1
+    SSR::Deno::Config.render_timeout_ms = 2000
+    SSR::Deno::Config.node_builtins_enabled = true
     require '#{node_test}'
   RUBY
 
@@ -55,20 +55,20 @@ task 'test:node_builtins' do
      Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_node.rb'))
 end
 
-desc 'Run setter API tests (must run before pool init)'
-task 'test:setters' do
-  setter_test = File.join(test_dir, 'ssr', 'test_deno_setters.rb')
+desc 'Run config API tests (must run before pool init)'
+task 'test:config' do
+  config_test = File.join(test_dir, 'ssr', 'test_deno_config.rb')
   runner = <<~RUBY
     require '#{helper}'
-    SSR::Deno.max_heap_size_mb = 128
-    SSR::Deno.isolate_pool_size = 2
-    SSR::Deno.render_timeout_ms = 500
-    require '#{setter_test}'
+    SSR::Deno::Config.max_heap_size_mb = 128
+    SSR::Deno::Config.isolate_pool_size = 2
+    SSR::Deno::Config.render_timeout_ms = 500
+    require '#{config_test}'
   RUBY
 
-  File.write(File.join(tmp, 'test_runner_setters.rb'), runner)
-  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:setters' },
-     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_setters.rb'))
+  File.write(File.join(tmp, 'test_runner_config.rb'), runner)
+  sh({ 'SIMPLECOV_COMMAND_NAME' => 'test:config' },
+     Gem.ruby, "-I#{lib}:#{test_dir}", File.join(tmp, 'test_runner_config.rb'))
 end
 
 desc 'Run async render tests with short timeout (render_timeout_ms=100)'
@@ -76,8 +76,8 @@ task 'test:async' do
   async_test = File.join(test_dir, 'ssr', 'test_deno_async_render.rb')
   runner = <<~RUBY
     require '#{helper}'
-    SSR::Deno.isolate_pool_size = 1
-    SSR::Deno.render_timeout_ms = 100
+    SSR::Deno::Config.isolate_pool_size = 1
+    SSR::Deno::Config.render_timeout_ms = 100
     require '#{async_test}'
   RUBY
 
@@ -105,8 +105,8 @@ task 'test:ractor' do
   runner = <<~RUBY
     require '#{helper}'
     Warning[:experimental] = false if Warning.respond_to?(:[])
-    SSR::Deno.isolate_pool_size = 4
-    SSR::Deno.render_timeout_ms = 5000
+    SSR::Deno::Config.isolate_pool_size = 4
+    SSR::Deno::Config.render_timeout_ms = 5000
     require '#{ractor_test}'
   RUBY
 
@@ -120,8 +120,8 @@ task 'test:puma' do
   puma_test = File.join(test_dir, 'ssr', 'test_integration_puma.rb')
   runner = <<~RUBY
     require '#{helper}'
-    SSR::Deno.isolate_pool_size = 1
-    SSR::Deno.render_timeout_ms = 5000
+    SSR::Deno::Config.isolate_pool_size = 1
+    SSR::Deno::Config.render_timeout_ms = 5000
     require '#{puma_test}'
   RUBY
 
@@ -137,9 +137,9 @@ task 'test:perf' do
     ENV['SSR_DENO_SKIP_COVERAGE'] = 'true'
     require '#{helper}'
     ARGV.delete('--profile')
-    SSR::Deno.isolate_pool_size = 4
-    SSR::Deno.render_timeout_ms = 5000
-    SSR::Deno.node_builtins_enabled = true
+    SSR::Deno::Config.isolate_pool_size = 4
+    SSR::Deno::Config.render_timeout_ms = 5000
+    SSR::Deno::Config.node_builtins_enabled = true
     require '#{perf_test}'
   RUBY
 
@@ -161,7 +161,7 @@ task 'test:rails' do
 end
 
 desc 'Run all test suites'
-task test: %w[test:main test:setters test:node_builtins test:async test:env_config test:ractor test:puma test:rails]
+task test: %w[test:main test:config test:node_builtins test:async test:env_config test:ractor test:puma test:rails]
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do

@@ -160,8 +160,8 @@ RUN mkdir -p /poc && \
       'require "bundler/setup"' \
       'require "ssr/deno"' \
       '' \
-      'SSR::Deno.max_heap_size_mb = 64' \
-      'SSR::Deno.render_timeout_ms = 10_000' \
+      'SSR::Deno::Config.max_heap_size_mb = 64' \
+      'SSR::Deno::Config.render_timeout_ms = 10_000' \
       '' \
       'begin' \
       '  bundle = SSR::Deno::Bundle.new("/ssr-deno/minimal-bundle.js")' \
