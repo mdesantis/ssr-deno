@@ -42,12 +42,11 @@ module SSR
       # file-level deduplication.
       def initialize(bundle_path)
         @bundle_path = bundle_path.to_s
-        @bundle_id = @bundle_path
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
         @_bundle_mutex = Mutex.new
 
-        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
+        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_path, path: @bundle_path do
           load
         end
       end
@@ -69,7 +68,7 @@ module SSR
           @mtime = File.mtime(@bundle_path)
         end
 
-        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_id, path: @bundle_path do
+        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_path, path: @bundle_path do
           load
         end
       end
@@ -97,8 +96,8 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_id do |payload|
-          result = SSR::Deno.native_render(@bundle_id, json_input)
+        instrument 'render.ssr_deno', bundle_name: @bundle_path do |payload|
+          result = SSR::Deno.native_render(@bundle_path, json_input)
 
           raw_output ? result : JSON.parse(result)
         rescue StandardError => error
@@ -131,8 +130,8 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_id do
-          SSR::Deno.native_render_chunks(@bundle_id, json_input, &)
+        instrument 'render.ssr_deno', bundle_name: @bundle_path do
+          SSR::Deno.native_render_chunks(@bundle_path, json_input, &)
         end
       end
 
@@ -145,7 +144,7 @@ module SSR
 
       # Load (or reload) the bundle into the Deno runtime.
       def load
-        SSR::Deno.native_load_bundle(@bundle_id, @bundle_path)
+        SSR::Deno.native_load_bundle(@bundle_path, @bundle_path)
       end
 
       # Reload the bundle if the file has changed on disk.

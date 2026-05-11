@@ -20,7 +20,7 @@ module SSR
     end
 
     def test_native_render_from_ractor
-      bundle_id = @bundle.instance_variable_get(:@bundle_id)
+      bundle_id = @bundle.instance_variable_get(:@bundle_path)
 
       ractor = Ractor.new(bundle_id) { |id| SSR::Deno.native_render(id, '{"data":{"name":"Ractor"}}') }
       result = ractor.respond_to?(:value) ? ractor.value : ractor.take

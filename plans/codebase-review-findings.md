@@ -139,10 +139,9 @@ returning nil. Worker send failures are visible in logs.
 **`lib/ssr/deno.rb:157` — British spelling**
 `"Unrecognised boolean"` vs US `"initialization"` elsewhere — minor inconsistency.
 
-**`lib/ssr/deno/bundle.rb:44` — `@bundle_id` naming**
-`@bundle_id = @bundle_path` — the word "id" suggests a synthetic identifier,
-but it's just the file path.
-Fix: rename to `@bundle_path` or clarify in comment.
+**`lib/ssr/deno/bundle.rb:44` — `@bundle_id` naming** ✅ Fixed
+Removed `@bundle_id` — it was always equal to `@bundle_path`. All usages
+replaced with `@bundle_path` directly. RBS `@bundle_id` ivar removed.
 
 **`lib/ssr/deno/ractor_pool.rb:146` — `@counter` overflow**
 Increments forever in signed 64-bit. ~9 quintillion renders to overflow.

@@ -34,7 +34,6 @@ module SSR
 
     class Bundle
       @bundle_path: String
-      @bundle_id: String
       @mtime: Time
       @auto_reload: bool
       @_bundle_mutex: Thread::Mutex
