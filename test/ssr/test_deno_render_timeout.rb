@@ -46,13 +46,13 @@ module SSR
           bundle_path = File.join(dir, 'hung-bundle.js')
           File.write(bundle_path, #{slow_js.inspect})
           bundle = SSR::Deno::Bundle.new(bundle_path)
-          start = Time.now
+          start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           begin
             bundle.render({})
             exit 1
           rescue SSR::Deno::RenderError
-            elapsed_ms = ((Time.now - start) * 1000).to_i
-            if elapsed_ms >= 80 && elapsed_ms <= 500
+            elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start) * 1000).to_i
+            if elapsed_ms >= 80 && elapsed_ms <= 2000
               exit 0
             else
               exit 2

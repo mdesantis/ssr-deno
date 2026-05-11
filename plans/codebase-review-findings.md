@@ -180,12 +180,9 @@ Fix: use `Net::HTTP` or a proper HTTP parser.
 Renamed to `test_bundle_initialize_when_path_not_found_raises_errno_enoent`.
 `Bundle.new` raises `Errno::ENOENT` (from `File.mtime`) not `BundleNotFoundError`.
 
-**`test/ssr/test_deno_render_timeout.rb:54-55` — flaky wall-clock timing**
-```ruby
-elapsed_ms = ((Time.now - start) * 1000).to_i
-```
-On busy CI, actual elapsed can exceed 500ms. Tight range (80-500ms).
-Fix: use wider upper bound (e.g., 2000ms) or `CLOCK_MONOTONIC`.
+**`test/ssr/test_deno_render_timeout.rb:54-55` — flaky wall-clock timing** ✅ Fixed
+`Time.now` → `Process.clock_gettime(Process::CLOCK_MONOTONIC)`. Upper bound
+500ms → 2000ms to accommodate busy CI without losing the core timing assertion.
 
 **`test/ssr/test_integration_hmr.rb:30-33` — source file corruption risk**
 If test crashes before setting `@original_src`, teardown writes `nil` to source file.
