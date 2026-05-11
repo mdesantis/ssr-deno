@@ -2,13 +2,10 @@ name: CI
 
 on:
   workflow_dispatch:
-  # Manually triggered for now: V8 compilation from source takes 3h+
-  # on cache miss. Push/PR triggers will be re-enabled once a V8 binary
-  # cache strategy is in place.
-  # push:
-  #   branches:
-  #     - main
-  # pull_request:
+  push:
+    branches:
+      - main
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,6 +31,8 @@ jobs:
       fail-fast: false
       matrix:
         ruby:
+          - '3.3'
+          - '3.4'
           - '4.0'
 
     steps:
@@ -82,10 +81,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: tmp/cargo-target
-          key: cargo-target-${{ runner.os }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          key: cargo-target-${{ runner.os }}-${{ matrix.ruby }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
           restore-keys: |
-            cargo-target-${{ runner.os }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-
+            cargo-target-${{ runner.os }}-${{ matrix.ruby }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-${{ matrix.ruby }}-
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
