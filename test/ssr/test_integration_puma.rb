@@ -42,6 +42,7 @@ module SSR
       puma_dir = File.expand_path('../../test/fixtures/puma', __dir__)
       config_path = File.join(puma_dir, 'clustered_on_worker_boot.rb')
       bundle_gemfile = File.expand_path('../../Gemfile', __dir__)
+      puma_log = File.join(@tmpdir, 'puma_clustered.log')
       pid = nil
 
       pid = spawn(
@@ -50,8 +51,8 @@ module SSR
         '-C', config_path,
         '-b', "unix://#{@socket_clustered}",
         chdir: puma_dir,
-        out: '/dev/null',
-        err: '/dev/null'
+        out: puma_log,
+        err: puma_log
       )
 
       wait_for_socket(@socket_clustered)
@@ -59,6 +60,10 @@ module SSR
 
       assert_equal '200', resp[:code]
       assert_includes resp[:body], '<h1>Puma</h1>'
+    rescue RuntimeError => error
+      raise "#{error.message}\nPuma log:\n#{File.read(puma_log)}" if File.exist?(puma_log)
+
+      raise
     ensure
       if pid
         Process.kill(:TERM, pid)
@@ -70,6 +75,7 @@ module SSR
       puma_dir = File.expand_path('../../test/fixtures/puma', __dir__)
       config_path = File.join(puma_dir, 'clustered_multi_thread.rb')
       bundle_gemfile = File.expand_path('../../Gemfile', __dir__)
+      puma_log = File.join(@tmpdir, 'puma_multi.log')
       pid = nil
 
       pid = spawn(
@@ -78,8 +84,8 @@ module SSR
         '-C', config_path,
         '-b', "unix://#{@socket_multi}",
         chdir: puma_dir,
-        out: '/dev/null',
-        err: '/dev/null'
+        out: puma_log,
+        err: puma_log
       )
 
       wait_for_socket(@socket_multi)
@@ -99,6 +105,10 @@ module SSR
         assert_equal '200', r[:code]
         assert_includes r[:body], '<h1>Puma</h1>'
       end
+    rescue RuntimeError => error
+      raise "#{error.message}\nPuma log:\n#{File.read(puma_log)}" if File.exist?(puma_log)
+
+      raise
     ensure
       if pid
         Process.kill(:TERM, pid)
@@ -131,7 +141,7 @@ module SSR
       sock.write("GET #{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
       raw = sock.read
       sock.close
-      status = raw.lines.first.split[1]
+      status = raw[%r{\AHTTP/\d+(?:\.\d+)? (\d+)}, 1]
       body = raw.split("\r\n\r\n", 2).last
       { code: status, body: body }
     end

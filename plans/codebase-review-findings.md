@@ -136,16 +136,14 @@ returning nil. Worker send failures are visible in logs.
 
 ### LOW
 
-**`lib/ssr/deno.rb:157` — British spelling**
-`"Unrecognised boolean"` vs US `"initialization"` elsewhere — minor inconsistency.
+**`lib/ssr/deno.rb:157` — British spelling** ✅ Already fixed (commit `864eb73`)
 
 **`lib/ssr/deno/bundle.rb:44` — `@bundle_id` naming** ✅ Fixed
 Removed `@bundle_id` — it was always equal to `@bundle_path`. All usages
 replaced with `@bundle_path` directly. RBS `@bundle_id` ivar removed.
 
-**`lib/ssr/deno/ractor_pool.rb:146` — `@counter` overflow**
-Increments forever in signed 64-bit. ~9 quintillion renders to overflow.
-Not actionable, but worth noting.
+**`lib/ssr/deno/ractor_pool.rb:146` — `@counter` overflow** ✅ Wontfix
+~9 quintillion renders to overflow. Not actionable.
 
 **Various RBS imprecisions** (lines 99-100, 116, 90, 156): ✅ Fixed
 - `next_worker` return type `untyped` → `Ractor`
@@ -163,18 +161,14 @@ Replaced `Thread#status == 'sleep'` busy-loop with `Queue` signaling.
 
 ### MEDIUM
 
-**`test/ssr/test_integration_puma.rb` — orphaned child processes**
-`spawn` with `out: '/dev/null', err: '/dev/null'` silences startup errors.
-Test interruption leaves Puma orphaned.
-Fix: capture output, ensure PID cleanup on all exit paths.
+**`test/ssr/test_integration_puma.rb` — orphaned child processes** ✅ Fixed
+`out`/`err` now redirect to a temp log file per test. On `RuntimeError`
+(e.g., socket timeout), log content is appended to the error message.
+PID cleanup via ensure was already correct.
 
-**`test/ssr/test_integration_puma.rb:129-137` — unsafe HTTP response parsing**
-```ruby
-raw.lines.first.split[1]
-raw.split("\r\n\r\n", 2).last
-```
-Assumes simple response format. Brittle.
-Fix: use `Net::HTTP` or a proper HTTP parser.
+**`test/ssr/test_integration_puma.rb:129-137` — unsafe HTTP response parsing** ✅ Fixed
+`raw.lines.first.split[1]` → `raw[%r{\AHTTP/\d+(?:\.\d+)? (\d+)}, 1]`.
+Regex handles HTTP/1.0 and HTTP/2 status lines without splitting on whitespace.
 
 **`test/ssr/test_deno_errors.rb:21-29` — test name contradicts assertion** ✅ Fixed
 Renamed to `test_bundle_initialize_when_path_not_found_raises_errno_enoent`.
