@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require_relative 'ractor_pool/worker'
 
 module SSR
   module Deno
@@ -95,52 +96,13 @@ module SSR
         # Pool already initialized from prior call.
       end
 
-      # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
-      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
-      # rubocop:disable Metrics/BlockLength
       def spawn_workers(bundle_path)
         @workers = Array.new(@size) do
           Ractor.new(bundle_path, @auto_reload) do |path, auto|
-            bundle_id = path
-            mtime = auto ? File.mtime(path) : nil
-
-            loop do
-              if auto
-                cur = File.mtime(path)
-                if cur > mtime
-                  mtime = cur
-
-                  SSR::Deno.native_load_bundle(bundle_id, path)
-                end
-              end
-
-              msg = Ractor.receive
-
-              case msg
-              in { type: :render, raw_input:, data:, raw_output:, reply: }
-                json_input = raw_input ? data : JSON.generate(data)
-                result = SSR::Deno.native_render(bundle_id, json_input)
-
-                reply.send(raw_output ? result : JSON.parse(result))
-              in { type: :render_chunks, raw_input:, data:, reply: }
-                json_input = raw_input ? data : JSON.generate(data)
-                chunks = []
-
-                SSR::Deno.native_render_chunks(bundle_id, json_input) { |c| chunks << c }
-                reply.send(chunks)
-              in { type: :reload, reply: }
-                mtime = File.mtime(path)
-
-                SSR::Deno.native_load_bundle(bundle_id, path)
-                reply.send(:ok)
-              in :shutdown
-                break
-              end
-            end
+            Worker.loop_body(path, auto)
           end
         end
       end
-      # rubocop:enable all
 
       def next_worker
         @counter = (@counter + 1) % @workers.size

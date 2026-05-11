@@ -118,6 +118,20 @@ module SSR
       def spawn_workers: (untyped bundle_path) -> void
 
       def next_worker: () -> Ractor
+
+      module Worker
+        def self?.loop_body: (untyped path, untyped auto) -> void
+
+        def self?.maybe_reload: (untyped path, untyped auto, untyped mtime, untyped bundle_id) -> untyped
+
+        def self?.dispatch: (untyped msg, untyped bundle_id, untyped path) -> (:shutdown | :reload | nil)
+
+        def self?.handle_render: (untyped raw_input, untyped data, untyped raw_output, untyped reply, untyped bundle_id) -> void
+
+        def self?.handle_render_chunks: (untyped raw_input, untyped data, untyped reply, untyped bundle_id) -> void
+
+        def self?.handle_reload: (untyped reply, untyped bundle_id, untyped path) -> :reload
+      end
     end
 
     class InstallGenerator
