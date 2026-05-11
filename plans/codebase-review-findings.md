@@ -126,17 +126,13 @@ payload arg). Same fix applied to `Bundle#instrument` private sig.
 `render_chunks` with block now returns `nil` (matches `Bundle#render_chunks`).
 RBS updated: block overload return type `Array[String]` → `nil`.
 
-**`lib/ssr/deno/ractor_pool.rb:77` — `shutdown` can block forever**
-If a worker is hung in `native_render`, `ractor_result(w)` blocks indefinitely.
-Fix: add timeout or use `Ractor::Selector`.
+**`lib/ssr/deno/ractor_pool.rb:77` — `shutdown` can block forever** ✅ Fixed
+Removed `ractor_result(w)` — shutdown is now fire-and-forget. `:shutdown`
+message is sent; workers terminate after their current render completes.
 
-**`lib/ssr/deno/ractor_pool.rb:78` — `shutdown` swallows exceptions**
-```ruby
-rescue StandardError
-  nil
-```
-If a worker crashed, caller never knows.
-Fix: at minimum log the error.
+**`lib/ssr/deno/ractor_pool.rb:78` — `shutdown` swallows exceptions** ✅ Fixed
+`rescue StandardError => error` now warns to STDERR instead of silently
+returning nil. Worker send failures are visible in logs.
 
 ### LOW
 

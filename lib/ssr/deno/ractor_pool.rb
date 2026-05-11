@@ -78,9 +78,8 @@ module SSR
       def shutdown
         @workers.each do |w|
           w.send(:shutdown)
-          ractor_result(w)
-        rescue StandardError
-          nil
+        rescue StandardError => error
+          warn "[ssr-deno] RactorPool: error during shutdown: #{error.message}"
         end
       end
 
