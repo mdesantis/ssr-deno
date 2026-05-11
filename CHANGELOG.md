@@ -12,6 +12,7 @@
 ### Fixed
 - **`Instrumenter.instrument` called without a block no longer raises `LocalJumpError`** — no-AS mode now uses `elsif block_given?` and yields the payload hash to the block (matching AS behaviour).
 - **`find_bundle!` registry read is now thread-safe** — always calls `create_bundles!` before reading, eliminating the concurrent read-during-`transform_values!` window.
+- **`ssr_render` raises `ArgumentError` on unknown options** — typos like `raw_ouputput: true` now fail immediately with the unknown key named, instead of silently passing to `bundle.render`.
 - **Bundle reload thread safety** — `Bundle#reload` uses Mutex for mtime check/write. Production read path drops the mutex (GVL-protected) for zero overhead.
 - **Title corrected** — project name uses `SSR::Deno` consistently.
 

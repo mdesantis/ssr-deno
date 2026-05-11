@@ -55,6 +55,14 @@ module SSR
         assert_equal 0, SSR::Deno::Bundle.registry.size
       end
 
+      def test_ssr_render_raises_on_unknown_option
+        error = assert_raises ArgumentError do
+          @view.ssr_render({}, raw_ouputput: true)
+        end
+
+        assert_match(/raw_ouputput/, error.message)
+      end
+
       def test_ssr_render_raises_bundle_not_found
         error = assert_raises SSR::Deno::BundleNotFoundError do
           @view.ssr_render({ page: 'home' })

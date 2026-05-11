@@ -77,6 +77,8 @@ module SSR
       def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { (untyped) -> untyped } -> untyped
                       | (untyped name, ?::Hash[untyped, untyped] payload) -> untyped
 
+      def assert_known_ssr_render_options!: (::Hash[untyped, untyped] options) -> nil
+
       def find_bundle!: (untyped bundle_name) -> Bundle
 
       def fallback_or_raise: (untyped error, untyped bundle_name, untyped config_key) -> String

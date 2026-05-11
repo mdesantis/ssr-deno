@@ -106,11 +106,9 @@ the payload hash (matching AS behaviour) and is safe without a block.
 after first run), then reads. Read always happens after mutation completes — no
 concurrent read-during-transform_values! window.
 
-**`lib/ssr/deno/rails/helper.rb:22` — unknown options silently ignored**
-`ssr_render(data, **options)` passes all kwargs to `bundle.render()`. If the
-caller has a typo like `raw_ouputput: true`, it's silently ignored with no
-warning.
-Fix: validate known keys (`:bundle`, `:raw_input`, `:raw_output`), warn on unknown.
+**`lib/ssr/deno/rails/helper.rb:22` — unknown options silently ignored** ✅ Fixed
+`assert_known_ssr_render_options!` validates options after `:bundle` is removed.
+Unknown keys raise `ArgumentError` with names listed before the render attempt.
 
 **`lib/ssr/deno/rails/install_generator.rb:14-23` — duplicate Puma content**
 `append_to_file 'config/puma.rb'` runs every time the generator runs.

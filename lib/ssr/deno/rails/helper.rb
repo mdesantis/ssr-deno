@@ -22,6 +22,8 @@ module SSR
       def ssr_render(data = nil, **options)
         bundle_name = options.delete(:bundle) || :application
 
+        assert_known_ssr_render_options!(options)
+
         instrument 'ssr_render.ssr_deno', bundle_name: bundle_name do |payload|
           bundle = find_bundle!(bundle_name)
 
@@ -67,6 +69,12 @@ module SSR
         end
 
         bundle
+      end
+
+      def assert_known_ssr_render_options!(options)
+        unknown = options.keys - %i[raw_input raw_output]
+
+        raise ArgumentError, "unknown ssr_render option(s): #{unknown.map(&:inspect).join(', ')}" unless unknown.empty?
       end
 
       def instrument(...)
