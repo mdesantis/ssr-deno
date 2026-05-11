@@ -22,6 +22,7 @@ env:
   RUSTC_WRAPPER: 'sccache'
   RUSTFLAGS: '-C link-arg=-fuse-ld=mold'
   CARGO_TARGET_DIR: tmp/cargo-target
+  RB_SYS_CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
 
 jobs:
   build-and-test:
@@ -91,6 +92,9 @@ jobs:
           deno-version: v2.x
       - name: Compile native extension
         run: bundle exec rake compile
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+        working-directory: ext/ssr_deno
       - name: Build SSR sample bundles
         run: bundle exec rake samples:build
       - name: Run tests
