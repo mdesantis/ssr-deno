@@ -36,6 +36,8 @@ puts html
 
 ## Configuration
 
+### Runtime settings
+
 Set **before** creating any `Bundle` instance:
 
 ```ruby
@@ -45,9 +47,17 @@ SSR::Deno.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, ma
 SSR::Deno.node_builtins_enabled = true  # Node.js built-in modules (default: false)
 ```
 
-### Environment variables
+```ruby
+bundle.auto_reload = true  # Reload SSR bundle from disk when file mtime changes
+```
 
-All four native settings can also be configured via environment variables,
+The isolate pool distributes renders across V8 isolates in round-robin. Pool
+size defaults to `1`. Multiple isolates benefit Ractor-based concurrency
+(thread-based Rails apps also benefit — native_render releases the GVL during blocking I/O).
+
+#### Environment variables
+
+All runtime settings can also be configured via environment variables,
 which act as **defaults** — explicit setter calls override them.
 
 | Env var | Setting | Type | Default |
@@ -61,19 +71,34 @@ Boolean env vars accept `true`, `1`, `yes` (case-insensitive) for true;
 anything else is treated as false. Invalid integer formats print a warning
 and are skipped. Env vars are read once at `require 'ssr/deno'` time.
 
-The isolate pool distributes renders across V8 isolates in round-robin. Pool
-size defaults to `1`. Multiple isolates only benefit Ractor-based concurrency
-(thread-based Rails apps now benefit too — native_render releases the GVL during blocking I/O).
-
-```ruby
-bundle.auto_reload = true  # Reload SSR bundle from disk when file mtime changes
-```
-
-### Node.js builtins
+#### Node.js builtins
 
 Enable when your SSR bundle or its dependencies call `require()` for `stream`,
 `buffer`, `events`, etc. (e.g. `@emotion/server`). Adds ~50ms to worker init.
 Must be set before pool init.
+
+### Rails settings
+
+In `config/initializers/ssr_deno.rb`:
+
+```ruby
+SSR::Deno.configure do |config|
+  config.max_heap_size_mb = 128
+  config.isolate_pool_size = 4
+  config.render_timeout_ms = 1000
+end
+```
+
+```ruby
+# Raise on bundle errors in dev/test, fall back to CSR in production
+Rails.application.config.ssr_deno.raise_on_bundle_error = false
+# Emit heap stats notification every 50 renders
+Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
+```
+
+- `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs and returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
+- `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs and returns empty string.
+- `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable.
 
 ### Heap statistics
 
@@ -209,6 +234,7 @@ The `samples/` directory contains several SSR samples. Run any with
 | 3112 | [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 |
 | 3113 | [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) |
 | 3114 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite |
+| 3115 | [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | Vite HMR development server |
 
 Build all Vite samples at once:
 
@@ -217,16 +243,6 @@ bundle exec rake samples:build
 ```
 
 ## Rails integration
-
-Configure in `config/initializers/ssr_deno.rb`:
-
-```ruby
-SSR::Deno.configure do |config|
-  config.max_heap_size_mb = 128
-  config.isolate_pool_size = 4
-  config.render_timeout_ms = 1000
-end
-```
 
 ### Basic
 
@@ -250,15 +266,23 @@ Pass nonce via `ssr_render` data hash:
 
 See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
 
-### Bundle error handling
+## Ractor pool (parallel SSR)
 
-When `raise_on_bundle_error` is enabled (default: `true` in dev/test),
-`BundleNotFoundError` at render time raises immediately. When disabled
-(production), errors are logged and `ssr_render` falls back to CSR
-(empty string). Set in your initializer:
+For concurrent SSR under Ractors (Ruby 3.3+) without the GVL bottleneck:
 
 ```ruby
-Rails.application.config.ssr_deno.raise_on_bundle_error = false
+SSR::Deno.isolate_pool_size = 4
+SSR::Deno.node_builtins_enabled = true
+pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
+html = pool.render({ name: 'World' })
+```
+
+Each Ractor runs a V8 isolate — renders execute in parallel. Not compatible with `SSR::Deno::Bundle`; use one or the other.
+
+```ruby
+pool.render_chunks({ page: 'home' }) { |chunk| response.stream.write(chunk) }
+pool.reload
+pool.shutdown
 ```
 
 ## Development
