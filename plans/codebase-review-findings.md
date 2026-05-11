@@ -184,13 +184,12 @@ Renamed to `test_bundle_initialize_when_path_not_found_raises_errno_enoent`.
 `Time.now` → `Process.clock_gettime(Process::CLOCK_MONOTONIC)`. Upper bound
 500ms → 2000ms to accommodate busy CI without losing the core timing assertion.
 
-**`test/ssr/test_integration_hmr.rb:30-33` — source file corruption risk**
-If test crashes before setting `@original_src`, teardown writes `nil` to source file.
-Fix: guard `File.write` with `if @original_src`.
+**`test/ssr/test_integration_hmr.rb:30-33` — source file corruption risk** ✅ Already fixed
+Guards (`if @original_src`, `if @original_bundle`) were already present in teardown.
 
-**`test/ssr/test_integration_hmr.rb:43-51` — implicit `deno` PATH dependency**
-`system('deno', 'task', 'build', chdir: ...)` fails silently if `deno` not on PATH.
-Fix: skip test if `deno` unavailable, or use configured path.
+**`test/ssr/test_integration_hmr.rb:43-51` — implicit `deno` PATH dependency** ✅ Fixed
+`setup` now skips with `'deno not on PATH'` if `deno --version` fails,
+before reading source files.
 
 ### LOW
 

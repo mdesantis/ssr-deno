@@ -22,6 +22,7 @@ module SSR
 
     def setup
       skip "#{BUNDLE_PATH} not found — run `bundle exec rake samples:build` first" unless File.exist?(BUNDLE_PATH)
+      skip 'deno not on PATH' unless system('deno', '--version', out: File::NULL, err: File::NULL)
 
       @original_src = File.read(SRC_PATH)
       @original_bundle = File.read(BUNDLE_PATH)
