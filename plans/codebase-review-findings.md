@@ -122,10 +122,9 @@ File.exist?`). Existing puma.rb is preserved; on_worker_boot block is appended.
 Block type updated to `?{ (::Hash[untyped, untyped]) -> untyped }` (optional block,
 payload arg). Same fix applied to `Bundle#instrument` private sig.
 
-**`lib/ssr/deno/ractor_pool.rb:61` — inconsistent return value**
-`pool.render_chunks(data) { |c| ... }` returns `Array[String]` while
-`Bundle#render_chunks` returns `nil` with a block.
-Fix: return `nil` when block given (match Bundle behavior).
+**`lib/ssr/deno/ractor_pool.rb:61` — inconsistent return value** ✅ Fixed
+`render_chunks` with block now returns `nil` (matches `Bundle#render_chunks`).
+RBS updated: block overload return type `Array[String]` → `nil`.
 
 **`lib/ssr/deno/ractor_pool.rb:77` — `shutdown` can block forever**
 If a worker is hung in `native_render`, `ractor_result(w)` blocks indefinitely.

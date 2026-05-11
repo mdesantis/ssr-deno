@@ -102,7 +102,7 @@ module SSR
       def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
 
       def render_chunks: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) -> Array[String]
-                        | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> Array[String]
+                        | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> nil
 
       def reload: () -> void
 

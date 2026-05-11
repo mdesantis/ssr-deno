@@ -54,9 +54,10 @@ module SSR
       def test_render_chunks_with_block
         pool = RactorPool.new(bundle_path: BUNDLE_PATH, size: 1)
         collected = []
-        pool.render_chunks({ name: 'block' }) { |c| collected << c }
+        result = pool.render_chunks({ name: 'block' }) { |c| collected << c }
 
         assert_kind_of Array, collected
+        assert_nil result
       ensure
         pool&.shutdown
       end

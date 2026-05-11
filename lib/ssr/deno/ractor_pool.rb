@@ -58,7 +58,11 @@ module SSR
 
         chunks = ractor_result(reply)
 
-        chunks.each(&block) if block
+        if block
+          chunks.each(&block)
+          return nil
+        end
+
         chunks
       end
 
