@@ -9,6 +9,7 @@ pub(crate) mod render_chunked;
 pub(crate) mod watchdog;
 
 pub(crate) mod builder;
+pub(crate) mod esm_loader;
 pub(crate) mod handle;
 pub(crate) mod pool;
 pub(crate) mod types;

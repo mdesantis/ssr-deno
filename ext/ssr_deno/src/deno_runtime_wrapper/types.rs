@@ -20,6 +20,7 @@ pub(crate) enum WorkerMsg {
         bundle_path: String,
         bundle_code: Arc<str>,
         script_name: &'static str,
+        is_esm: bool,
         reply: oneshot::Sender<Result<(), String>>,
     },
     Render {

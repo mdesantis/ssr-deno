@@ -38,15 +38,17 @@ module SSR
       @auto_reload: bool
       @_bundle_mutex: Thread::Mutex
 
-      self.@registry: Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      @esm: bool
+
+      self.@registry: Hash[Symbol, ({ path: String, esm: bool, auto_reload: boolish } | Bundle)]
       self.@_create_mutex: Thread::Mutex
       self.@_bundles_created: boolish
 
-      def self.registry: () -> Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      def self.registry: () -> Hash[Symbol, ({ path: String, esm: bool, auto_reload: boolish } | Bundle)]
 
       def self.create_bundles!: () -> void
 
-      def initialize: (String bundle_path) -> void
+      def initialize: (String bundle_path, ?esm: bool) -> void
 
       attr_reader auto_reload: bool
 
@@ -96,7 +98,7 @@ module SSR
       @counter: Integer
       @workers: Array[Ractor]
 
-      def initialize: (bundle_path: String, ?size: Integer?, ?auto_reload: bool) -> void
+      def initialize: (bundle_path: String, ?size: Integer?, ?auto_reload: bool, ?esm: bool) -> void
 
       def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
 
@@ -117,20 +119,22 @@ module SSR
 
       def spawn_workers: (untyped bundle_path) -> void
 
+      @esm: bool
+
       def next_worker: () -> Ractor
 
       module Worker
-        def self?.loop_body: (untyped path, untyped auto) -> void
+        def self?.loop_body: (untyped path, untyped auto, ?esm: bool) -> void
 
-        def self?.maybe_reload: (untyped path, untyped auto, untyped mtime, untyped bundle_id) -> untyped
+        def self?.maybe_reload: (untyped path, untyped auto, untyped mtime, untyped bundle_id, untyped esm) -> untyped
 
-        def self?.dispatch: (untyped msg, untyped bundle_id, untyped path) -> (:shutdown | :reload | nil)
+        def self?.dispatch: (untyped msg, untyped bundle_id, untyped path, untyped esm) -> (:shutdown | :reload | nil)
 
         def self?.handle_render: (untyped raw_input, untyped data, untyped raw_output, untyped reply, untyped bundle_id) -> void
 
         def self?.handle_render_chunks: (untyped raw_input, untyped data, untyped reply, untyped bundle_id) -> void
 
-        def self?.handle_reload: (untyped reply, untyped bundle_id, untyped path) -> :reload
+        def self?.handle_reload: (untyped reply, untyped bundle_id, untyped path, untyped esm) -> :reload
       end
     end
 
@@ -140,7 +144,7 @@ module SSR
       def add_puma_on_worker_boot: () -> void
     end
 
-    def self.native_load_bundle: (String bundle_id, String bundle_path) -> nil
+    def self.native_load_bundle: (String bundle_id, String bundle_path, bool is_esm) -> nil
     def self.native_render: (String bundle_id, String json) -> String
     def self.native_render_chunks: (String bundle_id, String json) -> Enumerator[String, void]
                                   | (String bundle_id, String json) { (String) -> void } -> nil

@@ -6,14 +6,14 @@ module SSR
       module Worker
         module_function
 
-        def loop_body(path, auto)
+        def loop_body(path, auto, esm: false)
           bundle_id = path
           mtime = auto ? File.mtime(path) : nil
 
           loop do
-            mtime = maybe_reload(path, auto, mtime, bundle_id)
+            mtime = maybe_reload(path, auto, mtime, bundle_id, esm)
             msg = Ractor.receive
-            sig = dispatch(msg, bundle_id, path)
+            sig = dispatch(msg, bundle_id, path, esm)
 
             break if sig == :shutdown
 
@@ -21,25 +21,25 @@ module SSR
           end
         end
 
-        def maybe_reload(path, auto, mtime, bundle_id)
+        def maybe_reload(path, auto, mtime, bundle_id, esm)
           return mtime unless auto
 
           cur = File.mtime(path)
 
           return mtime unless cur > mtime
 
-          SSR::Deno.native_load_bundle(bundle_id, path)
+          SSR::Deno.native_load_bundle(bundle_id, path, esm)
           cur
         end
 
-        def dispatch(msg, bundle_id, path)
+        def dispatch(msg, bundle_id, path, esm)
           case msg
           in { type: :render, raw_input:, data:, raw_output:, reply: }
             handle_render(raw_input, data, raw_output, reply, bundle_id)
           in { type: :render_chunks, raw_input:, data:, reply: }
             handle_render_chunks(raw_input, data, reply, bundle_id)
           in { type: :reload, reply: }
-            handle_reload(reply, bundle_id, path)
+            handle_reload(reply, bundle_id, path, esm)
           in :shutdown
             :shutdown
           end
@@ -60,8 +60,8 @@ module SSR
           reply.send(chunks)
         end
 
-        def handle_reload(reply, bundle_id, path)
-          SSR::Deno.native_load_bundle(bundle_id, path)
+        def handle_reload(reply, bundle_id, path, esm)
+          SSR::Deno.native_load_bundle(bundle_id, path, esm)
           reply.send(:ok)
           :reload
         end

@@ -1,5 +1,4 @@
 mod deno_runtime_wrapper;
-mod node_builtin_loader;
 mod nop_types;
 mod require_loader;
 mod sys;
@@ -250,9 +249,18 @@ fn get_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {
 /// Loads a bundle into every isolate in the pool, registering its render
 /// function under `globalThis.__ssr_bundles[bundle_id]`.
 /// Initializes the pool lazily on first call.
-fn native_load_bundle(ruby: &Ruby, bundle_id: String, bundle_path: String) -> Result<(), Error> {
+///
+/// When `is_esm` is true, the bundle is loaded as an ES module (experimental).
+/// The entry file must export a `render` function. Local chunk imports within
+/// the same directory are resolved automatically.
+fn native_load_bundle(
+    ruby: &Ruby,
+    bundle_id: String,
+    bundle_path: String,
+    is_esm: bool,
+) -> Result<(), Error> {
     get_or_init_pool(ruby)?
-        .load_bundle(&bundle_id, &bundle_path)
+        .load_bundle(&bundle_id, &bundle_path, is_esm)
         .map_err(|e| js_runtime_initialization_error(ruby, e.to_string()))
 }
 
@@ -364,7 +372,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_error("JsRuntimeOutOfMemoryError", base_error)?;
     deno_module.define_error("HeapStatsSerializationError", base_error)?;
 
-    deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 2))?;
+    deno_module.define_singleton_method("native_load_bundle", function!(native_load_bundle, 3))?;
     deno_module.define_singleton_method("native_render", function!(native_render, 2))?;
     deno_module.define_singleton_method("native_version", function!(native_version, 0))?;
     deno_module.define_singleton_method(

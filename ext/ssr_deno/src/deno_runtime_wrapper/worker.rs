@@ -1,12 +1,17 @@
+use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
+use deno_runtime::deno_core::ModuleSpecifier;
 use tokio::runtime;
 use tokio::task::LocalSet;
 
 use super::builder::build_worker;
+use super::esm_loader::EsmLoaderState;
 use super::heap_stats::collect_heap_stats;
 use super::render;
 use super::render_chunked;
@@ -45,13 +50,13 @@ pub fn worker_thread_main(
 
         let oom_triggered = Arc::new(AtomicBool::new(false));
 
-        let mut worker = match build_worker(
+        let (mut worker, loader_state) = match build_worker(
             &main_module_url,
             max_heap_size_mb,
             node_builtins,
             oom_triggered.clone(),
         ) {
-            Ok(w) => w,
+            Ok(pair) => pair,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
                 return;
@@ -67,16 +72,27 @@ pub fn worker_thread_main(
                     bundle_path,
                     bundle_code,
                     script_name,
+                    is_esm,
                     reply,
                 } => {
-                    let result = load_bundle_in_worker(
-                        &mut worker,
-                        &bundle_id,
-                        &bundle_path,
-                        bundle_code,
-                        script_name,
-                        node_builtins,
-                    );
+                    let result = if is_esm {
+                        load_esm_bundle_in_worker(
+                            &mut worker,
+                            &loader_state,
+                            &bundle_id,
+                            &bundle_path,
+                        )
+                        .await
+                    } else {
+                        load_bundle_in_worker(
+                            &mut worker,
+                            &bundle_id,
+                            &bundle_path,
+                            bundle_code,
+                            script_name,
+                            node_builtins,
+                        )
+                    };
                     let _ = reply.send(result);
                 }
                 WorkerMsg::Render {
@@ -192,6 +208,64 @@ fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), St
         )
         .map(|_| ())
         .map_err(|e| format!("setup_require failed: {e}"))
+}
+
+/// Loads an ESM bundle by evaluating a synthetic boot module that imports
+/// `render` from the entry file and registers it in `globalThis.__ssr_bundles`.
+///
+/// The boot module URL is versioned (`v=N`) so V8's module cache is bypassed
+/// on reload, forcing re-evaluation of the entry file.
+async fn load_esm_bundle_in_worker(
+    worker: &mut deno_runtime::worker::MainWorker,
+    loader_state: &Rc<RefCell<EsmLoaderState>>,
+    bundle_id: &str,
+    bundle_path: &str,
+) -> Result<(), String> {
+    let abs = Path::new(bundle_path)
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve ESM bundle path '{bundle_path}': {e}"))?;
+
+    let boot_url = loader_state.borrow_mut().register_bundle(bundle_id, &abs);
+
+    let boot_spec = ModuleSpecifier::parse(&boot_url)
+        .map_err(|e| format!("Invalid boot module URL '{boot_url}': {e}"))?;
+
+    let mod_id = worker
+        .preload_side_module(&boot_spec)
+        .await
+        .map_err(|e| format!("Failed to load ESM bundle '{bundle_id}': {e}"))?;
+
+    worker
+        .evaluate_module(mod_id)
+        .await
+        .map_err(|e| format!("Failed to evaluate ESM bundle '{bundle_id}': {e}"))?;
+
+    // Run the event loop to settle any top-level await in the module graph.
+    worker
+        .run_event_loop(false)
+        .await
+        .map_err(|e| format!("Event loop error after ESM bundle load '{bundle_id}': {e}"))?;
+
+    // Verify the bundle exported a render function.
+    let bundle_id_js =
+        serde_json::to_string(bundle_id).expect("serde_json::to_string cannot fail for &str");
+
+    worker
+        .execute_script(
+            "<ssr-deno:esm-verify>",
+            format!(
+                r#"(function(id) {{
+                    if (typeof globalThis.__ssr_bundles === 'undefined' ||
+                        typeof globalThis.__ssr_bundles[id] === 'undefined' ||
+                        typeof globalThis.__ssr_bundles[id].render !== 'function') {{
+                        throw new Error('ESM bundle "' + id + '" does not export a render function');
+                    }}
+                }})({bundle_id_js});"#
+            )
+            .into(),
+        )
+        .map(|_| ())
+        .map_err(|e| format!("{e}"))
 }
 
 /// Evaluates the bundle code and moves `globalThis.render` into the bundle

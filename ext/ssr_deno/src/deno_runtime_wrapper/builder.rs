@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -15,12 +16,13 @@ use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::{NodeConditionOptions, NodeResolverOptions, PackageJsonResolver};
 
-use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;
 use crate::nop_types::{
     NopInNpmPackageChecker, NopNpmPackageFolderResolver, NopPermissionDescriptorParser,
 };
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
+
+use super::esm_loader::{EsmLoaderState, FilesystemModuleLoader};
 
 // ---------------------------------------------------------------------------
 // build_worker — broken into focused helpers
@@ -73,14 +75,12 @@ pub fn build_worker(
     max_heap_size_mb: usize,
     node_builtins: bool,
     oom_triggered: Arc<AtomicBool>,
-) -> Result<MainWorker, String> {
+) -> Result<(MainWorker, Rc<RefCell<EsmLoaderState>>), String> {
     let node_services = build_node_services(node_builtins);
 
-    let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = if node_builtins {
-        Rc::new(NodeBuiltinOnlyModuleLoader)
-    } else {
-        Rc::new(deno_runtime::deno_core::NoopModuleLoader)
-    };
+    let loader_state = Rc::new(RefCell::new(EsmLoaderState::default()));
+    let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> =
+        Rc::new(FilesystemModuleLoader::new(Rc::clone(&loader_state)));
 
     let services = WorkerServiceOptions {
         blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default()),
@@ -167,5 +167,5 @@ pub fn build_worker(
             current_limit * 2
         });
 
-    Ok(worker)
+    Ok((worker, loader_state))
 }

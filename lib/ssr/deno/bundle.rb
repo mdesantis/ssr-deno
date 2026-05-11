@@ -19,7 +19,7 @@ module SSR
             next if @_bundles_created
 
             @registry.transform_values! do |cfg|
-              bundle = new(cfg[:path])
+              bundle = new(cfg[:path], esm: cfg.fetch(:esm, false))
               bundle.auto_reload = true if cfg[:auto_reload]
 
               bundle
@@ -36,12 +36,16 @@ module SSR
       @_bundles_created = false
 
       # @param bundle_path [String] Path to the SSR bundle (entry-server.js)
+      # @param esm [Boolean] When +true+, load as an ES module (experimental).
+      #   The entry file must use +export function render+ and may import local
+      #   chunk files. External npm packages are not supported.
       #
       # Two Bundle instances with the same path share the same native bundle_id.
       # The second #load overwrites the first in the Rust layer — intentional
       # file-level deduplication.
-      def initialize(bundle_path)
+      def initialize(bundle_path, esm: false)
         @bundle_path = bundle_path.to_s
+        @esm = esm
         @mtime = File.mtime(@bundle_path)
         @auto_reload = false
         @_bundle_mutex = Mutex.new
@@ -144,7 +148,7 @@ module SSR
 
       # Load (or reload) the bundle into the Deno runtime.
       def load
-        SSR::Deno.native_load_bundle(@bundle_path, @bundle_path)
+        SSR::Deno.native_load_bundle(@bundle_path, @bundle_path, @esm)
       end
 
       # Reload the bundle if the file has changed on disk.

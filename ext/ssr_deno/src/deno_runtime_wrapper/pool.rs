@@ -95,7 +95,12 @@ impl IsolatePool {
     /// Loads a bundle into **every** isolate by broadcasting the bundle code.
     /// Path resolution (canonicalize, symlink check) is done once — all
     /// isolates receive the same code and script name.
-    pub fn load_bundle(&self, bundle_id: &str, bundle_path: &str) -> Result<(), SSRDenoError> {
+    pub fn load_bundle(
+        &self,
+        bundle_id: &str,
+        bundle_path: &str,
+        is_esm: bool,
+    ) -> Result<(), SSRDenoError> {
         let bundle_name = Path::new(bundle_path)
             .file_name()
             .and_then(|s| s.to_str())
@@ -150,6 +155,7 @@ impl IsolatePool {
                 bundle_path: bundle_path.to_string(),
                 bundle_code: Arc::clone(&bundle_code),
                 script_name,
+                is_esm,
                 reply: reply_tx,
             })?;
 

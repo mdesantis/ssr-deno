@@ -36,7 +36,12 @@ module SSR
         # Store bundle configs in +registry+. Actual +Bundle.new+ is called
         # from +on_worker_boot+ (Puma clustered) or lazily on first render
         # (single mode).
-        config.ssr_deno.bundles.each do |name, path|
+        config.ssr_deno.bundles.each do |name, bundle_config|
+          path, esm = case bundle_config
+                       when String then [bundle_config, false]
+                       when Hash   then [bundle_config[:path], bundle_config.fetch(:esm, false)]
+                       end
+
           unless path
             Rails.logger.error "[ssr-deno] Bundle #{name.inspect} has no path. " \
                                'Set a path in config.ssr_deno.bundles.'
@@ -48,7 +53,7 @@ module SSR
             next
           end
 
-          SSR::Deno::Bundle.registry[name] = { path: path, auto_reload: config.ssr_deno.auto_reload }
+          SSR::Deno::Bundle.registry[name] = { path: path, esm: esm, auto_reload: config.ssr_deno.auto_reload }
         end
       end
 

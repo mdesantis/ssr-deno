@@ -28,9 +28,10 @@ module SSR
     class RactorPool
       RACTOR_RESULT_METHOD = Ractor.method_defined?(:value) ? :value : :take
 
-      def initialize(bundle_path:, size: nil, auto_reload: false)
+      def initialize(bundle_path:, size: nil, auto_reload: false, esm: false)
         bundle_path = bundle_path.to_s
         @auto_reload = auto_reload
+        @esm = esm
         @size = (size || 1).to_i
 
         @counter = -1
@@ -91,15 +92,15 @@ module SSR
       end
 
       def init_pool(bundle_path)
-        SSR::Deno.native_load_bundle(bundle_path, bundle_path)
+        SSR::Deno.native_load_bundle(bundle_path, bundle_path, @esm)
       rescue SSR::Deno::JsRuntimeInitializationError
         # Pool already initialized from prior call.
       end
 
       def spawn_workers(bundle_path)
         @workers = Array.new(@size) do
-          Ractor.new(bundle_path, @auto_reload) do |path, auto|
-            Worker.loop_body(path, auto)
+          Ractor.new(bundle_path, @auto_reload, @esm) do |path, auto, esm_flag|
+            Worker.loop_body(path, auto, esm: esm_flag)
           end
         end
       end
