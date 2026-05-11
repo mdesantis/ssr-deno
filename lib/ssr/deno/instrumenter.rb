@@ -16,8 +16,8 @@ module SSR
         def instrument(name, payload = {}, &)
           if defined?(ActiveSupport::Notifications)
             ActiveSupport::Notifications.instrument(name, payload, &)
-          else
-            yield
+          elsif block_given?
+            yield payload
           end
         end
       end

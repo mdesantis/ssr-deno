@@ -10,6 +10,7 @@
 - **README restructured** — Rails docs consolidated under "Using with Rails", CSP nonce extracted to standalone render usage section, all config under single Configuration section with Runtime settings / Rails settings / Heap Statistics subsections.
 
 ### Fixed
+- **`Instrumenter.instrument` called without a block no longer raises `LocalJumpError`** — no-AS mode now uses `elsif block_given?` and yields the payload hash to the block (matching AS behaviour).
 - **Bundle reload thread safety** — `Bundle#reload` uses Mutex for mtime check/write. Production read path drops the mutex (GVL-protected) for zero overhead.
 - **Title corrected** — project name uses `SSR::Deno` consistently.
 

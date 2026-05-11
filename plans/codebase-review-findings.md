@@ -96,13 +96,10 @@ Also added `HeapStatsSerializationError` to `heap_stats` rescue list.
 **`lib/ssr/deno/bundle.rb:56,87,121,148` — thread-unsafe `@auto_reload`** ✅ Fixed
 `attr_reader :auto_reload` (zero-overhead read on hot path), `auto_reload=` synchronizes on `@_bundle_mutex`.
 
-**`lib/ssr/deno/instrumenter.rb:20` — `yield` without block guard**
-```ruby
-def instrument(...)
-  return yield(...) unless defined?(ActiveSupport::Notifications)
-```
-If called without a block in no-AS mode, raises `LocalJumpError`.
-Fix: `yield if block_given?`.
+**`lib/ssr/deno/instrumenter.rb:20` — `yield` without block guard** ✅ Fixed
+Changed `else yield` to `elsif block_given? yield payload`. No-AS mode now yields
+the payload hash (matching AS behaviour) and is safe without a block.
+`bundle.rb:105` guard `if payload` removed — payload always truthy after fix.
 
 **`lib/ssr/deno/rails/helper.rb:57-73` — thread-unsafe `@registry` mutation**
 `find_bundle!` calls `create_bundles!` which does `@registry.transform_values!`
@@ -124,12 +121,9 @@ Fix: check for existing content before appending.
 `create_file 'config/puma.rb'` destroys any existing Puma config.
 Fix: use `inject_into_file` with sentinel, or `create_file` only if missing.
 
-**`sig/ssr/deno.rbs:32` — `Instrumenter.instrument` block signature**
-```rbs
-def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
-```
-The block receives a payload argument. Should be `{ (Hash[untyped, untyped]) -> untyped }`.
-Fix: add payload arg to block type.
+**`sig/ssr/deno.rbs:32` — `Instrumenter.instrument` block signature** ✅ Fixed
+Block type updated to `?{ (::Hash[untyped, untyped]) -> untyped }` (optional block,
+payload arg). Same fix applied to `Bundle#instrument` private sig.
 
 **`lib/ssr/deno/ractor_pool.rb:61` — inconsistent return value**
 `pool.render_chunks(data) { |c| ... }` returns `Array[String]` while

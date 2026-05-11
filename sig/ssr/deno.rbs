@@ -29,7 +29,7 @@ module SSR
     end
 
     module Instrumenter
-      def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
+      def self.instrument: (untyped name, ?::Hash[untyped, untyped] payload) ?{ (::Hash[untyped, untyped]) -> untyped } -> untyped
     end
 
     class Bundle
@@ -62,7 +62,7 @@ module SSR
 
       private
 
-      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) { () -> untyped } -> untyped
+      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) ?{ (::Hash[untyped, untyped]) -> untyped } -> untyped
 
       def load: () -> void
 

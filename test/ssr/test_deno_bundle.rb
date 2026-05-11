@@ -122,6 +122,14 @@ module SSR
       ActiveSupport.const_set(:Notifications, original)
     end
 
+    def test_instrument_noop_without_block_does_not_raise
+      original = ActiveSupport.send(:remove_const, :Notifications)
+
+      assert_nil @bundle.send(:instrument, 'test.ssr_deno', {})
+    ensure
+      ActiveSupport.const_set(:Notifications, original)
+    end
+
     def test_instrument_with_active_support_notifications
       result = @bundle.send(:instrument, 'test.ssr_deno', {}) { 'yielded' }
 

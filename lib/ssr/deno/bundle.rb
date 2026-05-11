@@ -102,7 +102,7 @@ module SSR
 
           raw_output ? result : JSON.parse(result)
         rescue StandardError => error
-          payload[:error] = error.message if payload
+          payload[:error] = error.message
 
           raise
         end
