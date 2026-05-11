@@ -147,10 +147,10 @@ replaced with `@bundle_path` directly. RBS `@bundle_id` ivar removed.
 Increments forever in signed 64-bit. ~9 quintillion renders to overflow.
 Not actionable, but worth noting.
 
-**Various RBS imprecisions** (lines 99-100, 116, 90, 156):
+**Various RBS imprecisions** (lines 99-100, 116, 90, 156): ✅ Fixed
 - `next_worker` return type `untyped` → `Ractor`
-- `@auto_reload` type `boolish` → `bool` (never nil)
-- Minor, no runtime impact.
+- `RactorPool#@auto_reload` type `boolish` → `bool` (never nil)
+- `initialize` `auto_reload:` param `boolish` → `bool`
 
 ---
 

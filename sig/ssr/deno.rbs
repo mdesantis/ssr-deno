@@ -91,12 +91,12 @@ module SSR
     class RactorPool
       RACTOR_RESULT_METHOD: untyped
 
-      @auto_reload: boolish
+      @auto_reload: bool
       @size: Integer
       @counter: Integer
       @workers: Array[Ractor]
 
-      def initialize: (bundle_path: String, ?size: Integer?, ?auto_reload: boolish) -> void
+      def initialize: (bundle_path: String, ?size: Integer?, ?auto_reload: bool) -> void
 
       def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
 
@@ -117,7 +117,7 @@ module SSR
 
       def spawn_workers: (untyped bundle_path) -> void
 
-      def next_worker: () -> untyped
+      def next_worker: () -> Ractor
     end
 
     class InstallGenerator
