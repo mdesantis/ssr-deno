@@ -77,12 +77,12 @@ Must be set before pool init.
 ### Heap statistics
 
 ```ruby
-SSR::Deno.heap_stats
+SSR::Deno::HeapStats.fetch
 # => { "total_heap_size" => 20971520, "used_heap_size" => 8388608, ... }
 ```
 
 Returns 13 V8 memory counters from the isolate pool. Returns an empty Hash
-with a warning if the runtime is not yet initialized. Use `heap_stats!` to
+with a warning if the runtime is not yet initialized. Use `fetch!` to
 raise on error instead.
 
 ## Supported APIs

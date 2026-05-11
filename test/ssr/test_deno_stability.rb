@@ -13,9 +13,9 @@ module SSR
     end
 
     def test_no_internal_leaks_over_repeated_renders
-      baseline = SSR::Deno.heap_stats['used_heap_size']
+      baseline = SSR::Deno::HeapStats.fetch['used_heap_size']
       100.times { @bundle.render({ data: { name: 'stress' } }) }
-      final = SSR::Deno.heap_stats['used_heap_size']
+      final = SSR::Deno::HeapStats.fetch['used_heap_size']
 
       assert_operator final, :<, baseline * 3,
                       "Heap grew #{final / baseline}x — possible leak"

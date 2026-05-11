@@ -128,7 +128,7 @@ module SSR
       script = <<~RUBY
         bundle_path = File.join('#{TestFixturePaths::GEM_ROOT}', 'test', 'fixtures', 'minimal-bundle.js')
         bundle = SSR::Deno::Bundle.new(bundle_path)
-        stats = SSR::Deno.heap_stats
+        stats = SSR::Deno::HeapStats.fetch
         exit 0 if stats.is_a?(Hash) && !stats.empty?; exit 1
       RUBY
 

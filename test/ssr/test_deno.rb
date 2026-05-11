@@ -17,7 +17,7 @@ module SSR
     def test_heap_stats
       SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
 
-      stats = SSR::Deno.heap_stats
+      stats = SSR::Deno::HeapStats.fetch
 
       assert_kind_of Hash, stats
       assert stats.key?('total_heap_size')
@@ -35,7 +35,7 @@ module SSR
       end
 
       assert_raises(SSR::Deno::JsRuntimeNotInitializedError) do
-        SSR::Deno.heap_stats!
+        SSR::Deno::HeapStats.fetch!
       end
     ensure
       klass.alias_method(:native_heap_stats, :original_native_heap_stats)
@@ -50,7 +50,7 @@ module SSR
       end
 
       assert_raises(SSR::Deno::HeapStatsSerializationError) do
-        SSR::Deno.heap_stats!
+        SSR::Deno::HeapStats.fetch!
       end
     ensure
       klass.alias_method(:native_heap_stats, :original_native_heap_stats)
@@ -65,7 +65,7 @@ module SSR
       end
 
       assert_output(nil, /unexpected token/) do
-        stats = SSR::Deno.heap_stats
+        stats = SSR::Deno::HeapStats.fetch
 
         assert_equal({}, stats)
       end
@@ -83,7 +83,7 @@ module SSR
       end
 
       assert_output(nil, /not initialized/) do
-        stats = SSR::Deno.heap_stats
+        stats = SSR::Deno::HeapStats.fetch
 
         assert_equal({}, stats)
       end

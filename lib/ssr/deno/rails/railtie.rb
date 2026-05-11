@@ -70,7 +70,7 @@ module SSR
 
           next unless should_sample
 
-          stats = SSR::Deno.heap_stats
+          stats = SSR::Deno::HeapStats.fetch
 
           ActiveSupport::Notifications.instrument('heap_stats.ssr_deno', stats)
         rescue SSR::Deno::Error, JSON::ParserError => error

@@ -43,7 +43,7 @@ Dir.mktmpdir('ssr-deno-oom') do |dir|
   puts '----------|---------------|-----------------|-------|-------'
 
   MAX_ITERATIONS.times do |i|
-    stats = SSR::Deno.heap_stats
+    stats = SSR::Deno::HeapStats.fetch
     used_mb = stats['used_heap_size'] / (1024.0 * 1024.0)
     total_mb = stats['total_heap_size'] / (1024.0 * 1024.0)
     limit_mb = stats['heap_size_limit'] / (1024.0 * 1024.0)

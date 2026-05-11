@@ -1,5 +1,22 @@
 ## Unreleased
 
+### Added
+- **`SSR::Deno::Config`** — dedicated module for runtime settings. `SSR::Deno.max_heap_size_mb=` et al. moved to `SSR::Deno::Config.max_heap_size_mb=`. Thread-safe (Mutex). Native FFI methods stay on `SSR::Deno`.
+- **`SSR::Deno::HeapStats`** — dedicated module for heap statistics. `SSR::Deno.heap_stats` → `SSR::Deno::HeapStats.fetch`, `heap_stats!` → `fetch!`.
+- **CI now runs on push to main and pull requests** — was manual-only (workflow_dispatch) due to 3h+ V8 builds. With sccache + mold, builds take ~20m.
+- **Ruby 3.3 and 3.4 added to CI matrix** — alongside 4.0. Cache keys include Ruby version to prevent cross-ABI artifact corruption.
+- **`vite-hmr-ssr-app` sample** — added to samples table and builds.
+- **RactorPool documented** — `SSR::Deno::RactorPool` API now covered in README.
+- **README restructured** — Rails docs consolidated under "Using with Rails", CSP nonce extracted to standalone render usage section, all config under single Configuration section with Runtime settings / Rails settings / Heap Statistics subsections.
+
+### Fixed
+- **Bundle reload thread safety** — `Bundle#reload` uses Mutex for mtime check/write. Production read path drops the mutex (GVL-protected) for zero overhead.
+- **Title corrected** — project name uses `SSR::Deno` consistently.
+
+### Removed
+- **BREAKING:** `SSR::Deno.max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled` setters/getters removed from `SSR::Deno`. Use `SSR::Deno::Config.*` instead.
+- **BREAKING:** `SSR::Deno.heap_stats` / `SSR::Deno.heap_stats!` removed from `SSR::Deno`. Use `SSR::Deno::HeapStats.fetch` / `fetch!` instead.
+
 ## [0.1.0-alpha.6] - 2026-05-10
 
 ### Added

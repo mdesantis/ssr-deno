@@ -220,7 +220,7 @@ def run_single_config(options)
     warmup.times { pool.render(payload) }
   end
 
-  initial_heap = SSR::Deno.heap_stats['used_heap_size']
+  initial_heap = SSR::Deno::HeapStats.fetch['used_heap_size']
 
   puts
   puts '=' * 60
@@ -340,7 +340,7 @@ def run_single_config(options)
   end
 
   # ----- Memory Check -----
-  final_heap = SSR::Deno.heap_stats['used_heap_size']
+  final_heap = SSR::Deno::HeapStats.fetch['used_heap_size']
   delta = final_heap - initial_heap
   puts "  Memory: #{fmt_bytes(initial_heap)} → #{fmt_bytes(final_heap)} " \
        "(#{'+' if delta.positive?}#{fmt_bytes(delta.abs)})"

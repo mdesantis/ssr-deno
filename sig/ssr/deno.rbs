@@ -139,9 +139,15 @@ module SSR
     def self.native_get_render_timeout_ms: () -> Integer
     def self.native_get_node_builtins_enabled: () -> bool
     def self.native_heap_stats: () -> String
+  end
+end
 
-    def self.heap_stats!: () -> Hash[String, Integer]
-    def self.heap_stats: () -> Hash[String, Integer]
+module SSR
+  module Deno
+    module HeapStats
+      def self.fetch!: () -> Hash[String, Integer]
+      def self.fetch: () -> Hash[String, Integer]
+    end
   end
 end
 
