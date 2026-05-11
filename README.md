@@ -1,10 +1,10 @@
-# ssr-deno
+# SSR::Deno
 
 Server-side rendering for Ruby using Deno.
 
 Embeds a Deno V8 runtime in Ruby via a Rust native extension. Loads Vite SSR
 bundles (React, Vue, Svelte, Preact, vanilla TS) and calls their `render`
-function — no subprocess, no HTTP bridge, no Node.js.
+function — no subprocess, no HTTP bridge, no extra SSR server.
 
 Rails users jump to [Using with Rails](#using-with-rails).
 
@@ -161,6 +161,16 @@ body = bundle.render_chunks({ page: 'home' })
 [200, { 'content-type' => 'text/html' }, body]
 ```
 
+### CSP Nonce
+
+Pass a nonce to the SSR bundle for Content Security Policy:
+
+```ruby
+bundle.render({ page: 'home', nonce: 'abc123' })
+```
+
+See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
+
 ## Using with Vite
 
 The shared SSR build setup for all Vite-based samples:
@@ -185,6 +195,25 @@ export default defineConfig({
 ```
 
 Check the next section for examples and framework-specific setup.
+
+## Ractor pool (parallel SSR)
+
+For concurrent SSR under Ractors (Ruby 3.3+) without the GVL bottleneck:
+
+```ruby
+SSR::Deno.isolate_pool_size = 4
+SSR::Deno.node_builtins_enabled = true
+pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
+html = pool.render({ name: 'World' })
+```
+
+Each Ractor runs a V8 isolate — renders execute in parallel. Not compatible with `SSR::Deno::Bundle`; use one or the other.
+
+```ruby
+pool.render_chunks({ page: 'home' }) { |chunk| response.stream.write(chunk) }
+pool.reload
+pool.shutdown
+```
 
 ## Samples
 
@@ -262,32 +291,13 @@ Without `.html_safe`, special characters (`<`, `>`, `&`) are escaped by Rails.
 
 ### CSP Nonce
 
-Pass nonce via `ssr_render` data hash:
+Pass nonce from `content_security_policy_nonce` helper:
 
 ```erb
 <%= ssr_render({ page: "home", nonce: content_security_policy_nonce }) %>
 ```
 
-See [`docs/csp-nonce.md`](docs/csp-nonce.md) for JS-side usage and Emotion example.
-
-## Ractor pool (parallel SSR)
-
-For concurrent SSR under Ractors (Ruby 3.3+) without the GVL bottleneck:
-
-```ruby
-SSR::Deno.isolate_pool_size = 4
-SSR::Deno.node_builtins_enabled = true
-pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
-html = pool.render({ name: 'World' })
-```
-
-Each Ractor runs a V8 isolate — renders execute in parallel. Not compatible with `SSR::Deno::Bundle`; use one or the other.
-
-```ruby
-pool.render_chunks({ page: 'home' }) { |chunk| response.stream.write(chunk) }
-pool.reload
-pool.shutdown
-```
+See [CSP Nonce](#csp-nonce) for standalone usage and JS-side setup.
 
 ## Development
 
