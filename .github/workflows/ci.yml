@@ -93,16 +93,14 @@ jobs:
       - name: Compile native extension
         run: bundle exec rake compile
       - name: Run Clippy
-        run: cargo clippy -- -D warnings
-        working-directory: ext/ssr_deno
+        run: bundle exec rake cargo:clippy
       - name: Build SSR sample bundles
         run: bundle exec rake samples:build
       - name: Run tests
         run: bundle exec rake test
       - name: Check Rust formatting
-        run: cargo fmt --check
-        working-directory: ext/ssr_deno
+        run: bundle exec rake cargo:fmt
       - name: Run RuboCop
-        run: bundle exec rubocop
+        run: bundle exec rake rubocop
       - name: Validate RBS signatures
         run: bundle exec rake rbs
