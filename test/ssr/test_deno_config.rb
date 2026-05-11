@@ -74,7 +74,7 @@ module SSR
         SSR::Deno::Config.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
       end
 
-      assert_includes err, 'Unrecognised boolean'
+      assert_includes err, 'Unrecognized boolean'
 
       ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
       ENV.delete('SSR_DENO_NODE_BUILTINS_ENABLED')

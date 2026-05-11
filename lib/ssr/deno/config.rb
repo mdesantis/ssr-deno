@@ -67,7 +67,7 @@ module SSR
           recognised = %w[true 1 yes false 0 no]
 
           unless recognised.include?(value.downcase)
-            warn "[ssr-deno] Unrecognised boolean for #{env_var}=#{value.inspect}, ignoring"
+            warn "[ssr-deno] Unrecognized boolean for #{env_var}=#{value.inspect}, ignoring"
             return
           end
 

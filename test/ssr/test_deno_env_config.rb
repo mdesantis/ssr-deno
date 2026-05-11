@@ -99,7 +99,7 @@ module SSR
 
       assert_predicate status, :success?,
                        'Expected false for unrecognised boolean'
-      assert_includes stderr, 'Unrecognised boolean'
+      assert_includes stderr, 'Unrecognized boolean'
     end
 
     def test_invalid_integer_format_warns_and_skips

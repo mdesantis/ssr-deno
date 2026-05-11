@@ -233,7 +233,7 @@ pub(super) fn poll_render_state(worker: &mut MainWorker) -> RenderState {
     } else if let Some(result) = s.strip_prefix("R:") {
         RenderState::Done(result.to_string())
     } else {
-        // Unrecognised format — the poll JS returned something unexpected.
+        // Unrecognized format — the poll JS returned something unexpected.
         // Surface this as an error to avoid infinite polling until timeout.
         RenderState::Error(format!(
             "Render state poll returned unrecognised value (prefix: {})",
