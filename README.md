@@ -6,15 +6,12 @@ Embeds a Deno V8 runtime in Ruby via a Rust native extension. Loads Vite SSR
 bundles (React, Vue, Svelte, Preact, vanilla TS) and calls their `render`
 function — no subprocess, no HTTP bridge, no Node.js.
 
+Rails users jump to [Using with Rails](#using-with-rails).
+
 ## Installation
 
 ```bash
-# Non-Rails
 bundle add ssr-deno
-
-# Rails
-bundle add ssr-deno --require 'ssr/deno/rails'
-bin/rails generate ssr:deno:install
 ```
 
 ## Quick start
@@ -76,29 +73,6 @@ and are skipped. Env vars are read once at `require 'ssr/deno'` time.
 Enable when your SSR bundle or its dependencies call `require()` for `stream`,
 `buffer`, `events`, etc. (e.g. `@emotion/server`). Adds ~50ms to worker init.
 Must be set before pool init.
-
-### Rails settings
-
-In `config/initializers/ssr_deno.rb`:
-
-```ruby
-SSR::Deno.configure do |config|
-  config.max_heap_size_mb = 128
-  config.isolate_pool_size = 4
-  config.render_timeout_ms = 1000
-end
-```
-
-```ruby
-# Raise on bundle errors in dev/test, fall back to CSR in production
-Rails.application.config.ssr_deno.raise_on_bundle_error = false
-# Emit heap stats notification every 50 renders
-Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
-```
-
-- `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs and returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
-- `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs and returns empty string.
-- `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable.
 
 ### Heap statistics
 
@@ -242,7 +216,37 @@ Build all Vite samples at once:
 bundle exec rake samples:build
 ```
 
-## Rails integration
+## Using with Rails
+
+### Setup
+
+```bash
+bundle add ssr-deno --require 'ssr/deno/rails'
+bin/rails generate ssr:deno:install
+```
+
+### Configuration
+
+In `config/initializers/ssr_deno.rb`:
+
+```ruby
+SSR::Deno.configure do |config|
+  config.max_heap_size_mb = 128
+  config.isolate_pool_size = 4
+  config.render_timeout_ms = 1000
+end
+```
+
+```ruby
+# Raise on bundle errors in dev/test, fall back to CSR in production
+Rails.application.config.ssr_deno.raise_on_bundle_error = false
+# Emit heap stats notification every 50 renders
+Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
+```
+
+- `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs, returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
+- `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs, returns empty string.
+- `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable.
 
 ### Basic
 
