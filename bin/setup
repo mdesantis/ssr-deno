@@ -3,5 +3,6 @@ set -euo pipefail
 IFS=$'\n\t'
 set -vx
 
+git submodule update --init --recursive
 bundle install
-cp .env.example .env
+cp -n .env.example .env

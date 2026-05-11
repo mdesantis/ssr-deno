@@ -303,18 +303,54 @@ See [CSP Nonce](#csp-nonce) for standalone usage and JS-side setup.
 
 ### Prerequisites
 
+**All platforms**
+
 - Ruby 3.3+
-- Rust toolchain
-- LLVM/Clang 21 (for V8 build)
+- Rust toolchain ([rustup](https://rustup.rs))
+- Deno (for sample builds)
 - Bundler
+
+**Linux**
+
+```bash
+# LLVM (any recent version — used by bindgen only; V8 C++ uses Chromium's bundled clang)
+# Replace 23 with whatever version your distro provides (19, 20, 21, 22, 23)
+sudo apt-get install -y lld-23 clang-23 libclang-23-dev ninja-build
+
+# Optional: faster linking
+sudo apt-get install -y mold
+
+# Optional: compiler cache (faster rebuilds)
+sudo apt-get install -y sccache
+```
+
+**macOS**
+
+```bash
+# LLVM via Homebrew (used by bindgen only; V8 C++ uses Chromium's bundled clang)
+brew install llvm ninja deno
+
+# Optional: compiler cache (faster rebuilds)
+brew install sccache
+```
 
 ### Setup
 
 ```bash
 git clone https://github.com/mdesantis/ssr-deno.git
 cd ssr-deno
-bin/setup # Will also run `cp .env.example .env`
+git submodule update --init --recursive
+bin/setup # runs bundle install + copies .env.example → .env
 ```
+
+After `bin/setup`, edit `.env` to match your platform:
+
+- **Linux**: default `LIBCLANG_PATH=/usr/lib/llvm-23/lib` is correct if you installed clang-23.
+- **macOS Apple Silicon**: uncomment `LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib`, comment out the Linux line.
+- **macOS Intel**: uncomment `LIBCLANG_PATH=/usr/local/opt/llvm/lib`, comment out the Linux line.
+- **sccache** (optional): uncomment `SCCACHE=` and `RUSTC_WRAPPER=sccache` for faster subsequent builds.
+
+See `.env.example` for all options and [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md) for V8 build constraints.
 
 ### Compile
 
@@ -322,9 +358,8 @@ bin/setup # Will also run `cp .env.example .env`
 bundle exec rake compile
 ```
 
-`.env` configures V8 build variables (`V8_FROM_SOURCE`, `GN_ARGS`,
-`LIBCLANG_PATH`) and `RB_SYS_CARGO_PROFILE`. See
-[`plans/v8-tls-issue.md`](plans/v8-tls-issue.md) for the V8 build constraints.
+First compile downloads Chromium's clang toolchain and builds V8 from source
+— expect 30–60 minutes. Subsequent builds are incremental (seconds with sccache).
 
 ### Run tests
 
