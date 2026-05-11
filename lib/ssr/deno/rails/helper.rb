@@ -55,12 +55,9 @@ module SSR
       end
 
       def find_bundle!(bundle_name)
-        bundle = SSR::Deno::Bundle.registry[bundle_name]
+        SSR::Deno::Bundle.create_bundles!
 
-        unless bundle.is_a?(SSR::Deno::Bundle)
-          SSR::Deno::Bundle.create_bundles!
-          bundle = SSR::Deno::Bundle.registry[bundle_name]
-        end
+        bundle = SSR::Deno::Bundle.registry[bundle_name]
 
         unless bundle
           instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name

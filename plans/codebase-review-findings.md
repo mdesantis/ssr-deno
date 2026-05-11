@@ -101,10 +101,10 @@ Changed `else yield` to `elsif block_given? yield payload`. No-AS mode now yield
 the payload hash (matching AS behaviour) and is safe without a block.
 `bundle.rb:105` guard `if payload` removed — payload always truthy after fix.
 
-**`lib/ssr/deno/rails/helper.rb:57-73` — thread-unsafe `@registry` mutation**
-`find_bundle!` calls `create_bundles!` which does `@registry.transform_values!`
-while another thread could be reading `@registry`.
-Fix: synchronize registry access or use `Concurrent::Hash`.
+**`lib/ssr/deno/rails/helper.rb:57-73` — thread-unsafe `@registry` mutation** ✅ Fixed
+`find_bundle!` now calls `create_bundles!` first (idempotent, returns immediately
+after first run), then reads. Read always happens after mutation completes — no
+concurrent read-during-transform_values! window.
 
 **`lib/ssr/deno/rails/helper.rb:22` — unknown options silently ignored**
 `ssr_render(data, **options)` passes all kwargs to `bundle.render()`. If the
