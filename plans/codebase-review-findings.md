@@ -176,9 +176,9 @@ raw.split("\r\n\r\n", 2).last
 Assumes simple response format. Brittle.
 Fix: use `Net::HTTP` or a proper HTTP parser.
 
-**`test/ssr/test_deno_errors.rb:21-29` — test name contradicts assertion**
-Name says `bundle_not_found_error` but assertion expects `Errno::ENOENT`.
-Fix: rename test or fix assertion.
+**`test/ssr/test_deno_errors.rb:21-29` — test name contradicts assertion** ✅ Fixed
+Renamed to `test_bundle_initialize_when_path_not_found_raises_errno_enoent`.
+`Bundle.new` raises `Errno::ENOENT` (from `File.mtime`) not `BundleNotFoundError`.
 
 **`test/ssr/test_deno_render_timeout.rb:54-55` — flaky wall-clock timing**
 ```ruby

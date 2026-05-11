@@ -18,7 +18,7 @@ module SSR
       end
     end
 
-    def test_native_load_bundle_when_bundle_not_found_raises_bundle_not_found_error
+    def test_bundle_initialize_when_path_not_found_raises_errno_enoent
       assert_subprocess(<<~RUBY, 'Expected Errno::ENOENT to be raised')
         begin
           SSR::Deno::Bundle.new('/nonexistent/entry-server.js')
