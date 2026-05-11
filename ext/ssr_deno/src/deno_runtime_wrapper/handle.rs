@@ -29,6 +29,9 @@ impl IsolateHandle {
         render_timeout_ms: u64,
         node_builtins: bool,
     ) -> Result<Self, SSRDenoError> {
+        // Capacity 1: heap_stats requests queue behind any in-progress render.
+        // For a pool of N isolates heap_stats() may lag up to N render durations.
+        // Acceptable — heap_stats is a diagnostic tool, not a hot path.
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 

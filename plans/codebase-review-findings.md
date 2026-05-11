@@ -71,10 +71,9 @@ Added comment noting Unix-only constraint.
 Replaced `libc::isatty(fd)` with `File::is_terminal()` (std::io::IsTerminal).
 Removed `libc` dependency from Cargo.toml.
 
-**`handle.rs:32` — channel capacity 1 causes head-of-line blocking**
-`HeapStats` request blocks behind any running render. For pool of N isolates,
-`heap_stats()` can be N render durations behind.
-Fix: separate low-priority channel, or document the limitation.
+**`handle.rs:32` — channel capacity 1 causes head-of-line blocking** ✅ Documented
+Added comment explaining the behaviour and why it's acceptable:
+heap_stats is a diagnostic tool, not a hot path.
 
 ---
 
