@@ -22,7 +22,7 @@ Rails.application.config.ssr_deno.bundles = {
 
 # Enable Node.js built-in module support. Required for SSR bundles that
 # depend on @emotion/server or other packages calling require() for
-# Node.js built-in modules (stream, buffer, events, …).
+# Node.js built-in modules (stream, buffer, events, ...).
 # Adds ~50ms to worker initialization time.
 # Rails.application.config.ssr_deno.node_builtins_enabled = false
 
