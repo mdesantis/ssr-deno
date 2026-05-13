@@ -65,24 +65,29 @@ DevBundle holds opaque `usize`/`magnus::TypedData` handle to a single `IsolateHa
 
 `Permissions::none_without_prompt()` denies file reads. `DevModuleLoader` must read source `.tsx` files from disk. Dev workers use a relaxed permission set restricted to the project root.
 
-**API shape TBD** — exact constructor against `deno_permissions` (whichever version `deno_runtime 0.255.0` pins) needs spike. Plausible shape:
+**API shape verified** (spike against `deno_permissions 0.106.0`, pinned by `deno_runtime 0.255.0`):
 
 ```rust
-// Pseudocode — verify against actual deno_permissions API in step 0.
+// file: /home/maurizio/.cargo/registry/src/.../deno_permissions-0.106.0/lib.rs:3591
+// PermissionsOptions has #[derive(Default)]
+use deno_runtime::deno_permissions::{
+    Permissions, PermissionsOptions, RuntimePermissionDescriptorParser,
+};
+
 let opts = PermissionsOptions {
-    allow_read: Some(vec![project_root.to_path_buf()]),
-    deny_read: None,
-    allow_write: None, allow_net: None, allow_env: None,
-    allow_run: None, allow_sys: None, allow_ffi: None,
+    allow_read: Some(vec![project_root.to_string_lossy().into_owned()]),
     prompt: false,
     ..Default::default()
 };
-let perms = Permissions::from_options(&Sys, &opts)?;
+let perms = Permissions::from_options(
+    &RuntimePermissionDescriptorParser::new(Sys),
+    &opts,
+).map_err(|e| format!("Permissions::from_options: {e}"))?;
 ```
 
-Only the project root is readable. `node_modules/` under the project root is accessible. Everything else is denied.
+Key correction from previous draft: `from_options` takes `&dyn PermissionDescriptorParser` (not a sys), returns `Result<Self, PermissionsFromOptionsError>` (not bare `Self`). `Sys` satisfies all trait bounds via blanket impls. `RuntimePermissionDescriptorParser<Sys>` is used as the parser.
 
-The previous draft used `AllowPermissionSet::allow_one(...)` — that constructor likely doesn't exist; verify in spike before coding.
+Only the project root is readable. `node_modules/` under the project root is accessible. Everything else is denied.
 
 ### Module loading performance
 
@@ -115,7 +120,24 @@ Exact list of ignored extensions matches what `ssr.noExternal: true` in Vite con
 
 ### Source maps for transpiled code
 
-`deno_ast::TranspileOptions` emits an inline source map per file (`inline_source_map: true`) — or a separate sourcemap string via `TranspileResult`. `DevModuleLoader::load` registers the map with the existing `SsrSourceMapper` keyed by the absolute file path (not the bundle path used in prod).
+`deno_ast` emits inline source maps by default (`SourceMapOption::Inline`). The source map is embedded as a `//# sourceMappingURL=data:application/json;base64,...` comment at the end of the emitted JS. Alternatively, `SourceMapOption::Separate` returns the map as a separate string in `EmittedSourceText.source_map`.
+
+Verified API against `deno_ast 0.53.1` (`src/emit.rs:14`, `src/transpiling/mod.rs:278`):
+
+```rust
+let result = parsed.transpile(
+    &TranspileOptions { jsx: Some(...), ..Default::default() },
+    &TranspileModuleOptions::default(),
+    &EmitOptions {
+        source_map: SourceMapOption::Separate,  // or Inline (default)
+        ..Default::default()
+    },
+)?.into_source();
+// result.text -> JS output (+ inline sourcemap comment if Inline)
+// result.source_map -> Some(json_string) when Separate, None when Inline
+```
+
+`DevModuleLoader::load` registers the map with the existing `SsrSourceMapper` keyed by the absolute file path (not the bundle path used in prod).
 
 `SsrSourceMapper::register` currently reads `.js.map` from disk ([source_mapper.rs:29](ext/ssr_deno/crates/ssr_deno_core/src/source_mapper.rs#L29)). Add `register_inline(path, sourcemap_bytes, mtime)` variant that skips the file read. Error stack frames in dev resolve to `.tsx` originals — DX parity with prod source-map flow.
 
@@ -142,26 +164,29 @@ pub fn build_dev_worker(
     resolve_aliases: HashMap<String, PathBuf>,
     project_root: &Path,
 ) -> Result<MainWorker, String> {
-    // 1. Real NpmPackageFolderResolver
-    // 2. Real InNpmPackageChecker
-    // 3. DevModuleLoader with aliases
-    // 4. Permissions::allow_read(project_root)
-    // 5. Same V8 create_params, extensions, etc.
+    // 1. ByonmNpmResolver<Sys> + ByonmInNpmPackageChecker (from deno_resolver::npm)
+    // 2. DevModuleLoader with aliases (delegates npm resolution to (1))
+    // 3. Permissions::from_options with allow_read=[project_root]
+    // 4. Same V8 create_params, extensions, near-heap-limit cb, web-worker guard
 }
 ```
 
 ## Existing resolver infrastructure
 
-Deno already provides everything — no new resolver crate needed:
+Concrete npm-resolver impls already shipped by `deno_resolver 0.78.0` (transitive dep through `deno_runtime 0.255.0`, see Cargo.lock). No walker needed.
 
-| Crate | Status in Cargo.toml |
-|-------|---------------------|
-| `node_resolver = "=0.85.0"` | Already present (line 28) |
-| `NodeResolver` (in `deno_node`) | Already used in `builder.rs:42` |
-| `PackageJsonResolver` | Already used in `builder.rs:41` |
-| `DenoIsBuiltInNodeModuleChecker` | Already used in `builder.rs:45` |
+| Crate / type | Status |
+|--------------|--------|
+| `node_resolver = "=0.85.0"` | Direct dep, [Cargo.toml:28](ext/ssr_deno/Cargo.toml#L28) |
+| `NodeResolver` (in `deno_node`) | Already used in [builder.rs:42](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L42) |
+| `PackageJsonResolver` | Already used in [builder.rs:41](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L41) |
+| `DenoIsBuiltInNodeModuleChecker` | Already used in [builder.rs:45](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L45) |
+| `deno_resolver::npm::ByonmNpmResolver<Sys>` | **New direct dep needed.** Implements `NpmPackageFolderResolver` for host-managed `node_modules/` (`byonm.rs:71`, `NpmPackageFolderResolver` impl at line 327 of `npm/mod.rs` covers all `NpmResolver` variants — Byonm is the right variant for our use case). |
+| `deno_resolver::npm::ByonmInNpmPackageChecker` | **New direct dep needed.** Concrete `InNpmPackageChecker` for BYONM (`byonm.rs:501-503`). |
 
-Production suppresses npm resolution via `NopInNpmPackageChecker` + `NopNpmPackageFolderResolver`. Dev mode swaps in real implementations that read `node_modules/` from disk.
+**BYONM** ("Bring Your Own node_modules") is the right primitive: user runs `npm install` / `pnpm install` / `yarn install` independently. `ByonmNpmResolver` walks the result; symlinked layouts (pnpm's `.pnpm` store) handled by the implementation — no special-casing required.
+
+Production suppresses npm resolution via `NopInNpmPackageChecker` + `NopNpmPackageFolderResolver`. Dev mode swaps in `ByonmInNpmPackageChecker` + `ByonmNpmResolver<Sys>`. `Sys` already satisfies `ByonmNpmResolverSys` via existing `FsRead + FsMetadata` impls in [sys.rs](ext/ssr_deno/src/sys.rs).
 
 ## New Rust module: `dev_module_loader`
 
@@ -173,9 +198,9 @@ Implements `deno_core::ModuleLoader`:
 |----------------|------------|
 | `@/foo/bar` | Intercepted at ModuleLoader level → `app/frontend/foo/bar.ts` (ts → tsx → js → jsx extension fallback) |
 | `./relative` | Relative to parent module, same extension fallback |
-| Bare `foo` / `@scope/foo` | Deno's `NodeResolver` with real `NpmPackageFolderResolver` + `InNpmPackageChecker` walking `node_modules/` |
-| `npm:foo@1.2` URL | Same as bare — strip `npm:` prefix; mostly unused if user code came from Vite/Rolldown |
-| `node:*` | Same path as production `NodeBuiltinOnlyModuleLoader` ([node_builtin_loader.rs](ext/ssr_deno/src/node_builtin_loader.rs)). Compose: dev loader delegates to builtin loader for `node:` scheme |
+| Bare `foo` / `@scope/foo` | `NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>` walks user-managed `node_modules/` |
+| `npm:foo@1.2` URL | Same path as bare — strip `npm:` prefix; mostly unused if user code came from Vite/Rolldown |
+| `node:*` | Served by `deno_node` extension (not loader). `DevModuleLoader::resolve` only needs `ModuleSpecifier::parse(specifier)` for `node:` scheme (same pattern as [`NodeBuiltinOnlyModuleLoader::resolve`](ext/ssr_deno/src/node_builtin_loader.rs#L23-L24)); `load()` never called for `node:*` polyfills |
 | `.css`, `.svg`, `.png`, … | Empty module (no-op) |
 | `import.meta.glob` | Stripped by Ruby codegen before entry hits Rust (regex-replace) |
 
@@ -341,7 +366,8 @@ Ruby: DevBundle.new(entry.tsx)
 | `ext/ssr_deno/src/deno_runtime_wrapper/dev_worker.rs` | **New** — dev worker thread main (mirrors `worker::worker_thread_main`, calls `build_dev_worker`) |
 | `ext/ssr_deno/src/deno_runtime_wrapper/dev_load.rs` | **New** — ES module evaluation of entry → `globalThis.__ssr_bundles[id]` |
 | `ext/ssr_deno/src/lib.rs` | Add `#[magnus::function]` entries: `native_dev_worker_new`, `native_dev_load_entry`, `native_dev_render`, `native_dev_render_chunks` |
-| `ext/ssr_deno/src/real_npm_types.rs` | **New** — `RealNpmPackageFolderResolver` + `RealInNpmPackageChecker` (if Deno exports concrete types, thin wrappers; else light `node_modules/` walker) |
+| `ext/ssr_deno/Cargo.toml` | Add direct dep `deno_resolver = "=0.78.0"` |
+| `ext/ssr_deno/src/real_npm_types.rs` | **New, thin** — re-export `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver::npm::*`, plus a constructor `build_dev_npm_resolver(project_root) -> (ByonmInNpmPackageChecker, MaybeArc<ByonmNpmResolver<Sys>>)`. ~30 LOC, not a walker. |
 | `ext/ssr_deno/crates/ssr_deno_core/src/source_mapper.rs` | Add `register_inline(path, sourcemap_bytes, mtime)` |
 | `lib/ssr/deno.rb` | Expose `DevBundle` class |
 | `lib/ssr/deno/dev_bundle.rb` | **New** — Ruby DevBundle class (holds dev-worker handle; registers in `Bundle.registry` for `find_bundle!` parity) |
@@ -354,16 +380,14 @@ Ruby: DevBundle.new(entry.tsx)
 
 ## Known gaps
 
-### HIGH — Permissions + npm resolver API shape (spike required, blocks impl)
+### ~~HIGH — Permissions + npm resolver API shape (spike required)~~ ✅ SPIKE COMPLETE
 
-Spike one half-day against `deno_runtime 0.255.0` to confirm:
+All four targets verified against the actual crate sources under `~/.cargo/registry/src/.../{deno_permissions-0.106.0, deno_resolver-0.78.0, deno_ast-0.53.1}` and our Cargo.lock:
 
-1. Concrete `Permissions` builder shape for `allow_read=[project_root]` + deny-everything-else. Previous draft's `AllowPermissionSet::allow_one()` not verified — likely `Permissions::from_options(PermissionsOptions { ... })`.
-2. Whether `RealNpmPackageFolderResolver` + `RealInNpmPackageChecker` are exported as concrete types (path: `deno_resolver`/`node_resolver`) or only traits. If traits only → implement lightweight `node_modules/` walker that handles:
-   - Plain `node_modules` (Vite/npm default in this project)
-   - `package.json` `exports` field (modern packages)
-   - Symlinks (pnpm `.pnpm` store) — if pnpm in use, hard-fail until real resolver wired
-3. Concrete `node:*` delegation: how `DevModuleLoader` composes with `NodeBuiltinOnlyModuleLoader` for `node:` scheme.
+1. **`Permissions::from_options`** — verified at `deno_permissions-0.106.0/lib.rs:3591`. Takes `&dyn PermissionDescriptorParser` + `&PermissionsOptions`. Returns `Result<Self, PermissionsFromOptionsError>`. `PermissionsOptions` has `#[derive(Default)]` (lib.rs:3500). `Sys` satisfies `RuntimePermissionDescriptorParserSys` (`WhichSys + FsCanonicalize + Send + Sync`) via existing `sys.rs` impls + `#[sys_traits::auto_impl]` blanket. See [Permissions section](#permissions-for-dev-mode).
+2. **`InNpmPackageChecker` / `NpmPackageFolderResolver`** — concrete impls **DO** exist in `deno_resolver 0.78.0` (already in our Cargo.lock as transitive dep). Use `ByonmNpmResolver<Sys>` (byonm.rs:71) + `ByonmInNpmPackageChecker` (byonm.rs:501) — designed for host-managed `node_modules/` (user runs `npm install` / `pnpm install` independently). `Sys` satisfies `ByonmNpmResolverSys` via existing `FsRead + FsMetadata` impls. Requires adding `deno_resolver = "=0.78.0"` as direct dep. No walker needed; pnpm symlinks handled by Byonm.
+3. **`node:*` resolution** — extension-served, not loader-delegated. `deno_node` extension serves `node:*` polyfills via `Extension::esm` *before* the loader is queried (see `NodeBuiltinOnlyModuleLoader::load` returning error — it's never actually called for `node:*` polyfills). `DevModuleLoader::resolve` follows the same pattern as `NodeBuiltinOnlyModuleLoader::resolve` ([node_builtin_loader.rs:23-24](ext/ssr_deno/src/node_builtin_loader.rs#L23-L24)): when `specifier.starts_with("node:")`, return `ModuleSpecifier::parse(specifier)`. Load step rejects `node:*` (extension already handled it).
+4. **`deno_ast::transpile` API** — verified against `deno_ast-0.53.1/src/{emit.rs:14,55; transpiling/mod.rs:62,278,284}`. `ParsedSource::transpile(self, &TranspileOptions, &TranspileModuleOptions, &EmitOptions) -> Result<TranspileResult, TranspileError>`; `TranspileResult::into_source(self) -> EmittedSourceText { text, source_map: Option<String> }`. `SourceMapOption::Inline` is `#[default]`. `TranspileOptions::default()` already sets `jsx: Some(Default::default())` (transpiling/mod.rs:216), so explicit JSX setup unnecessary. The `transpiling` feature compiled via `deno_runtime/hmr` → `deno_runtime/transpile`.
 
 ### HIGH — Render-chunks parity
 
@@ -387,16 +411,12 @@ Dev mode hardcodes 1 isolate. Document that `SSR::Deno::Config.isolate_pool_size
 
 ## Implementation order
 
-0. **Spike** (half-day, blocks all coding): verify against `deno_runtime 0.255.0`:
-   - `Permissions::from_options` shape for `allow_read=[project_root]` deny-rest
-   - `RealNpmPackageFolderResolver` + `InNpmPackageChecker` concrete types vs traits-only
-   - `node:*` composition path with `DevModuleLoader`
-   - `deno_ast::transpile` API surface for inline sourcemap emit
+0. ~~**Spike**~~ ✅ DONE — all four targets verified, plan updated with confirmed API shapes.
 1. Add `dev-mode` feature flag to `Cargo.toml`
 2. Render-routing FFI: `native_dev_worker_new`, `native_dev_load_entry`, `native_dev_render`, `native_dev_render_chunks` in `lib.rs` (initially stub — return `unimplemented!`) — fixes the dispatch surface before any logic
 3. `dev_handle.rs` + `dev_worker.rs` — single-isolate worker mirroring `IsolateHandle`/`worker_thread_main`, calls `build_dev_worker`
 4. `dev_builder.rs` — `build_dev_worker()` with parity to prod (heap-limit cb, web-worker panic guard, OOM atomic), real resolver(s) + dev permissions
-5. `real_npm_types.rs` — concrete impls or walker (from spike)
+5. `real_npm_types.rs` — re-export + tiny constructor wiring `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` (no walker)
 6. `dev_module_loader.rs` — alias resolution, npm/`node:` delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache
 7. `source_mapper.rs` — `register_inline()` API; wire dev module loads through it
 8. `dev_load.rs` — entry evaluation, `globalThis.__ssr_bundles[id]` registration
