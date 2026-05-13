@@ -6914,6 +6914,7 @@ version = "0.1.0-alpha.6"
 dependencies = [
  "deno_core",
  "deno_error",
+ "deno_resolver",
  "deno_runtime",
  "deno_semver",
  "magnus",
