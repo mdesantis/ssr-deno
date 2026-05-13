@@ -68,7 +68,7 @@ module SSR
       def reload_if_changed: () -> void
     end
 
-    module Helper
+    module RailsHelper
       def ssr_render: (?untyped? data, **untyped options) -> (::String | untyped)
 
       private

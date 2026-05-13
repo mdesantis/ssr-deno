@@ -42,7 +42,7 @@ module SSR
       end
 
       def test_helper_included_in_action_view
-        assert_includes ActionView::Base.ancestors, SSR::Deno::Helper,
+        assert_includes ActionView::Base.ancestors, SSR::Deno::RailsHelper,
                         'Helper should be included in ActionView::Base'
       end
 

@@ -18,7 +18,7 @@ module SSR
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
-          include SSR::Deno::Helper
+          include SSR::Deno::RailsHelper
         end
       end
 

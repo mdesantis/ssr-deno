@@ -2,7 +2,7 @@
 
 module SSR
   module Deno
-    module Helper
+    module RailsHelper
       # Render a named SSR bundle with given data.
       #
       # @param data [Hash, String] Data passed to the JS render function.
