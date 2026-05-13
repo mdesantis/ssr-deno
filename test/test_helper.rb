@@ -40,6 +40,7 @@ require 'ssr/deno'
 # Shared support modules
 # ---------------------------------------------------------------------------
 require 'support/fixture_paths'
+require 'support/temp_bundle_helper'
 
 # ---------------------------------------------------------------------------
 # Test framework

@@ -3,21 +3,17 @@
 require 'test_helper'
 require 'socket'
 require 'timeout'
-require 'tmpdir'
 
 module SSR
   class TestIntegrationPuma < Minitest::Test
     include TestFixturePaths
+    prepend TempBundleHelper
 
     def setup
-      @tmpdir = Dir.mktmpdir('ssr-deno-puma')
+      @tmpdir = temp_dir('ssr-deno-puma')
       @socket_single = File.join(@tmpdir, 'single.sock')
       @socket_clustered = File.join(@tmpdir, 'clustered.sock')
       @socket_multi = File.join(@tmpdir, 'multi.sock')
-    end
-
-    def teardown
-      FileUtils.rm_rf(@tmpdir) if @tmpdir
     end
 
     def test_single_mode

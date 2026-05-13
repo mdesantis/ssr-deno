@@ -1,21 +1,14 @@
 # frozen_string_literal: true
 
-require 'fileutils'
 require 'test_helper'
-require 'tmpdir'
 
 module SSR
   class TestDenoRenderChunks < Minitest::Test
     include TestFixturePaths
+    prepend TempBundleHelper
 
     def setup
       @bundle = SSR::Deno::Bundle.new(CHUNKED_BUNDLE)
-      @tmp_dirs = []
-    end
-
-    def teardown
-      @tmp_dirs&.each { |d| FileUtils.rm_rf(d) }
-      super
     end
 
     def test_render_chunks_with_block_yields_chunks
@@ -100,8 +93,7 @@ module SSR
     private
 
     def with_dual_mode_bundle(count:)
-      dir = Dir.mktmpdir
-      @tmp_dirs << dir
+      dir = temp_dir
       path = File.join(dir, 'dual-mode-bundle.js')
       File.write(path, <<~JS)
         globalThis.render = function() {
@@ -121,8 +113,7 @@ module SSR
     end
 
     def with_reject_bundle
-      dir = Dir.mktmpdir
-      @tmp_dirs << dir
+      dir = temp_dir
       path = File.join(dir, 'reject-chunked.js')
 
       File.write(path, <<~JS)
@@ -137,8 +128,7 @@ module SSR
     end
 
     def with_hang_bundle
-      dir = Dir.mktmpdir
-      @tmp_dirs << dir
+      dir = temp_dir
       path = File.join(dir, 'hang-chunked.js')
 
       File.write(path, <<~JS)

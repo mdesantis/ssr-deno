@@ -4,14 +4,7 @@ require 'test_helper'
 
 module SSR
   class TestDenoMacrotasks < Minitest::Test
-    def setup
-      @tmp_dirs = []
-    end
-
-    def teardown
-      @tmp_dirs&.each { |d| FileUtils.rm_rf(d) }
-      super
-    end
+    prepend TempBundleHelper
 
     ASYNC_TIMEOUT = <<~JS
       var fired = false;
@@ -66,15 +59,7 @@ module SSR
     private
 
     def render_in_subprocess(js_code)
-      with_temp_bundle(js_code).render({})
-    end
-
-    def with_temp_bundle(js_code)
-      dir = Dir.mktmpdir
-      @tmp_dirs << dir
-      path = File.join(dir, 'bundle.js')
-      File.write(path, js_code)
-      SSR::Deno::Bundle.new(path)
+      temp_bundle(js_code).render({})
     end
   end
 end

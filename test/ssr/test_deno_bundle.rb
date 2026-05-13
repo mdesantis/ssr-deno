@@ -5,6 +5,7 @@ require 'test_helper'
 module SSR
   class TestDenoBundle < Minitest::Test
     include TestFixturePaths
+    prepend TempBundleHelper
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
@@ -91,26 +92,24 @@ module SSR
     end
 
     def test_auto_reload_picks_up_new_file_content
-      Dir.mktmpdir do |dir|
-        bundle_path = File.join(dir, 'hmr-bundle.js')
-        File.write(bundle_path, <<~JS)
-          globalThis.render = function() { return '<h1>v1</h1>'; };
-        JS
+      bundle_path = File.join(temp_dir, 'hmr-bundle.js')
+      File.write(bundle_path, <<~JS)
+        globalThis.render = function() { return '<h1>v1</h1>'; };
+      JS
 
-        bundle = SSR::Deno::Bundle.new(bundle_path)
-        bundle.auto_reload = true
+      bundle = SSR::Deno::Bundle.new(bundle_path)
+      bundle.auto_reload = true
 
-        assert_includes bundle.render({}), 'v1'
+      assert_includes bundle.render({}), 'v1'
 
-        File.write(bundle_path, <<~JS)
-          globalThis.render = function() { return '<h1>v2</h1>'; };
-        JS
+      File.write(bundle_path, <<~JS)
+        globalThis.render = function() { return '<h1>v2</h1>'; };
+      JS
 
-        assert_includes bundle.render({}), 'v2'
+      assert_includes bundle.render({}), 'v2'
 
-        # Third render — no file change, exercises "unchanged" branch of reload_if_changed
-        assert_includes bundle.render({}), 'v2'
-      end
+      # Third render — no file change, exercises "unchanged" branch of reload_if_changed
+      assert_includes bundle.render({}), 'v2'
     end
 
     def test_instrument_noop_when_active_support_notifications_not_loaded
