@@ -74,6 +74,10 @@ pub async fn dev_load_entry(
             if (typeof globalThis.__ssr_bundles === 'undefined') {{
                 globalThis.__ssr_bundles = {{}};
             }}
+            if (globalThis.__ssr_bundles[id]) {{
+                throw new Error('Bundle ' + JSON.stringify(id) +
+                    ' already loaded; respawn the worker to reload it.');
+            }}
             if (typeof globalThis.render !== 'function') {{
                 throw new Error('Entry did not assign a function to globalThis.render');
             }}

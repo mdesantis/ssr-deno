@@ -9,8 +9,8 @@ use deno_ast::{
 };
 use deno_core::url::Url;
 use deno_core::{
-    resolve_import, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader,
-    ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
+    resolve_import, FastString, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse,
+    ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
@@ -109,7 +109,7 @@ impl DevModuleLoader {
     }
 
     fn resolve_alias_specifier(&self, specifier: &str) -> Option<PathBuf> {
-        let guard = self.resolve_alias.lock().ok()?;
+        let guard = self.resolve_alias.lock().unwrap_or_else(|e| e.into_inner());
         for (prefix, target) in guard.iter() {
             let Some(rest) = specifier.strip_prefix(prefix.as_str()) else {
                 continue;
@@ -282,7 +282,10 @@ impl ModuleLoader for DevModuleLoader {
         if is_asset_import(&path) {
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
-                ModuleSourceCode::String(EMPTY_JS.to_string().into()),
+                // Zero-copy — `FastString::from_static` stores the `&'static str`
+                // directly (no allocation), and is `const fn` so the empty-module
+                // source is shared across every asset import.
+                ModuleSourceCode::String(FastString::from_static(EMPTY_JS)),
                 module_specifier,
                 None,
             )));

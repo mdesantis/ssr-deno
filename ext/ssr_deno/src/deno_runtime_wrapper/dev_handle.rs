@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 use tokio::sync::oneshot;
@@ -44,8 +45,13 @@ impl DevIsolateHandle {
         let (tx, rx) = tokio::sync::mpsc::channel::<DevWorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
+        // Per-thread index so `top -H`, `gdb info threads`, profilers can
+        // distinguish workers when the user runs multiple DevBundles.
+        static DEV_WORKER_INDEX: AtomicUsize = AtomicUsize::new(0);
+        let idx = DEV_WORKER_INDEX.fetch_add(1, Ordering::Relaxed);
+
         std::thread::Builder::new()
-            .name("deno-dev-worker".into())
+            .name(format!("deno-dev-worker-{idx}"))
             .spawn(move || {
                 super::dev_worker::dev_worker_thread_main(
                     rx,
@@ -55,7 +61,7 @@ impl DevIsolateHandle {
                 )
             })
             .map_err(|e| {
-                SSRDenoError::WorkerInit(format!("Failed to spawn dev isolate thread: {e}"))
+                SSRDenoError::WorkerInit(format!("Failed to spawn dev isolate thread {idx}: {e}"))
             })?;
 
         init_rx
