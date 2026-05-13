@@ -35,8 +35,7 @@ pub fn dev_worker_thread_main(
         };
 
         let oom_triggered = Arc::new(AtomicBool::new(false));
-        let alias_map: crate::dev_module_loader::SharedAliasMap =
-            Arc::new(Mutex::new(Vec::new()));
+        let alias_map: crate::dev_module_loader::SharedAliasMap = Arc::new(Mutex::new(Vec::new()));
 
         let mut worker = match build_dev_worker(
             &main_module_url,

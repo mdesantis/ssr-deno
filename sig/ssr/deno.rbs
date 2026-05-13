@@ -157,6 +157,35 @@ module SSR
     def self.native_get_node_builtins_enabled: () -> bool
     def self.native_get_source_maps_enabled: () -> bool
     def self.native_heap_stats: () -> String
+    def self.native_dev_worker_new: (String project_root, Integer max_heap_size_mb, Integer render_timeout_ms) -> untyped
+    def self.native_dev_load_entry: (untyped handle, String entry_path, String alias_map_json) -> void
+    def self.native_dev_render: (untyped handle, String bundle_id, String json) -> String
+    def self.native_dev_render_chunks: (untyped handle, String bundle_id, String json) -> Enumerator[String, void]
+                                     | (untyped handle, String bundle_id, String json) { (String) -> void } -> void
+
+    class DevWorkerHandle
+    end
+
+    class DevModeBundle
+      @entry_path: String
+      @resolve_alias: Hash[String, String]
+      @project_root: String
+      @name: String | Symbol
+      @handle: DevWorkerHandle
+
+      def initialize: (String entry_path, ?name: (String | Symbol)?, ?resolve_alias: Hash[String, String], ?project_root: String) -> void
+
+      def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
+
+      def render_chunks: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) -> Enumerator[String, void]
+                        | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> nil
+
+      private
+
+      def create_worker: () -> void
+
+      def load_entry: () -> void
+    end
   end
 end
 
@@ -185,6 +214,10 @@ module SSR
       def self.render_timeout_ms: () -> Integer
       def self.node_builtins_enabled?: () -> bool
       def self.source_maps_enabled?: () -> bool
+
+      def self.dev_resolve_alias: () -> Hash[String, String]
+
+      def self.dev_resolve_alias=: (Hash[String, String] | nil) -> void
 
       private
 

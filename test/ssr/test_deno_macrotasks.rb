@@ -33,7 +33,10 @@ module SSR
       channel.port2.postMessage('hello');
       globalThis.render = function() {
         return new Promise(function(resolve) {
-          setTimeout(function() { resolve('received: ' + received); }, 0);
+          (function poll() {
+            if (received) { resolve('received: true'); }
+            else { setTimeout(poll, 0); }
+          })();
         });
       };
     JS

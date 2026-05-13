@@ -26,6 +26,20 @@ module SSR
           @_mutex.synchronize { SSR::Deno.native_set_source_maps_enabled(enabled) }
         end
 
+        # rubocop:disable ThreadSafety/ClassInstanceVariable
+        def dev_resolve_alias
+          @dev_resolve_alias || { '@' => 'app/frontend' }
+        end
+        # rubocop:enable ThreadSafety/ClassInstanceVariable
+
+        def dev_resolve_alias=(map)
+          return unless map
+
+          @_mutex.synchronize do
+            @dev_resolve_alias = map.transform_keys(&:to_s).transform_values(&:to_s).freeze
+          end
+        end
+
         def max_heap_size_mb
           SSR::Deno.native_get_max_heap_size_mb
         end

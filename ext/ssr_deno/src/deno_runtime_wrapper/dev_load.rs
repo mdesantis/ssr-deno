@@ -27,7 +27,7 @@ use super::SSRDenoError;
 ///
 /// **Path canonicalization.** `entry_path` may be relative; the function
 /// canonicalizes it to an absolute URL for module loading but uses the raw
-/// `entry_path` argument as the `__ssr_bundles[]` key. The Ruby `DevBundle`
+/// `entry_path` argument as the `__ssr_bundles[]` key. The Ruby `DevModeBundle`
 /// must pass the *same* string at both load time and render time, otherwise
 /// the render-time lookup misses.
 pub async fn dev_load_entry(

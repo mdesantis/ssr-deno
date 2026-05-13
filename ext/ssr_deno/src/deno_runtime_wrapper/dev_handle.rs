@@ -46,7 +46,7 @@ impl DevIsolateHandle {
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         // Per-thread index so `top -H`, `gdb info threads`, profilers can
-        // distinguish workers when the user runs multiple DevBundles.
+        // distinguish workers when the user runs multiple DevModeBundles.
         static DEV_WORKER_INDEX: AtomicUsize = AtomicUsize::new(0);
         let idx = DEV_WORKER_INDEX.fetch_add(1, Ordering::Relaxed);
 
@@ -67,7 +67,9 @@ impl DevIsolateHandle {
         init_rx
             .recv()
             .map_err(|_| {
-                SSRDenoError::WorkerInit("Dev isolate thread exited unexpectedly during init".into())
+                SSRDenoError::WorkerInit(
+                    "Dev isolate thread exited unexpectedly during init".into(),
+                )
             })?
             .map_err(SSRDenoError::WorkerInit)?;
 
@@ -93,11 +95,9 @@ impl DevIsolateHandle {
             })
             .map_err(|_| SSRDenoError::WorkerDied("Deno dev worker thread has exited".into()))?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| {
-                SSRDenoError::WorkerDied("Deno dev worker thread exited before reply".into())
-            })?
+        reply_rx.blocking_recv().map_err(|_| {
+            SSRDenoError::WorkerDied("Deno dev worker thread exited before reply".into())
+        })?
     }
 
     pub fn start_render_chunked(
@@ -136,10 +136,8 @@ impl DevIsolateHandle {
             })
             .map_err(|_| SSRDenoError::WorkerDied("Deno dev worker thread has exited".into()))?;
 
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| {
-                SSRDenoError::WorkerDied("Deno dev worker thread exited before reply".into())
-            })?
+        reply_rx.blocking_recv().map_err(|_| {
+            SSRDenoError::WorkerDied("Deno dev worker thread exited before reply".into())
+        })?
     }
 }

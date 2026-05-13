@@ -5,9 +5,9 @@ mod require_loader;
 mod sys;
 
 #[cfg(feature = "dev-mode")]
-mod real_npm_types;
-#[cfg(feature = "dev-mode")]
 mod dev_module_loader;
+#[cfg(feature = "dev-mode")]
+mod real_npm_types;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
@@ -407,9 +407,7 @@ fn native_render_chunks(
 /// alive until the last Ruby ref is GCed.
 #[cfg(feature = "dev-mode")]
 #[magnus::wrap(class = "SSR::Deno::DevWorkerHandle", free_immediately, size)]
-pub struct DevWorkerHandle(
-    pub Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
-);
+pub struct DevWorkerHandle(pub Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>);
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_worker_new(

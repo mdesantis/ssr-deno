@@ -16,17 +16,14 @@ use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::{
-    DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions,
-};
+use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
 
 use crate::dev_module_loader::{DevModuleLoader, SharedAliasMap};
 use crate::real_npm_types::build_dev_npm_resolver;
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
 
-type DevNodeServices =
-    NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
+type DevNodeServices = NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
 
 fn build_dev_node_services(
     npm_checker: ByonmInNpmPackageChecker,
@@ -35,9 +32,7 @@ fn build_dev_node_services(
 ) -> Option<DevNodeServices> {
     let loader: NodeRequireLoaderRc = Rc::new(SSRDenoNodeRequireLoader);
 
-    let resolver: MaybeArc<
-        NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>,
-    > = {
+    let resolver: MaybeArc<NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>> = {
         let r = NodeResolver::new(
             npm_checker,
             DenoIsBuiltInNodeModuleChecker,
@@ -73,14 +68,9 @@ pub fn build_dev_worker(
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
 ) -> Result<MainWorker, String> {
-    let (npm_checker, npm_resolver, pkg_json_resolver) =
-        build_dev_npm_resolver(project_root);
+    let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(project_root);
 
-    let node_services = build_dev_node_services(
-        npm_checker,
-        npm_resolver,
-        pkg_json_resolver,
-    );
+    let node_services = build_dev_node_services(npm_checker, npm_resolver, pkg_json_resolver);
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
         let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases);

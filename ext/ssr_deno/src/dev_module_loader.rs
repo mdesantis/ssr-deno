@@ -4,8 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use deno_ast::{
-    EmitOptions, MediaType, ParseParams, SourceMapOption, TranspileModuleOptions,
-    TranspileOptions,
+    EmitOptions, MediaType, ParseParams, SourceMapOption, TranspileModuleOptions, TranspileOptions,
 };
 use deno_core::url::Url;
 use deno_core::{
@@ -15,8 +14,8 @@ use deno_core::{
 use deno_error::JsErrorBox;
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
-    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions,
-    NodeResolution, NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
+    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution,
+    NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
 };
 
 use crate::real_npm_types::build_dev_npm_resolver;
@@ -35,8 +34,12 @@ struct CacheEntry {
 pub struct DevModuleLoader {
     project_root: PathBuf,
     resolve_alias: SharedAliasMap,
-    node_resolver:
-        NodeResolver<ByonmInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver<Sys>, Sys>,
+    node_resolver: NodeResolver<
+        ByonmInNpmPackageChecker,
+        DenoIsBuiltInNodeModuleChecker,
+        ByonmNpmResolver<Sys>,
+        Sys,
+    >,
     cache: Mutex<HashMap<PathBuf, CacheEntry>>,
 }
 
@@ -56,28 +59,33 @@ fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
 fn is_asset_import(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("css" | "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "woff" | "woff2" | "ttf" | "eot")
+        Some(
+            "css"
+                | "svg"
+                | "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "ico"
+                | "woff"
+                | "woff2"
+                | "ttf"
+                | "eot"
+        )
     )
 }
 
 fn needs_transpile(media_type: MediaType) -> bool {
     matches!(
         media_type,
-        MediaType::TypeScript
-            | MediaType::Tsx
-            | MediaType::Jsx
-            | MediaType::Mts
-            | MediaType::Cts
+        MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx | MediaType::Mts | MediaType::Cts
     )
 }
 
 impl DevModuleLoader {
-    pub fn new(
-        project_root: PathBuf,
-        resolve_alias: SharedAliasMap,
-    ) -> Self {
-        let (npm_checker, npm_resolver, pkg_json_resolver) =
-            build_dev_npm_resolver(&project_root);
+    pub fn new(project_root: PathBuf, resolve_alias: SharedAliasMap) -> Self {
+        let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
 
         let node_resolver = NodeResolver::new(
             npm_checker,
@@ -174,8 +182,9 @@ impl DevModuleLoader {
             return Ok((source, None));
         }
 
-        let specifier = Url::from_file_path(path)
-            .map_err(|_| JsErrorBox::generic(format!("Cannot create file URL for {}", path.display())))?;
+        let specifier = Url::from_file_path(path).map_err(|_| {
+            JsErrorBox::generic(format!("Cannot create file URL for {}", path.display()))
+        })?;
 
         let parsed = deno_ast::parse_module(ParseParams {
             specifier,
@@ -225,24 +234,40 @@ impl ModuleLoader for DevModuleLoader {
             specifier
         };
 
-        let referrer_url = ModuleSpecifier::parse(referrer).map_err(JsErrorBox::from_err)?;
+        // Resolve the referrer to a URL. The referrer may be "." for the
+        // main module — fall back to the project root.
+        let referrer_url: ModuleSpecifier = match resolve_import(referrer, "file:///dev/null") {
+            Ok(url) => url,
+            Err(_) => Url::from_file_path(&self.project_root)
+                .map_err(|()| JsErrorBox::generic("cannot resolve referrer"))?,
+        };
 
+        // Alias resolution (e.g. @/ → app/frontend/)
         if let Some(resolved) = self.resolve_alias_specifier(spec) {
-            return Url::from_file_path(&resolved)
-                .map_err(|_| JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display())));
+            return Url::from_file_path(&resolved).map_err(|_| {
+                JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display()))
+            });
         }
 
+        // Relative paths
         if spec.starts_with("./") || spec.starts_with("../") {
             if let Some(resolved) = self.resolve_relative_specifier(spec, &referrer_url) {
-                return Url::from_file_path(&resolved)
-                    .map_err(|_| JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display())));
+                return Url::from_file_path(&resolved).map_err(|_| {
+                    JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display()))
+                });
             }
             return resolve_import(specifier, referrer).map_err(JsErrorBox::from_err);
         }
 
+        // Bare specifier — use NodeResolver (walks node_modules/)
         let resolution = self
             .node_resolver
-            .resolve(spec, &referrer_url, ResolutionMode::Import, NodeResolutionKind::Execution)
+            .resolve(
+                spec,
+                &referrer_url,
+                ResolutionMode::Import,
+                NodeResolutionKind::Execution,
+            )
             .map_err(|e| JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}")))?;
 
         match resolution {
@@ -325,7 +350,7 @@ pub fn set_aliases(shared: &SharedAliasMap, aliases: &HashMap<String, String>) {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
     let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
     *guard = sorted;
 }

@@ -126,7 +126,7 @@ Acceptable but inelegant. Future: `IsolateHandle` thread-safe-handle gives us `t
 
 ## Future — `DevWorkerMsg` channel capacity
 
-[`dev_handle.rs:44`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevBundle serialize at the channel.
+[`dev_handle.rs:44`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevModeBundle serialize at the channel.
 
 For dev: serialization is correct (single isolate). For prod-pool: round-robin distributes load. Dev's 1-isolate constraint makes capacity-1 the natural choice.
 
@@ -142,9 +142,9 @@ A Ruby-side preprocessor that regex-strips `import.meta.glob(...)` and replaces 
 
 ## Future — Concurrent dev renders via thread-local module loaders
 
-Currently 1 isolate per `DevBundle` → 1 render at a time. For a dev workflow with multiple concurrent HTTP requests (eg ParallelHelpers in test, prefork Puma), all renders serialize.
+Currently 1 isolate per `DevModeBundle` → 1 render at a time. For a dev workflow with multiple concurrent HTTP requests (eg ParallelHelpers in test, prefork Puma), all renders serialize.
 
-Long-term: per-`DevBundle` worker count config. Each worker is independent — separate transpile cache, separate V8 module map, separate `Permissions`. Heavier RAM cost but enables concurrency.
+Long-term: per-`DevModeBundle` worker count config. Each worker is independent — separate transpile cache, separate V8 module map, separate `Permissions`. Heavier RAM cost but enables concurrency.
 
 Defer — dev workflows don't usually need this.
 

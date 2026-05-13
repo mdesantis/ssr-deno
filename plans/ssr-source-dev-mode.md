@@ -33,7 +33,7 @@ source .tsx entry → [Ruby: optional codegen of __ssr_imports__.ts (only if imp
                    → render via shared engine functions, dispatched through dev-worker FFI
 ```
 
-The render engine **functions** (`render::render()` / `render_chunked::render_chunked()`, both accept `&mut MainWorker`) are reused. The V8 isolate pool is **not** shared — dev mode uses dedicated single-isolate workers outside the pool. Pool stays `'static` + private behind `OnceLock`; dev workers are owned by Ruby `DevBundle` instances via opaque handle.
+The render engine **functions** (`render::render()` / `render_chunked::render_chunked()`, both accept `&mut MainWorker`) are reused. The V8 isolate pool is **not** shared — dev mode uses dedicated single-isolate workers outside the pool. Pool stays `'static` + private behind `OnceLock`; dev workers are owned by Ruby `DevModeBundle` instances via opaque handle.
 
 **Render dispatch:** `native_render` → `IsolatePool::dispatch_render` → `self.handles[idx]`. Pool handles vec private + static (`POOL: OnceLock<IsolatePool>`). Dev worker unreachable through existing FFI. **Mandatory new FFI surface**:
 - `native_dev_render(handle, bundle_id, args_json)`
@@ -41,16 +41,16 @@ The render engine **functions** (`render::render()` / `render_chunked::render_ch
 - `native_dev_load_entry(handle, entry_path, alias_map_json)`
 - `native_dev_worker_new(project_root, max_heap_size_mb, render_timeout_ms) -> handle`
 
-DevBundle holds a `SSR::Deno::DevWorkerHandle` object (magnus `#[wrap]` TypedData around `Arc<DevIsolateHandle>`). Ruby cannot forge handles — only `native_dev_worker_new` can return one. GC drops the Rust struct when last Ruby ref dies. Bundle lookup itself is JS-side per isolate (`globalThis.__ssr_bundles[id]`) — each dev worker has independent globals.
+DevModeBundle holds a `SSR::Deno::DevWorkerHandle` object (magnus `#[wrap]` TypedData around `Arc<DevIsolateHandle>`). Ruby cannot forge handles — only `native_dev_worker_new` can return one. GC drops the Rust struct when last Ruby ref dies. Bundle lookup itself is JS-side per isolate (`globalThis.__ssr_bundles[id]`) — each dev worker has independent globals.
 
 ### Pool isolation
 
 | Aspect | Production pool | Dev workers |
 |--------|----------------|-------------|
 | **Loader** | `NoopModuleLoader` | `DevModuleLoader` |
-| **Concurrency** | Multi-isolate (default 1, configurable) | Single-isolate per DevBundle |
+| **Concurrency** | Multi-isolate (default 1, configurable) | Single-isolate per DevModeBundle |
 | **Permissions** | `Permissions::none_without_prompt()` | Read-only for project root |
-| **Worker count** | `Config::isolate_pool_size` | 1 per `DevBundle` instance |
+| **Worker count** | `Config::isolate_pool_size` | 1 per `DevModeBundle` instance |
 | **Builder** | `build_worker()` | `build_dev_worker()` — separate function, same `MainWorker::bootstrap_from_options` |
 
 `build_dev_worker()` mirrors `build_worker()` but:
@@ -100,7 +100,7 @@ Mitigations:
 
 **Out of scope (v2):** `v8_code_cache` option (field on `WorkerServiceOptions`, currently `None` in `builder.rs:102`) — requires `Arc<dyn CodeCache>` impl. Defer.
 
-If first-load is too slow (>2-3s), add a **warmup step** in `DevBundle#initialize` that pre-loads the entry before the first render is requested.
+If first-load is too slow (>2-3s), add a **warmup step** in `DevModeBundle#initialize` that pre-loads the entry before the first render is requested.
 
 This is a one-time cost. **HMR** (future, see below) would mitigate this fully — after the initial load, only changed modules are re-transpiled and swapped in the V8 module map. The remaining ~499 cached modules are untouched.
 
@@ -121,11 +121,11 @@ Exact list of ignored extensions matches what `ssr.noExternal: true` in Vite con
 
 ### Auto-reload strategy
 
-`DevModuleLoader` maintains a per-file mtime cache (entry: `{path, mtime, transpiled_js, source_map}`). On every render, `DevBundle#reload_if_changed` calls `native_dev_check_stale(handle)` which walks the cache, stat-s each tracked path, and returns `true` if any current mtime exceeds the cached mtime.
+`DevModuleLoader` maintains a per-file mtime cache (entry: `{path, mtime, transpiled_js, source_map}`). On every render, `DevModeBundle#reload_if_changed` calls `native_dev_check_stale(handle)` which walks the cache, stat-s each tracked path, and returns `true` if any current mtime exceeds the cached mtime.
 
 On stale → **drop + respawn worker** (v1):
 1. Drop the dev worker's `Sender<WorkerMsg>` → channel closes → worker thread exits cleanly → `MainWorker` dropped → V8 isolate torn down
-2. `DevBundle` calls `native_dev_worker_new` to spawn a fresh worker
+2. `DevModeBundle` calls `native_dev_worker_new` to spawn a fresh worker
 3. `native_dev_load_entry` re-evaluates the entry; transpile cache rebuilt from scratch (no carry-over to avoid stale V8 module refs)
 
 Trade-off accepted: full re-init (~1-3s on a 500-module graph) on every change. V8 state guaranteed clean — no leaked modules, no zombie globals. In-flight renders during reload fail with `JsRuntimeWorkerError` — acceptable in Rails dev (serial-ish request stream).
@@ -159,7 +159,7 @@ Without this, V8 stack frames point at transpiled JS — unreadable. Mandatory f
 
 ### Codegen lifecycle
 
-`__ssr_imports__.ts` only needed when the entry uses `import.meta.glob` (Vite-only API, no Deno equivalent). Inspect the side-project entry first — if no `import.meta.glob`, **skip codegen entirely**: `DevBundle.new(entry_path)` is enough.
+`__ssr_imports__.ts` only needed when the entry uses `import.meta.glob` (Vite-only API, no Deno equivalent). Inspect the side-project entry first — if no `import.meta.glob`, **skip codegen entirely**: `DevModeBundle.new(entry_path)` is enough.
 
 If codegen needed:
 - Ruby regex strips `import.meta.glob(...)` calls; replaces with static `import { X } from '...'` lines built from `Dir.glob`
@@ -245,12 +245,12 @@ pub fn dev_load_entry(
 
 Does NOT wrap in IIFE. Uses Deno's ES module evaluation chain instead.
 
-## New Ruby class: `SSR::Deno::DevBundle`
+## New Ruby class: `SSR::Deno::DevModeBundle`
 
 Parallel to `Bundle`, same `#render` / `#render_chunks` interface — registers in `Bundle.registry` for `find_bundle!` polymorphism.
 
 ```ruby
-class DevBundle
+class DevModeBundle
   def initialize(entry_path, resolve_alias: { '@' => 'app/frontend' }, project_root: Dir.pwd)
     @entry_path = entry_path.to_s
     @resolve_alias = resolve_alias
@@ -325,12 +325,12 @@ SSR::Deno.configure do |c|
 end
 ```
 
-Each `d.entry` builds a `DevBundle` and inserts it into the shared `SSR::Deno::Bundle.registry`. `SSR::Deno::Helpers.find_bundle!(:app)` returns the DevBundle transparently — same interface as `Bundle`.
+Each `d.entry` builds a `DevModeBundle` and inserts it into the shared `SSR::Deno::Bundle.registry`. `SSR::Deno::Helpers.find_bundle!(:app)` returns the DevModeBundle transparently — same interface as `Bundle`.
 
 Or skip the DSL and create one directly:
 
 ```ruby
-SSR::Deno::DevBundle.new(
+SSR::Deno::DevModeBundle.new(
   Rails.root.join('app/frontend/entrypoints/ssr-app.tsx'),
   resolve_alias: { '@' => 'app/frontend' }
 )
@@ -339,7 +339,7 @@ SSR::Deno::DevBundle.new(
 ## Dependency graph (dev path only)
 
 ```
-Ruby: DevBundle.new(entry.tsx)
+Ruby: DevModeBundle.new(entry.tsx)
   → Ruby: (optional) strip import.meta.glob, write __ssr_imports__.ts
   → Rust: native_dev_worker_new(project_root, heap_mb, timeout_ms) -> handle
     → spawns dev worker thread, calls build_dev_worker (DevModuleLoader + relaxed perms)
@@ -347,7 +347,7 @@ Ruby: DevBundle.new(entry.tsx)
     → DevModuleLoader resolves graph (@/, ./, bare, node:*, .css→noop)
     → deno_ast transpiles each .ts/.tsx, registers inline sourcemap in SsrSourceMapper
     → ES module evaluated, globalThis.__ssr_bundles[entry_path] = { render }
-  → Ruby: DevBundle stored in Bundle.registry (polymorphic with Bundle)
+  → Ruby: DevModeBundle stored in Bundle.registry (polymorphic with Bundle)
   → Ruby: bundle.render(data)
     → native_dev_render(handle, entry_path, args_json)
     → dev worker dispatches via shared render::render(&mut MainWorker, ...)
@@ -358,7 +358,7 @@ Ruby: DevBundle.new(entry.tsx)
 
 - `render::render()` / `render_chunked::render_chunked()` *engine* functions — untouched, reused with dev `&mut MainWorker`
 - `Bundle` Ruby class — untouched
-- `Config` (Ractor-safe singleton) — dev mode owns its own state via DevBundle
+- `Config` (Ractor-safe singleton) — dev mode owns its own state via DevModeBundle
 - `NoopModuleLoader` / `NodeBuiltinOnlyModuleLoader` — stay for production
 - `NopInNpmPackageChecker` / `NopNpmPackageFolderResolver` — stay for production
 - `build_worker()` — untouched, production only
@@ -383,10 +383,10 @@ Ruby: DevBundle.new(entry.tsx)
 | `ext/ssr_deno/Cargo.toml` | Add direct dep `deno_resolver = "=0.78.0"` |
 | `ext/ssr_deno/src/real_npm_types.rs` | **New, thin** — re-export `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver::npm::*`, plus a constructor `build_dev_npm_resolver(project_root) -> (ByonmInNpmPackageChecker, MaybeArc<ByonmNpmResolver<Sys>>)`. ~30 LOC, not a walker. |
 | `ext/ssr_deno/crates/ssr_deno_core/src/source_mapper.rs` | Add `register_inline(path, sourcemap_bytes, mtime)` |
-| `lib/ssr/deno.rb` | Expose `DevBundle` class |
-| `lib/ssr/deno/dev_bundle.rb` | **New** — Ruby DevBundle class (holds dev-worker handle; registers in `Bundle.registry` for `find_bundle!` parity) |
-| `lib/ssr/deno/dev_bundle/codegen.rb` | **New, optional** — Ruby-side `import.meta.glob` regex stripper. Skip if entry doesn't use it. |
-| `sig/ssr/deno.rbs` | Add `DevBundle` signatures |
+| `lib/ssr/deno.rb` | Expose `DevModeBundle` class |
+| `lib/ssr/deno/dev_mode_bundle.rb` | **New** — Ruby DevModeBundle class (holds dev-worker handle; registers in `Bundle.registry` for `find_bundle!` parity) |
+| `lib/ssr/deno/dev_mode_bundle/codegen.rb` | **New, optional** — Ruby-side `import.meta.glob` regex stripper. Skip if entry doesn't use it. |
+| `sig/ssr/deno.rbs` | Add `DevModeBundle` signatures |
 
 ## Compile time risk
 
@@ -409,11 +409,11 @@ Spike against `~/.cargo/registry/src/.../{deno_permissions-0.106.0, deno_resolve
 
 ### LOW — Open documentation items
 
-These are decided behaviors that need a one-line callout in user-facing docs (README / `lib/ssr/deno/dev_bundle.rb` docstring):
+These are decided behaviors that need a one-line callout in user-facing docs (README / `lib/ssr/deno/dev_mode_bundle.rb` docstring):
 
-- `SSR::Deno::Config.isolate_pool_size` has no effect on `DevBundle` (dev hardcodes 1 isolate per bundle).
-- `SSR::Deno::Config.node_builtins` has no effect on `DevBundle` (always-on; required for `node_modules` resolution).
-- DevBundle registers itself in `Bundle.registry` (polymorphic with `Bundle` — `Helpers.find_bundle!` works transparently).
+- `SSR::Deno::Config.isolate_pool_size` has no effect on `DevModeBundle` (dev hardcodes 1 isolate per bundle).
+- `SSR::Deno::Config.node_builtins` has no effect on `DevModeBundle` (always-on; required for `node_modules` resolution).
+- DevModeBundle registers itself in `Bundle.registry` (polymorphic with `Bundle` — `Helpers.find_bundle!` works transparently).
 - Auto-reload is full worker respawn — in-flight renders during reload fail with `JsRuntimeWorkerError`; acceptable in dev.
 - CJS packages supported via auto-injected `globalThis.require`. ESM is preferred path.
 
@@ -433,7 +433,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
    **9a — Resolver dedup.** `build_dev_npm_resolver` returns trio `(ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, PackageJsonResolverRc<Sys>)`. Both `DevModuleLoader::new` and `build_dev_node_services` consume from it. `build_dev_node_services` switched from `Nop*` to real `Byonm*` type params — fixes `require('react')` vs `import 'react'` asymmetry. Cascaded to `MainWorker::bootstrap_from_options::<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>`. Removed `NoopModuleLoader` placeholder.
 
    **9b — FFI wiring.** `native_dev_worker_new` calls `DevIsolateHandle::spawn`, wraps in `Arc → DevWorkerHandle`. `native_dev_load_entry` parses alias JSON and calls `block_on_load_entry`. `native_dev_render` uses GVL-release pattern (`rb_thread_call_without_gvl` + `dev_render_worker` callback). `native_dev_render_chunks` yields chunks from `start_render_chunked` (blockless raises ArgError). Both default and dev-mode compile clean.
-10. Ruby `DevBundle` (registers in `Bundle.registry`); optional `codegen.rb` only if entry uses `import.meta.glob`
+10. ~~Ruby `DevModeBundle` (registers in `Bundle.registry`)~~ ✅ DONE — `lib/ssr/deno/dev_mode_bundle.rb` with `#render` / `#render_chunks` parity. Default `resolve_alias` from `Config.dev_resolve_alias`. Registers in `Bundle.registry` for `find_bundle!` compatibility. `import.meta.glob` codegen deferred to future work. RBS signatures added. 6 tests covering render, render_chunks (block + Enumerator), registry registration, alias defaults, alias override. All pass. Full `bundle exec rake` passes.
 11. Auto-reload: `native_dev_check_stale` queries module-cache; on `true` rebuild via fresh `dev_load_entry`
 12. Test with side-project: remove Rolldown from Procfile, verify `rails s` boots SSR clean; verify source-map stack frames resolve to `.tsx` files
 13. Update `plans/` index, ONBOARDING/README dev-mode section

@@ -147,14 +147,17 @@ impl SsrSourceMapper {
             .lookup_token(sm_line, sm_col)
             .and_then(|t| t.get_source())
             .unwrap_or("<unknown>");
-        let src_line = entry.map.lookup_token(sm_line, sm_col).map_or(v8_line, |t| {
-            let l = t.get_src_line();
-            if l > 0 {
-                l + 1
-            } else {
-                v8_line
-            }
-        });
+        let src_line = entry
+            .map
+            .lookup_token(sm_line, sm_col)
+            .map_or(v8_line, |t| {
+                let l = t.get_src_line();
+                if l > 0 {
+                    l + 1
+                } else {
+                    v8_line
+                }
+            });
         let src_col = entry.map.lookup_token(sm_line, sm_col).map_or(v8_col, |t| {
             let c = t.get_src_col();
             if c > 0 {
