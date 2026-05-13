@@ -420,8 +420,8 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 ## Implementation order
 
 0. ~~**Spike**~~ ✅ DONE — all four targets verified, plan updated with confirmed API shapes.
-1. Add `dev-mode` feature flag to `Cargo.toml`
-2. Render-routing FFI: `native_dev_worker_new`, `native_dev_load_entry`, `native_dev_render`, `native_dev_render_chunks` in `lib.rs` (initially stub — return `unimplemented!`) — fixes the dispatch surface before any logic
+1. ~~Add `dev-mode` feature flag to `Cargo.toml`~~ ✅ DONE — compiles clean
+2. ~~Render-routing FFI stubs in `lib.rs`~~ ✅ DONE — 4 stub functions, cfg-gated, compiles clean
 3. `dev_handle.rs` + `dev_worker.rs` — single-isolate worker mirroring `IsolateHandle`/`worker_thread_main`, calls `build_dev_worker`
 4. `dev_builder.rs` — `build_dev_worker()` with parity to prod (heap-limit cb, web-worker panic guard, OOM atomic), real resolver(s) + dev permissions
 5. `real_npm_types.rs` — re-export + tiny constructor wiring `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` (no walker)

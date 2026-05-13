@@ -376,6 +376,117 @@ fn native_render_chunks(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Dev-mode FFI stubs — fix dispatch surface before any logic
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "dev-mode")]
+fn native_dev_worker_new(
+    ruby: &Ruby,
+    project_root: String,
+    max_heap_size_mb: usize,
+    render_timeout_ms: u64,
+) -> Result<usize, Error> {
+    let _ = (project_root, max_heap_size_mb, render_timeout_ms);
+    Err(js_runtime_initialization_error(
+        ruby,
+        "dev-mode not yet implemented",
+    ))
+}
+
+#[cfg(not(feature = "dev-mode"))]
+fn native_dev_worker_new(
+    ruby: &Ruby,
+    _project_root: String,
+    _max_heap_size_mb: usize,
+    _render_timeout_ms: u64,
+) -> Result<usize, Error> {
+    Err(js_runtime_initialization_error(
+        ruby,
+        "dev-mode feature not enabled (compile with --features dev-mode)",
+    ))
+}
+
+#[cfg(feature = "dev-mode")]
+fn native_dev_load_entry(
+    ruby: &Ruby,
+    _handle: usize,
+    _entry_path: String,
+    _alias_map_json: String,
+) -> Result<(), Error> {
+    Err(js_runtime_initialization_error(
+        ruby,
+        "dev-mode not yet implemented",
+    ))
+}
+
+#[cfg(not(feature = "dev-mode"))]
+fn native_dev_load_entry(
+    ruby: &Ruby,
+    _handle: usize,
+    _entry_path: String,
+    _alias_map_json: String,
+) -> Result<(), Error> {
+    Err(js_runtime_initialization_error(
+        ruby,
+        "dev-mode feature not enabled (compile with --features dev-mode)",
+    ))
+}
+
+#[cfg(feature = "dev-mode")]
+fn native_dev_render(
+    ruby: &Ruby,
+    _handle: usize,
+    _bundle_id: String,
+    _args_json: String,
+) -> Result<String, Error> {
+    Err(render_error(
+        ruby,
+        "dev-mode not yet implemented",
+    ))
+}
+
+#[cfg(not(feature = "dev-mode"))]
+fn native_dev_render(
+    ruby: &Ruby,
+    _handle: usize,
+    _bundle_id: String,
+    _args_json: String,
+) -> Result<String, Error> {
+    Err(render_error(
+        ruby,
+        "dev-mode feature not enabled (compile with --features dev-mode)",
+    ))
+}
+
+#[cfg(feature = "dev-mode")]
+fn native_dev_render_chunks(
+    ruby: &Ruby,
+    _rb_self: Value,
+    _handle: usize,
+    _bundle_id: String,
+    _args_json: String,
+) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+    Err::<Yield<std::iter::Empty<String>>, Error>(render_error(
+        ruby,
+        "dev-mode not yet implemented",
+    ))
+}
+
+#[cfg(not(feature = "dev-mode"))]
+fn native_dev_render_chunks(
+    ruby: &Ruby,
+    _rb_self: Value,
+    _handle: usize,
+    _bundle_id: String,
+    _args_json: String,
+) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+    Err::<Yield<std::iter::Empty<String>>, Error>(render_error(
+        ruby,
+        "dev-mode feature not enabled (compile with --features dev-mode)",
+    ))
+}
+
 /// The magnus init function — called when Ruby loads the native extension.
 /// Registers the `SSR::Deno` module, its exception hierarchy, and its methods.
 #[magnus::init]
@@ -449,5 +560,15 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     deno_module
         .define_singleton_method("native_render_chunks", method!(native_render_chunks, 2))?;
+    deno_module
+        .define_singleton_method("native_dev_worker_new", function!(native_dev_worker_new, 3))?;
+    deno_module
+        .define_singleton_method("native_dev_load_entry", function!(native_dev_load_entry, 3))?;
+    deno_module
+        .define_singleton_method("native_dev_render", function!(native_dev_render, 3))?;
+    deno_module.define_singleton_method(
+        "native_dev_render_chunks",
+        method!(native_dev_render_chunks, 3),
+    )?;
     Ok(())
 }
