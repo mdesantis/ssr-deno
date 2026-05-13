@@ -10,8 +10,12 @@ module SSR
     # Registers itself in {Bundle.registry} so {RailsHelper#find_bundle!}
     # resolves it transparently (same `#render` / `#render_chunks` interface).
     #
-    # @note Dev-mode only. Requires the native extension compiled with
-    #   `--features dev-mode`. Raises NoMethodError at runtime otherwise.
+    # @note Compiled into the gem by default (the `dev-mode` Cargo feature is
+    #   on by default). Build with `--no-default-features` to strip dev-mode
+    #   from a production gem; calling +DevModeBundle.new+ on such a build
+    #   raises +NoMethodError+ on the missing native methods.
+    # @note No automatic source-file reload yet (planned, dev-mode step 11).
+    #   Edits to source files require a +rails s+ restart until then.
     class DevModeBundle
       # @param entry_path [String] Path to the source entry file (.tsx/.ts).
       # @param name [Symbol, String] Registry name for +find_bundle!+ lookup.
@@ -20,13 +24,15 @@ module SSR
       #   `{ '@' => 'app/frontend' }`.  Keys and values are converted to
       #   strings.  Defaults to {Config.dev_resolve_alias}.
       # @param project_root [String] Project root directory for permission
-      #   boundary and `node_modules/` resolution.  Defaults to +Dir.pwd+.
+      #   boundary and `node_modules/` resolution.  Expanded to an absolute
+      #   path before being handed to the native worker (relative paths fail
+      #   +Url::from_file_path+ on the Rust side).  Defaults to +Dir.pwd+.
       def initialize(entry_path, name: nil, resolve_alias: nil,
                      project_root: Dir.pwd)
         @entry_path = entry_path.to_s
         @resolve_alias = (resolve_alias || SSR::Deno::Config.dev_resolve_alias)
                          .transform_keys(&:to_s).transform_values(&:to_s)
-        @project_root = project_root.to_s
+        @project_root = File.expand_path(project_root.to_s)
         @name = name || @entry_path
 
         create_worker

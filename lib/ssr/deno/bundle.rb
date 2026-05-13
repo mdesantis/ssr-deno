@@ -19,6 +19,11 @@ module SSR
             next if @_bundles_created
 
             @registry.transform_values! do |cfg|
+              # Skip entries that are already instantiated bundles — e.g. a
+              # SSR::Deno::DevModeBundle registered itself directly. Only
+              # transform raw config hashes inserted by Config.bundle.
+              next cfg unless cfg.is_a?(Hash)
+
               bundle = new(cfg[:path])
               bundle.auto_reload = true if cfg[:auto_reload]
 

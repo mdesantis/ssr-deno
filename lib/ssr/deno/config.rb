@@ -5,6 +5,8 @@ module SSR
     module Config
       @_mutex = Mutex.new
 
+      DEFAULT_DEV_RESOLVE_ALIAS = { '@' => 'app/frontend' }.freeze
+
       class << self
         def max_heap_size_mb=(mega_bytes)
           @_mutex.synchronize { SSR::Deno.native_set_max_heap_size_mb(mega_bytes.to_i) }
@@ -28,15 +30,15 @@ module SSR
 
         # rubocop:disable ThreadSafety/ClassInstanceVariable
         def dev_resolve_alias
-          @dev_resolve_alias || { '@' => 'app/frontend' }
+          @dev_resolve_alias || DEFAULT_DEV_RESOLVE_ALIAS
         end
         # rubocop:enable ThreadSafety/ClassInstanceVariable
 
+        # Setting to +nil+ restores the default alias map.
         def dev_resolve_alias=(map)
-          return unless map
-
           @_mutex.synchronize do
-            @dev_resolve_alias = map.transform_keys(&:to_s).transform_values(&:to_s).freeze
+            @dev_resolve_alias =
+              map && map.transform_keys(&:to_s).transform_values(&:to_s).freeze
           end
         end
 

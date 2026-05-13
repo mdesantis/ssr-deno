@@ -14,6 +14,7 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 - **`SSR` always fully uppercased.** Never `Ssr` — including class names like `TestIntegrationReactSSR`.
 - **"stream/streaming" banned from internal code.** Internal identifiers use domain-accurate names: `render_chunks`, `__ssr_deno_result`, `__SSR_DENO_SENTINEL`, `ssr_deno_ops`. Allowed only in: user-facing docs, `node:stream` module names, sample dir names, archived plans, Rails `response.stream`.
 - **Diagrams must be Mermaid.** Use ` ```mermaid ` blocks. No hand-crafted Unicode box art. File trees (`├──`) are not diagrams — plain text OK.
+- **File deletion in Ruby: use `FileUtils.rm_f` (files) or `FileUtils.rm_rf` (dirs).** Never `File.delete` with existence check (`File.delete(path) if File.exist?(path)`). `rm_f`/`rm_rf` is atomic and handles all edge cases.
 - **No numbered prose in docs/comments.** Never "there are 3 ways…" or "step 1, step 2" — counts go stale. Ordered lists (`1. 2. 3.`) are fine. Plans exempt.
 - **Doc audit before every change.** Identify which docs/comments/RBS/plans could go stale. Update in lockstep — not after.
 - **Plan step = complete only when all dependencies are ✅.** Use ◐ (partial) if deps open. Use ❌ for rejected steps. Move plan to `plans/archived/` only when fully done.

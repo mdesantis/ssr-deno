@@ -298,19 +298,20 @@ end
 
 ## Cargo changes
 
-Add optional `dev-mode` feature flag. This gates the Rust code (module loader, builder), **not** any dependency — `deno_ast` is already compiled via `deno_runtime/hmr`.
+Add a `dev-mode` feature flag, **enabled by default**, gating the dev-mode Rust code (module loader, builder, FFI). Production gem consumers who want a slimmer artifact build with `--no-default-features`.
 
 ```toml
 [features]
-default = []
-dev-mode = []  # gates DevModuleLoader + dev_builder Rust code
+default = ["dev-mode"]
+dev-mode = []  # gates DevModuleLoader + dev_builder + dev FFI
 
 [dependencies]
-# deno_ast already available via deno_runtime/hmr → transpile → deno_ast
-deno_runtime = { version = "0.255.0", features = ["hmr"] }
+deno_resolver  = "=0.78.0"
+deno_ast       = { version = "=0.53.1", features = ["transpiling"] }
+deno_runtime   = { version = "0.255.0", features = ["hmr"] }
 ```
 
-**No new crate added.** The `node_resolver` crate is already at `=0.85.0`. The `NpmPackageFolderResolver` and `InNpmPackageChecker` traits are already in the dependency tree — dev mode provides real implementations instead of NOPs.
+`deno_resolver` is a new direct dep (was transitive). `deno_ast` is pinned with the `transpiling` feature explicitly even though `deno_runtime/hmr` would pull it in transitively. The current default-on choice is for convenience: every gem install gets dev-mode without flag flipping. Revisit if binary size becomes an issue (revert to `default = []` + document the flag).
 
 ## New Ruby API
 
