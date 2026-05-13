@@ -1,0 +1,341 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+use deno_ast::{
+    EmitOptions, MediaType, ParseParams, SourceMapOption, TranspileModuleOptions,
+    TranspileOptions,
+};
+use deno_core::url::Url;
+use deno_core::{
+    resolve_import, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader,
+    ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
+};
+use deno_error::JsErrorBox;
+use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver, ByonmNpmResolverCreateOptions};
+use deno_runtime::deno_fs::sync::MaybeArc;
+use node_resolver::cache::NodeResolutionSys;
+use node_resolver::{
+    DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution, NodeResolutionKind,
+    NodeResolver, NodeResolverOptions, PackageJsonResolver, ResolutionMode,
+};
+
+use crate::sys::Sys;
+
+static EMPTY_JS: &str = "export {};\n";
+
+struct CacheEntry {
+    mtime: SystemTime,
+    code: String,
+    source_map: Option<String>,
+}
+
+// Step 9 wires the loader into `build_dev_worker`; until then, every item
+// here is reported dead. One module-level allow keeps commits warning-free.
+#[allow(dead_code)]
+pub struct DevModuleLoader {
+    project_root: PathBuf,
+    // Sorted by descending prefix length so longest-prefix wins (Vite/webpack
+    // semantics). HashMap iteration order is randomized and would make match
+    // selection run-to-run unstable when two prefixes overlap.
+    resolve_alias: Vec<(String, String)>,
+    node_resolver:
+        NodeResolver<ByonmInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver<Sys>, Sys>,
+    cache: Mutex<HashMap<PathBuf, CacheEntry>>,
+}
+
+fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
+    if base.exists() {
+        return Some(base.to_path_buf());
+    }
+    // `Path::with_extension` prepends its own `.` separator. The extensions
+    // here MUST NOT include a leading dot, otherwise the result is a
+    // double-dot path that never exists on disk (`foo..ts`).
+    for ext in &["ts", "tsx", "js", "jsx"] {
+        let candidate = base.with_extension(ext);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn is_asset_import(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("css" | "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "woff" | "woff2" | "ttf" | "eot")
+    )
+}
+
+fn needs_transpile(media_type: MediaType) -> bool {
+    // `.d.ts` / `.d.mts` / `.d.cts` declaration files are type-only and
+    // shouldn't appear in a runtime import graph. If they do, transpilation
+    // produces an empty module — harmless but wasted work. Exclude them.
+    matches!(
+        media_type,
+        MediaType::TypeScript
+            | MediaType::Tsx
+            | MediaType::Jsx
+            | MediaType::Mts
+            | MediaType::Cts
+    )
+}
+
+#[allow(dead_code)]
+impl DevModuleLoader {
+    pub fn new(
+        project_root: PathBuf,
+        resolve_alias: HashMap<String, String>,
+    ) -> Self {
+        let mut resolve_alias: Vec<(String, String)> = resolve_alias.into_iter().collect();
+        resolve_alias.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
+        let root_node_modules_dir = Some(project_root.join("node_modules"));
+        let pkg_json_resolver: MaybeArc<PackageJsonResolver<Sys>> =
+            MaybeArc::new(PackageJsonResolver::new(Sys, None));
+        let npm_resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+            root_node_modules_dir,
+            search_stop_dir: Some(project_root.clone()),
+            sys: NodeResolutionSys::new(Sys, None),
+            pkg_json_resolver: pkg_json_resolver.clone(),
+        });
+
+        let node_resolver = NodeResolver::new(
+            ByonmInNpmPackageChecker,
+            DenoIsBuiltInNodeModuleChecker,
+            npm_resolver,
+            pkg_json_resolver,
+            NodeResolutionSys::new(Sys, None),
+            NodeResolverOptions {
+                conditions: NodeConditionOptions {
+                    conditions: vec![
+                        std::borrow::Cow::Borrowed("node"),
+                        std::borrow::Cow::Borrowed("import"),
+                    ],
+                    import_conditions_override: None,
+                    require_conditions_override: None,
+                },
+                is_browser_platform: false,
+                bundle_mode: true,
+                typescript_version: None,
+            },
+        );
+
+        Self {
+            project_root,
+            resolve_alias,
+            node_resolver,
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn resolve_alias_specifier(&self, specifier: &str) -> Option<PathBuf> {
+        for (prefix, target) in &self.resolve_alias {
+            let Some(rest) = specifier.strip_prefix(prefix) else {
+                continue;
+            };
+            // Require a `/` boundary (or end-of-string) so that `prefix = "@"`
+            // matches `@/foo/bar` but not `@mui/material`. Without the boundary
+            // every scoped npm import would incur a spurious filesystem walk
+            // under `project_root/target/`.
+            if !rest.is_empty() && !rest.starts_with('/') {
+                continue;
+            }
+            let rest = rest.strip_prefix('/').unwrap_or(rest);
+            let candidate = self.project_root.join(target).join(rest);
+            return resolve_with_ext_fallback(&candidate);
+        }
+        None
+    }
+
+    fn resolve_relative_specifier(
+        &self,
+        specifier: &str,
+        referrer: &ModuleSpecifier,
+    ) -> Option<PathBuf> {
+        let referrer_path = referrer.to_file_path().ok()?;
+        let parent = referrer_path.parent()?;
+        let candidate = parent.join(specifier);
+        resolve_with_ext_fallback(&candidate)
+    }
+
+    fn check_cache(&self, path: &Path) -> Option<(String, Option<String>)> {
+        let current_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
+        // Recover from poisoned mutex instead of degrading silently to a cache
+        // miss. Matches the pattern used by `SsrSourceMapper` and `CONFIG`
+        // locks in the prod path.
+        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = cache.get(path)?;
+        if entry.mtime == current_mtime {
+            Some((entry.code.clone(), entry.source_map.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn update_cache(&self, path: &Path, code: String, source_map: Option<String>) {
+        let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
+            return;
+        };
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(
+            path.to_path_buf(),
+            CacheEntry {
+                mtime,
+                code,
+                source_map,
+            },
+        );
+    }
+
+    fn load_and_transpile_source(
+        &self,
+        path: &Path,
+    ) -> Result<(String, Option<String>), JsErrorBox> {
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| JsErrorBox::generic(format!("Failed to read {}: {e}", path.display())))?;
+
+        let media_type = MediaType::from_path(path);
+
+        if !needs_transpile(media_type) {
+            return Ok((source, None));
+        }
+
+        let specifier = Url::from_file_path(path)
+            .map_err(|_| JsErrorBox::generic(format!("Cannot create file URL for {}", path.display())))?;
+
+        let parsed = deno_ast::parse_module(ParseParams {
+            specifier,
+            text: source.into(),
+            media_type,
+            capture_tokens: false,
+            scope_analysis: false,
+            maybe_syntax: None,
+        })
+        .map_err(|e| JsErrorBox::generic(format!("Parse error in {}: {e}", path.display())))?;
+
+        let transpiled = parsed
+            .transpile(
+                &TranspileOptions {
+                    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+                    ..Default::default()
+                },
+                &TranspileModuleOptions::default(),
+                &EmitOptions {
+                    source_map: SourceMapOption::Separate,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| {
+                JsErrorBox::generic(format!("Transpile error in {}: {e}", path.display()))
+            })?
+            .into_source();
+
+        Ok((transpiled.text, transpiled.source_map))
+    }
+}
+
+impl ModuleLoader for DevModuleLoader {
+    fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _kind: ResolutionKind,
+    ) -> Result<ModuleSpecifier, JsErrorBox> {
+        if specifier.starts_with("node:") {
+            return ModuleSpecifier::parse(specifier).map_err(JsErrorBox::from_err);
+        }
+
+        let spec = if let Some(rest) = specifier.strip_prefix("npm:") {
+            rest
+        } else {
+            specifier
+        };
+
+        let referrer_url = ModuleSpecifier::parse(referrer).map_err(JsErrorBox::from_err)?;
+
+        if let Some(resolved) = self.resolve_alias_specifier(spec) {
+            return Url::from_file_path(&resolved)
+                .map_err(|_| JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display())));
+        }
+
+        if spec.starts_with("./") || spec.starts_with("../") {
+            if let Some(resolved) = self.resolve_relative_specifier(spec, &referrer_url) {
+                return Url::from_file_path(&resolved)
+                    .map_err(|_| JsErrorBox::generic(format!("Cannot create URL for {}", resolved.display())));
+            }
+            return resolve_import(specifier, referrer).map_err(JsErrorBox::from_err);
+        }
+
+        let resolution = self
+            .node_resolver
+            .resolve(spec, &referrer_url, ResolutionMode::Import, NodeResolutionKind::Execution)
+            .map_err(|e| JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}")))?;
+
+        match resolution {
+            NodeResolution::Module(url_or_path) => {
+                let url = url_or_path.into_url().map_err(|e| {
+                    JsErrorBox::generic(format!("Failed to convert resolution to URL: {e}"))
+                })?;
+                Ok(url)
+            }
+            NodeResolution::BuiltIn(name) => {
+                ModuleSpecifier::parse(&format!("node:{name}")).map_err(JsErrorBox::from_err)
+            }
+        }
+    }
+
+    fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleLoadReferrer>,
+        _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+        if module_specifier.scheme() == "node" {
+            return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+                "node: modules handled by extension, not by DevModuleLoader",
+            )));
+        }
+
+        let path = match module_specifier.to_file_path() {
+            Ok(p) => p,
+            Err(_) => {
+                return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(format!(
+                    "DevModuleLoader cannot load non-file URL: {module_specifier}"
+                ))));
+            }
+        };
+
+        if is_asset_import(&path) {
+            return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+                ModuleType::JavaScript,
+                ModuleSourceCode::String(EMPTY_JS.to_string().into()),
+                module_specifier,
+                None,
+            )));
+        }
+
+        if let Some((code, _source_map)) = self.check_cache(&path) {
+            return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+                ModuleType::JavaScript,
+                ModuleSourceCode::String(code.into()),
+                module_specifier,
+                None,
+            )));
+        }
+
+        match self.load_and_transpile_source(&path) {
+            Ok((code, source_map)) => {
+                self.update_cache(&path, code.clone(), source_map);
+                ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+                    ModuleType::JavaScript,
+                    ModuleSourceCode::String(code.into()),
+                    module_specifier,
+                    None,
+                )))
+            }
+            Err(e) => ModuleLoadResponse::Sync(Err(e)),
+        }
+    }
+}

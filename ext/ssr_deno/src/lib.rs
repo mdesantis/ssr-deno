@@ -5,6 +5,8 @@ mod require_loader;
 mod sys;
 
 #[cfg(feature = "dev-mode")]
+mod dev_module_loader;
+#[cfg(feature = "dev-mode")]
 mod real_npm_types;
 
 use std::path::Path;
