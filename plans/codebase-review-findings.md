@@ -186,7 +186,7 @@ before reading source files.
 
 ### LOW
 
-- `test/ssr/test_perf.rb` — single method bundles all benchmarks, poor failure isolation
+- `test/ssr/test_perf.rb` — single method bundles all benchmarks, poor failure isolation ✅ Fixed
 - `test/ssr/test_deno_concurrency.rb:23` — uses `instance_variable_get` instead of public accessor ✅ Fixed
 - `test/ssr/test_deno_render.rb:42` — inconsistent `.to_json` vs `JSON.generate` ✅ Fixed
 - `test/support/subprocess_helper.rb` — doesn't capture subprocess stderr on failure ✅ Fixed
