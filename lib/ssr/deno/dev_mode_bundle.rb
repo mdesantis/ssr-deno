@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require_relative 'instrumenter'
 
 module SSR
   module Deno
@@ -8,7 +9,8 @@ module SSR
     # Deno V8 isolate via the DevModuleLoader. No pre-build step required.
     #
     # Registers itself in {Bundle.registry} so {RailsHelper#find_bundle!}
-    # resolves it transparently (same `#render` / `#render_chunks` interface).
+    # resolves it transparently (same `#render` / `#render_chunks` interface
+    # as {Bundle}).
     #
     # @note Compiled into the gem by default (the `dev-mode` Cargo feature is
     #   on by default). Build with `--no-default-features` to strip dev-mode
@@ -17,9 +19,9 @@ module SSR
     # @note No automatic source-file reload yet (planned, dev-mode step 11).
     #   Edits to source files require a +rails s+ restart until then.
     class DevModeBundle
-      # @param entry_path [String] Path to the source entry file (.tsx/.ts).
+      # @param bundle_path [String] Path to the source entry file (.tsx/.ts).
       # @param name [Symbol, String] Registry name for +find_bundle!+ lookup.
-      #   Defaults to +entry_path+.
+      #   Defaults to +bundle_path+.
       # @param resolve_alias [Hash{String => String}] Path alias map, e.g.
       #   `{ '@' => 'app/frontend' }`.  Keys and values are converted to
       #   strings.  Defaults to {Config.dev_resolve_alias}.
@@ -27,18 +29,29 @@ module SSR
       #   boundary and `node_modules/` resolution.  Expanded to an absolute
       #   path before being handed to the native worker (relative paths fail
       #   +Url::from_file_path+ on the Rust side).  Defaults to +Dir.pwd+.
-      def initialize(entry_path, name: nil, resolve_alias: nil,
+      def initialize(bundle_path, name: nil, resolve_alias: nil,
                      project_root: Dir.pwd)
-        @entry_path = entry_path.to_s
+        @bundle_path = bundle_path.to_s
         @resolve_alias = (resolve_alias || SSR::Deno::Config.dev_resolve_alias)
                          .transform_keys(&:to_s).transform_values(&:to_s)
         @project_root = File.expand_path(project_root.to_s)
-        @name = name || @entry_path
+        @name = name || @bundle_path
+        @auto_reload = false
+        @_bundle_mutex = Mutex.new
 
         create_worker
         load_entry
 
         Bundle.registry[@name] = self
+      end
+
+      # @return [Boolean] Auto-reload is not yet implemented for dev mode
+      #   (planned in step 11). Reader returns +false+ unconditionally.
+      attr_reader :auto_reload, :bundle_path
+
+      # @param value [Boolean] Stored but ignored until step 11.
+      def auto_reload=(value)
+        @_bundle_mutex.synchronize { @auto_reload = value }
       end
 
       # Render the entry via the dev worker's full Deno event loop.
@@ -48,9 +61,15 @@ module SSR
       def render(data = nil, raw_input: false, raw_output: false)
         json = raw_input ? data : JSON.generate(data)
 
-        result = SSR::Deno.native_dev_render(@handle, @entry_path, json)
+        instrument 'render.ssr_deno', bundle_name: @bundle_path do |payload|
+          result = SSR::Deno.native_dev_render(@handle, @bundle_path, json)
 
-        raw_output ? result : JSON.parse(result)
+          raw_output ? result : JSON.parse(result)
+        rescue StandardError => error
+          payload[:error] = error.message
+
+          raise
+        end
       end
 
       # Chunked render. Yields HTML chunks incrementally.
@@ -60,10 +79,16 @@ module SSR
       def render_chunks(data = nil, raw_input: false, &)
         json = raw_input ? data : JSON.generate(data)
 
-        SSR::Deno.native_dev_render_chunks(@handle, @entry_path, json, &)
+        instrument 'render.ssr_deno', bundle_name: @bundle_path do
+          SSR::Deno.native_dev_render_chunks(@handle, @bundle_path, json, &)
+        end
       end
 
       private
+
+      def instrument(...)
+        Instrumenter.instrument(...)
+      end
 
       def create_worker
         @handle = SSR::Deno.native_dev_worker_new(
@@ -76,7 +101,7 @@ module SSR
       def load_entry
         SSR::Deno.native_dev_load_entry(
           @handle,
-          @entry_path,
+          @bundle_path,
           JSON.generate(@resolve_alias)
         )
       end

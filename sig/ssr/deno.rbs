@@ -167,13 +167,20 @@ module SSR
     end
 
     class DevModeBundle
-      @entry_path: String
+      @bundle_path: String
       @resolve_alias: Hash[String, String]
       @project_root: String
       @name: String | Symbol
       @handle: DevWorkerHandle
+      @auto_reload: bool
+      @_bundle_mutex: Thread::Mutex
 
-      def initialize: (String entry_path, ?name: (String | Symbol)?, ?resolve_alias: Hash[String, String], ?project_root: String) -> void
+      def initialize: (String bundle_path, ?name: (String | Symbol)?, ?resolve_alias: Hash[String, String], ?project_root: String) -> void
+
+      attr_reader auto_reload: bool
+      attr_reader bundle_path: String
+
+      def auto_reload=: (bool value) -> void
 
       def render: (?(Hash[untyped, untyped] | String) data, ?raw_input: bool, ?raw_output: bool) -> untyped
 
@@ -181,6 +188,8 @@ module SSR
                         | (?(Hash[untyped, untyped] | String) data, ?raw_input: bool) { (String) -> void } -> nil
 
       private
+
+      def instrument: (untyped name, ?::Hash[untyped, untyped] payload) ?{ (::Hash[untyped, untyped]) -> untyped } -> untyped
 
       def create_worker: () -> void
 
@@ -201,6 +210,8 @@ end
 module SSR
   module Deno
     module Config
+      DEFAULT_DEV_RESOLVE_ALIAS: Hash[String, String]
+
       self.@_mutex: Thread::Mutex
 
       def self.max_heap_size_mb=: (Integer mb) -> void

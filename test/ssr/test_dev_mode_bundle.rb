@@ -104,6 +104,36 @@ module SSR
 
         assert_equal({ 'lib' => 'src/lib' }, bundle.instance_variable_get(:@resolve_alias))
       end
+
+      def test_dev_bundle_bundle_path_reader
+        bundle = DevModeBundle.new(FIXTURE)
+
+        assert_equal FIXTURE, bundle.bundle_path
+      end
+
+      def test_dev_bundle_auto_reload_defaults_to_false
+        bundle = DevModeBundle.new(FIXTURE)
+
+        refute bundle.auto_reload
+      end
+
+      def test_dev_bundle_auto_reload_setter
+        bundle = DevModeBundle.new(FIXTURE)
+
+        bundle.auto_reload = true
+
+        assert bundle.auto_reload
+      end
+
+      def test_dev_bundle_render_error_instrumentation
+        bundle = DevModeBundle.new(FIXTURE)
+        # Cause a JS SyntaxError by passing invalid JSON as raw input.
+        # The render function calls JSON.parse(data) which throws, and the
+        # error propagates through native_dev_render as RenderError.
+        assert_raises SSR::Deno::RenderError do
+          bundle.render('not-json{', raw_input: true)
+        end
+      end
     end
   end
 end
