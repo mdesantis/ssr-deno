@@ -41,7 +41,7 @@ The render engine **functions** (`render::render()` / `render_chunked::render_ch
 - `native_dev_load_entry(handle, entry_path, alias_map_json)`
 - `native_dev_worker_new(project_root, max_heap_size_mb, render_timeout_ms) -> handle`
 
-DevBundle holds opaque `usize`/`magnus::TypedData` handle to a single `IsolateHandle`-shaped struct (1 isolate, same channel pattern as pool). Bundle lookup itself is JS-side per isolate (`globalThis.__ssr_bundles[id]`) — each dev worker has independent globals.
+DevBundle holds a `SSR::Deno::DevWorkerHandle` object (magnus `#[wrap]` TypedData around `Arc<DevIsolateHandle>`). Ruby cannot forge handles — only `native_dev_worker_new` can return one. GC drops the Rust struct when last Ruby ref dies. Bundle lookup itself is JS-side per isolate (`globalThis.__ssr_bundles[id]`) — each dev worker has independent globals.
 
 ### Pool isolation
 
@@ -422,7 +422,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 0. ~~**Spike**~~ ✅ DONE — all four targets verified, plan updated with confirmed API shapes.
 1. ~~Add `dev-mode` feature flag to `Cargo.toml`~~ ✅ DONE — compiles clean
 2. ~~Render-routing FFI stubs in `lib.rs`~~ ✅ DONE — 4 stub functions, cfg-gated, compiles clean
-3. `dev_handle.rs` + `dev_worker.rs` — single-isolate worker mirroring `IsolateHandle`/`worker_thread_main`, calls `build_dev_worker`
+3. ~~`dev_handle.rs` + `dev_worker.rs`~~ ✅ DONE — single-isolate worker with LoadEntry/Render/RenderChunked messages; + stub dev_builder.rs & dev_load.rs for compilation; compiles clean under `--features dev-mode`. Post-review hardening: (a) `setup_require` failure bubbles to `init_tx` instead of being swallowed (matches prod); (b) FFI handle switched from `usize` to magnus-wrapped `SSR::Deno::DevWorkerHandle` (`Arc<DevIsolateHandle>` inside, `free_immediately, size`); FFI fns now take `&DevWorkerHandle`. Dev-mode FFI methods only registered on the module when feature is enabled — no `not(dev-mode)` stub variants needed.
 4. `dev_builder.rs` — `build_dev_worker()` with parity to prod (heap-limit cb, web-worker panic guard, OOM atomic), real resolver(s) + dev permissions
 5. `real_npm_types.rs` — re-export + tiny constructor wiring `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` (no walker)
 6. `dev_module_loader.rs` — alias resolution, npm/`node:` delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache

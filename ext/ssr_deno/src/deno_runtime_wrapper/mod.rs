@@ -14,6 +14,15 @@ pub(crate) mod pool;
 pub(crate) mod types;
 pub(crate) mod worker;
 
+#[cfg(feature = "dev-mode")]
+pub(crate) mod dev_handle;
+#[cfg(feature = "dev-mode")]
+pub(crate) mod dev_worker;
+#[cfg(feature = "dev-mode")]
+pub(crate) mod dev_builder;
+#[cfg(feature = "dev-mode")]
+pub(crate) mod dev_load;
+
 pub use pool::IsolatePool;
 
 // ---------------------------------------------------------------------------
