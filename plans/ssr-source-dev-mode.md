@@ -435,7 +435,81 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
    **9b — FFI wiring.** `native_dev_worker_new` calls `DevIsolateHandle::spawn`, wraps in `Arc → DevWorkerHandle`. `native_dev_load_entry` parses alias JSON and calls `block_on_load_entry`. `native_dev_render` uses GVL-release pattern (`rb_thread_call_without_gvl` + `dev_render_worker` callback). `native_dev_render_chunks` yields chunks from `start_render_chunked` (blockless raises ArgError). Both default and dev-mode compile clean.
 10. ~~Ruby `DevModeBundle` (registers in `Bundle.registry`)~~ ✅ DONE — `lib/ssr/deno/dev_mode_bundle.rb` with `#render` / `#render_chunks` parity. Default `resolve_alias` from `Config.dev_resolve_alias`. Registers in `Bundle.registry` for `find_bundle!` compatibility. `import.meta.glob` codegen deferred to future work. RBS signatures added. 6 tests covering render, render_chunks (block + Enumerator), registry registration, alias defaults, alias override. All pass. Full `bundle exec rake` passes.
-11. Auto-reload: `native_dev_check_stale` queries module-cache; on `true` rebuild via fresh `dev_load_entry`
+11. Auto-reload: `native_dev_check_stale` queries module-cache; on `true` rebuild via fresh worker + `dev_load_entry`
+
+    ### Design
+
+    `DevModuleLoader`'s mtime cache is inside the worker thread (`MainWorker` has no public accessor for the concrete `ModuleLoader`). The handle can't query it through the worker.
+
+    **Solution** — extract cache into `Arc<DevMtimeCache>` shared between `DevModuleLoader` and `DevIsolateHandle`:
+
+    ```
+    DevIsolateHandle::spawn()
+      ├─ creates Arc<DevMtimeCache>
+      ├─ passes clone → build_dev_worker() → DevModuleLoader::new()
+      └─ keeps clone in DevIsolateHandle.cache
+
+    native_dev_check_stale(handle) → handle.cache.any_stale()
+      └─ snapshots (path, cached_mtime) pairs under lock, releases, then stats lock-free
+      └─ infallible, no worker message needed (pure filesystem stat on caller thread)
+      └─ `metadata(path)` error treated as stale (file deleted/renamed → force reload,
+         surfaces the disappearance via the subsequent load-time error)
+    ```
+
+    `any_stale()` snapshots under lock and stats outside the lock so worker-thread
+    `update_cache` writes don't stall behind 500 syscalls during stat:
+
+    ```rust
+    pub fn any_stale(&self) -> bool {
+        let snapshot: Vec<(PathBuf, SystemTime)> = {
+            let cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            cache.iter().map(|(p, e)| (p.clone(), e.mtime)).collect()
+        };
+        snapshot.into_iter().any(|(path, cached_mtime)| {
+            std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .map_or(true, |current| current != cached_mtime)
+        })
+    }
+    ```
+
+    **Reload flow** (Ruby `DevModeBundle#reload_if_changed`):
+
+    ```
+    render / render_chunks called
+      → reload_if_changed (no-op unless @auto_reload is true)
+        → @_bundle_mutex.synchronize do
+          → if native_dev_check_stale(@handle)
+            1. create_worker → @handle = new DevWorkerHandle
+               (old DevWorkerHandle Ruby object becomes GC-eligible)
+            2. load_entry → sends LoadEntry to new worker
+               → fresh DevModuleLoader with empty cache
+          end
+      → render as normal (on fresh worker)
+    ```
+
+    **Why not carry cache across reload?** V8 module map caches loaded modules by URL. Re-transpiled code must go into a fresh `ModuleLoader` to avoid stale V8 module refs. Cache rebuild is deliberate — ~1-3s on a 500-module graph, acceptable in dev.
+
+    **Race safety:** wrap `reload_if_changed` in `DevModeBundle#@_bundle_mutex` (already present for `auto_reload=`). Multi-threaded Puma dev (`puma -t 2:5`) and parallel test suites can call `render` concurrently. Without the mutex, two threads can both observe `check_stale = true` and race in `create_worker` assignment, or one thread sees the new `@handle` while another still holds the old reference and sends a render msg to a closing channel.
+
+    **Old worker lifecycle:** `@handle = new DevWorkerHandle` makes the old `DevWorkerHandle` Ruby object GC-eligible, but the Rust `Arc<DevIsolateHandle>` (and therefore the worker thread) only drops when Ruby GC reclaims the wrapper. The old worker sits idle on `rx.recv().await` until then — V8 isolate ~64 MB held per stale worker. For typical dev (1-2 reloads/min) GC catches up; for rapid-save bursts, several stale workers may overlap. Acceptable as v1 limitation — explicit `close`/Drop-time `terminate_execution()` is a follow-up.
+
+    **`render_chunks` enumerator caveat:** the no-block path returns an `Enumerator` capturing `(@handle, @bundle_path, json)` at construction. If a reload happens between construction and iteration, the Enumerator's captured handle is the *old* one. The render still completes (against the stale module map) and the user sees outdated output for that one stream. Rack body usage typically drains immediately so the window is microseconds; document as a known edge case rather than work around.
+
+    **New-file detection limit:** `any_stale()` walks loaded modules only. Adding a new `.tsx` that no existing module imports won't trigger a reload — the new file isn't in the cache. Adding the file *and* updating an existing module to import it triggers reload through the importer's mtime change. Document so users don't expect "any file change reloads".
+
+    ### Changed files (all `#[cfg(feature = "dev-mode")]`)
+
+    | File | Changes |
+    |------|---------|
+    | `dev_module_loader.rs` | New `DevMtimeCache` struct wrapping `Mutex<HashMap<PathBuf, CacheEntry>>`. `any_stale() -> bool` (snapshot-then-stat, see code above). `DevModuleLoader::new` takes `Arc<DevMtimeCache>`. |
+    | `dev_handle.rs` | New `cache: Arc<DevMtimeCache>` field on `DevIsolateHandle`. `DevIsolateHandle::spawn` creates the `Arc<DevMtimeCache>`, stores one clone, passes the other to `dev_worker_thread_main`. New `check_stale(&self) -> bool` method that delegates to `self.cache.any_stale()`. |
+    | `dev_worker.rs` | `dev_worker_thread_main` accepts `Arc<DevMtimeCache>` parameter and forwards it to `build_dev_worker`. |
+    | `dev_builder.rs` | `build_dev_worker` accepts `Arc<DevMtimeCache>` and forwards to `DevModuleLoader::new`. |
+    | `lib.rs` | New FFI `native_dev_check_stale(&DevWorkerHandle) -> bool` returning `handle.0.check_stale()`. |
+    | `dev_mode_bundle.rb` | `reload_if_changed` private method guarded by `@auto_reload`, wrapped in `@_bundle_mutex.synchronize`. On `check_stale` true: `create_worker` + `load_entry`. Called at the top of `render` and `render_chunks` (after argument prep). |
+    | `test_dev_mode_bundle.rb` | Temp-file test: write entry v1 → render → modify file (use `File.utime` with future timestamp to avoid second-granularity mtime collisions on hot writes) → render v2 → verify new output. Also: auto-reload disabled → no reload triggered even on file change. |
+    | `sig/ssr/deno.rbs` | `native_dev_check_stale: (DevWorkerHandle) -> bool`. |
 12. Test with side-project: remove Rolldown from Procfile, verify `rails s` boots SSR clean; verify source-map stack frames resolve to `.tsx` files
 13. Update `plans/` index, ONBOARDING/README dev-mode section
 
