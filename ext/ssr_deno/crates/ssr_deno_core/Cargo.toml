@@ -3,6 +3,9 @@ name = "ssr_deno_core"
 version = "0.1.0-alpha.6"
 edition = "2021"
 
+[dependencies]
+sourcemap = "9"
+
 [lib]
 # No crate-type restriction — this is a pure-Rust library.
 # Tests compile and run with plain `cargo test -p ssr_deno_core`.

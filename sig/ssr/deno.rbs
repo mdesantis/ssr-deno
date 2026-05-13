@@ -149,10 +149,12 @@ module SSR
     def self.native_set_isolate_pool_size: (Integer size) -> nil
     def self.native_set_render_timeout_ms: (Integer ms) -> nil
     def self.native_set_node_builtins_enabled: (bool enabled) -> nil
+    def self.native_set_source_maps_enabled: (bool enabled) -> nil
     def self.native_get_max_heap_size_mb: () -> Integer
     def self.native_get_isolate_pool_size: () -> Integer
     def self.native_get_render_timeout_ms: () -> Integer
     def self.native_get_node_builtins_enabled: () -> bool
+    def self.native_get_source_maps_enabled: () -> bool
     def self.native_heap_stats: () -> String
   end
 end
@@ -175,11 +177,13 @@ module SSR
       def self.isolate_pool_size=: (Integer size) -> void
       def self.render_timeout_ms=: (Integer milliseconds) -> void
       def self.node_builtins_enabled=: (bool enabled) -> void
+      def self.source_maps_enabled=: (bool enabled) -> void
 
       def self.max_heap_size_mb: () -> Integer
       def self.isolate_pool_size: () -> Integer
       def self.render_timeout_ms: () -> Integer
       def self.node_builtins_enabled?: () -> bool
+      def self.source_maps_enabled?: () -> bool
 
       private
 

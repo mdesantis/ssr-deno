@@ -10,6 +10,8 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+pub mod source_mapper;
+
 // ---------------------------------------------------------------------------
 // Typed error enum
 // ---------------------------------------------------------------------------
@@ -61,17 +63,22 @@ pub struct Config {
     /// built-in modules via require(). Disabled by default since most SSR
     /// bundles don't need it and it adds worker init overhead.
     pub node_builtins: bool,
+    /// Enable source map resolution for V8 error stack traces.
+    /// When enabled, the gem reads `.js.map` sidecars and resolves bundle
+    /// positions to original `.tsx`/`.ts` source locations.
+    pub source_maps: bool,
 }
 
 impl Config {
     /// Returns the default configuration: 64 MB heap, 1 isolate pool,
-    /// 500ms render timeout, no Node.js builtins.
+    /// 500ms render timeout, no Node.js builtins, no source maps.
     pub const fn default() -> Self {
         Self {
             max_heap_size_mb: 64,
             isolate_pool_size: 1,
             render_timeout_ms: 500,
             node_builtins: false,
+            source_maps: false,
         }
     }
 }
@@ -234,6 +241,12 @@ mod tests {
         assert!(!cfg.node_builtins);
     }
 
+    #[test]
+    fn config_default_source_maps() {
+        let cfg = Config::default();
+        assert!(!cfg.source_maps);
+    }
+
     // -----------------------------------------------------------------------
     // validate_render_timeout_ms
     // -----------------------------------------------------------------------
@@ -292,6 +305,7 @@ mod tests {
             max_heap_size_mb: 64,
             render_timeout_ms: 500,
             node_builtins: false,
+            source_maps: false,
         }
     }
 

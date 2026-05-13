@@ -22,6 +22,10 @@ module SSR
           @_mutex.synchronize { SSR::Deno.native_set_node_builtins_enabled(enabled) }
         end
 
+        def source_maps_enabled=(enabled)
+          @_mutex.synchronize { SSR::Deno.native_set_source_maps_enabled(enabled) }
+        end
+
         def max_heap_size_mb
           SSR::Deno.native_get_max_heap_size_mb
         end
@@ -38,6 +42,10 @@ module SSR
           SSR::Deno.native_get_node_builtins_enabled
         end
 
+        def source_maps_enabled?
+          SSR::Deno.native_get_source_maps_enabled
+        end
+
         private
 
         def apply_env_var_defaults
@@ -45,6 +53,7 @@ module SSR
           apply_integer_env('SSR_DENO_ISOLATE_POOL_SIZE', :isolate_pool_size=)
           apply_integer_env('SSR_DENO_RENDER_TIMEOUT_MS', :render_timeout_ms=)
           apply_bool_env('SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
+          apply_bool_env('SSR_DENO_SOURCE_MAPS_ENABLED', :source_maps_enabled=)
         end
 
         def apply_integer_env(env_var, setter)

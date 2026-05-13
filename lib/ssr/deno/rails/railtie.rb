@@ -14,6 +14,7 @@ module SSR
       config.ssr_deno.heap_stats_sample_rate = 100 # emit heap stats every N renders
       config.ssr_deno.render_timeout_ms = nil # nil = 500ms (default)
       config.ssr_deno.node_builtins_enabled = nil # nil = false (default)
+      config.ssr_deno.source_maps_enabled = !Rails.env.production?
 
       initializer 'ssr_deno.setup' do |_app|
         ActiveSupport.on_load(:action_view) do
@@ -31,6 +32,9 @@ module SSR
         SSR::Deno::Config.render_timeout_ms = config.ssr_deno.render_timeout_ms if config.ssr_deno.render_timeout_ms
         unless config.ssr_deno.node_builtins_enabled.nil?
           SSR::Deno::Config.node_builtins_enabled = config.ssr_deno.node_builtins_enabled
+        end
+        unless config.ssr_deno.source_maps_enabled.nil?
+          SSR::Deno::Config.source_maps_enabled = config.ssr_deno.source_maps_enabled
         end
 
         # Store bundle configs in +registry+. Actual +Bundle.new+ is called

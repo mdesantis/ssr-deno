@@ -6928,6 +6928,9 @@ dependencies = [
 [[package]]
 name = "ssr_deno_core"
 version = "0.1.0-alpha.6"
+dependencies = [
+ "sourcemap",
+]
 
 [[package]]
 name = "stable_deref_trait"

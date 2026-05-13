@@ -31,7 +31,7 @@ flowchart TB
 
 | File | Purpose |
 |------|---------|
-| `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
+| `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`, `source_maps_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
 | `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator` |
 | `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |
@@ -54,6 +54,7 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
 | `src/require_loader.rs` | Minimal `NodeRequireLoader` — rejects file loading, passes built-in module resolution to Deno |
 | `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `DenoError`, validators (`validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
+| `crates/ssr_deno_core/src/source_mapper.rs` | `SsrSourceMapper` — self-managed source map registry. Parses `.js.map` sidecars, resolves V8 stack frame positions to original `.tsx`/`.ts` sources with IIFE offset correction. Used in render error formatting. |
 
 ### Isolate Pool
 

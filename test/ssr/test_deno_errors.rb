@@ -40,6 +40,107 @@ module SSR
       RUBY
     end
 
+    def test_source_map_resolves_error_location
+      out, _, status = run_subprocess(<<~RUBY, env: { 'SSR_DENO_SOURCE_MAPS_ENABLED' => 'true' })
+        require 'tmpdir'
+        require 'json'
+
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'bundle.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              throw new Error('test-error');
+            };
+          JS
+          File.write("\#{js_path}.map", JSON.generate({
+            version: 3,
+            file: 'bundle.js',
+            sources: ['components/thrower.tsx'],
+            mappings: 'AAAA;AACA'
+          }))
+
+          bundle = SSR::Deno::Bundle.new(js_path)
+
+          begin
+            bundle.render({})
+          rescue SSR::Deno::RenderError => e
+            puts e.message
+            exit 0
+          end
+
+          exit 1
+        end
+      RUBY
+
+      assert_predicate status, :success?
+      assert_includes out, 'components/thrower.tsx'
+    end
+
+    def test_source_map_disabled_preserves_raw_v8_message
+      out, _, status = run_subprocess(<<~RUBY)
+        require 'tmpdir'
+        require 'json'
+
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'bundle.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              throw new Error('test-error');
+            };
+          JS
+          File.write("\#{js_path}.map", JSON.generate({
+            version: 3,
+            file: 'bundle.js',
+            sources: ['components/thrower.tsx'],
+            mappings: 'AAAA;AACA'
+          }))
+
+          bundle = SSR::Deno::Bundle.new(js_path)
+
+          begin
+            bundle.render({})
+          rescue SSR::Deno::RenderError => e
+            puts e.message
+            exit 0
+          end
+
+          exit 1
+        end
+      RUBY
+
+      assert_predicate status, :success?
+      assert_includes out, 'bundle.js'
+    end
+
+    def test_source_map_missing_does_not_crash
+      out, _, status = run_subprocess(<<~RUBY, env: { 'SSR_DENO_SOURCE_MAPS_ENABLED' => 'true' })
+        require 'tmpdir'
+
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'bundle.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              throw new Error('test-error');
+            };
+          JS
+
+          bundle = SSR::Deno::Bundle.new(js_path)
+
+          begin
+            bundle.render({})
+          rescue SSR::Deno::RenderError => e
+            puts e.message
+            exit 0
+          end
+
+          exit 1
+        end
+      RUBY
+
+      assert_predicate status, :success?
+      assert_includes out, 'bundle.js'
+    end
+
     # See `builder.rs` — the `create_web_worker_cb` for why this doesn't crash.
     def test_web_worker_in_ssr_bundle_does_not_crash_process
       assert_subprocess(<<~RUBY, 'Expected JsRuntimeWorkerError from new Worker()')

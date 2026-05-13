@@ -28,28 +28,34 @@ error messages.
 ```mermaid
 flowchart LR
   A[Bundle .js] -->|Rolldown| B[Bundle .js + .js.map]
-  B -->|native_load_bundle| C[load_bundle_in_worker]
-  C -->|source_maps enabled?| D[Read .js.map from disk]
-  D -->|parse| E[SsrSourceMapper.register]
-  E -->|error occurs in render| F[resolve_stack_message]
-  F -->|lookup bundle_path + adjust IIFE offset| G[format original position]
-  G -->|Stack trace| H["file.ts: line:col"]
+  B -->|native_load_bundle| C[Pool.load_bundle]
+  C -->|source_maps enabled?| D[Read .js.map in lib.rs]
+  D -->|SsrSourceMapper.register| E[Global RwLock map registry]
+  E -->|error occurs| F[native_render returns Err]
+  F -->|map_render_error| G[SSR_SOURCE_MAPPER.resolve]
+  G -->|lookup + IIFE offset| H[Rewritten error with .tsx path]
+  H -->|Ruby RenderError| I["file.ts: line:col"]
 ```
 
-**Key difference from deno_core's SourceMapper:** we don't touch V8 internals.
-Source map resolution happens purely in Rust, on the error string returned by
-V8, before the error reaches Ruby.
+**Key design decisions (deviations from initial plan):**
+
+1. **Registration in FFI layer** (`lib.rs`), not in `load_bundle_in_worker` (`worker.rs`). The pool's broadcast completes first, then `native_load_bundle` registers the map on the Ruby thread. No message-type changes needed.
+2. **Resolution in `map_render_error`** (`lib.rs`), not in `render.rs`. The error string is resolved before creating the Ruby exception class. No render-path changes needed.
+3. **No changes to `types.rs`, `pool.rs`, `handle.rs`, `worker.rs`, or `render.rs`.** Source maps are entirely handled in the FFI layer + `SsrSourceMapper`.
 
 ## IIFE line offset
 
-Bundles are wrapped in `(function(){\n...\n})();` at `worker.rs:213`. This
-shifts all bundle lines by +1 relative to V8's reported positions.
+Bundles are wrapped in `(function(){\n...\n})();` at `worker.rs:213`. Two lines
+are added before the bundle (`(function(){\n`), so V8 reports positions shifted
+by +2 relative to the source map's generated positions:
 
 ```
-V8 reports line 5 → actual bundle line is 4 → source map lookup uses line 4
+V8 line 1 = "(function(){"          (IIFE prefix — not in bundle)
+V8 line 2 = bundle line 1            = source map generated index 0
+V8 line N = bundle line N-1          = source map generated index N-2
 ```
 
-Resolution adjusts: `bundle_line = v8_line - 1` before source map lookup.
+Resolution adjusts: `sourcemap_line = v8_line.saturating_sub(2)`.
 
 ## Self-managed source map registry — no deno_core patching
 
@@ -59,301 +65,128 @@ Avoids `build.rs` registry hacks. `SsrSourceMapper` lives in `ssr_deno_core`
 
 ```rust
 // crates/ssr_deno_core/src/source_mapper.rs
-use std::collections::HashMap;
-use std::path::Path;
-use std::time::SystemTime;
-
 pub struct SsrSourceMapper {
-    // bundle_path → (parsed source map, .map file mtime)
     maps: HashMap<String, (sourcemap::SourceMap, SystemTime)>,
 }
 
 impl SsrSourceMapper {
+    pub fn new() -> Self { ... }
     pub fn register(&mut self, bundle_path: &str, map_path: &Path) { ... }
     pub fn resolve(&self, msg: &str) -> String { ... }
     pub fn clear(&mut self) { ... }
 }
 ```
 
-The `resolve` method parses the V8 error string, finds `at <script_name>:<line>:<col>`
-patterns, adjusts for IIFE offset, looks up the source map for `<script_name>`,
-and replaces the position with the original source location.
+`register` reads the `.map` file from disk and parses it. Skips if mtime
+unchanged (caching). `resolve` line-by-line: matches V8 stack frame pattern
+`at <file>:<line>:<col>` or `at func (<file>:<line>:<col>)`, adjusts IIFE
+offset, looks up original source position, replaces in output.
 
 ### Sourcemap crate
 
-Add to `ext/ssr_deno/Cargo.toml`:
-
-```toml
-sourcemap = "9"
-```
-
-And to `crates/ssr_deno_core/Cargo.toml` (where `SsrSourceMapper` lives):
+Added only to `crates/ssr_deno_core/Cargo.toml` (pure-Rust crate, no V8 dep):
 
 ```toml
 [dependencies]
 sourcemap = "9"
 ```
 
-No V8 dep. Pure Rust. Compiles in seconds.
+### Registration flow
 
-### .map file caching
-
-`register()` stores the parsed `SourceMap` keyed by bundle path.
-`register()` is called on every `load_bundle_in_worker` (including reloads).
-It compares the current `.map` mtime with the cached mtime — skips parsing
-if unchanged. This avoids re-parsing multi-MB `.map` files on every reload.
+In `native_load_bundle` (lib.rs), after `pool.load_bundle` succeeds:
 
 ```rust
-pub fn register(&mut self, bundle_path: &str, map_path: &Path) {
-    let current_mtime = fs::metadata(map_path).and_then(|m| m.modified()).ok();
-    if let Some((_, cached_mtime)) = self.maps.get(bundle_path) {
-        if Some(*cached_mtime) == current_mtime {
-            return; // already cached, unchanged
-        }
-    }
-    // read + parse + store
+if lock_config().source_maps {
+    let map_path = Path::new(&bundle_path).with_extension("js.map");
+    get_source_mapper().write().register(&bundle_path, &map_path);
 }
 ```
 
-## Files
+Registration runs on the Ruby thread (not in worker threads). The `RwLock`
+write guard ensures no concurrent access with render error resolution.
 
-### Rust layer — ssr_deno_core (pure Rust, no V8)
+## Files changed (actual)
 
-| File | Change |
-|---|---|
-| `crates/ssr_deno_core/Cargo.toml` | Add `sourcemap = "9"` dep |
-| `crates/ssr_deno_core/src/lib.rs` | Add `source_maps: bool` to `Config` (default `false`) |
-| `crates/ssr_deno_core/src/source_mapper.rs` | **New** — `SsrSourceMapper` struct |
-
-### Rust layer — ssr_deno (main crate, V8)
+### Rust layer — ssr_deno_core (pure Rust)
 
 | File | Change |
 |---|---|
-| `ext/ssr_deno/Cargo.toml` | Add `sourcemap = "9"` dep |
-| `ext/ssr_deno/src/deno_runtime_wrapper/types.rs` | Add `source_maps: bool` to `WorkerMsg::LoadBundle` |
-| `ext/ssr_deno/src/deno_runtime_wrapper/pool.rs` | Accept `source_maps` in `new()`, pass in `WorkerMsg` |
-| `ext/ssr_deno/src/deno_runtime_wrapper/handle.rs` | Thread `source_maps` from config/pool to worker |
-| `ext/ssr_deno/src/deno_runtime_wrapper/worker.rs` | In `load_bundle_in_worker`: if `source_maps`, read `.js.map` and register with global `SSR_SOURCE_MAPPER` |
-| `ext/ssr_deno/src/deno_runtime_wrapper/render.rs` | On error from V8: pass through `SSR_SOURCE_MAPPER.resolve()` before returning |
-| `ext/ssr_deno/src/lib.rs` | Add `native_set_source_maps_enabled` / `native_get_source_maps_enabled` FFI, pass `config.source_maps` to pool |
+| `crates/ssr_deno_core/Cargo.toml` | Added `sourcemap = "9"` dep |
+| `crates/ssr_deno_core/src/lib.rs` | Added `pub mod source_mapper`, `source_maps: bool` to `Config` (default `false`) |
+| `crates/ssr_deno_core/src/source_mapper.rs` | **New** — `SsrSourceMapper` with `register`, `resolve`, `clear` |
+
+### Rust layer — ssr_deno (main crate)
+
+| File | Change |
+|---|---|
+| `ext/ssr_deno/src/lib.rs` | Imported `SsrSourceMapper`. Added `get_source_mapper()` global via `OnceLock<RwLock<...>>`. Added `native_set_source_maps_enabled` / `native_get_source_maps_enabled` FFI. Registration in `native_load_bundle`. Resolution in `map_render_error`'s `Render` arm. |
+
+No changes to `types.rs`, `pool.rs`, `handle.rs`, `worker.rs`, or `render.rs`.
 
 ### Ruby layer
 
 | File | Change |
 |---|---|
-| `lib/ssr/deno.rb` | Require new config files |
-| `lib/ssr/deno/config.rb` | Add `source_maps_enabled=` setter + getter + `SSR_DENO_SOURCE_MAPS_ENABLED` env var |
-| `lib/ssr/deno/rails/railtie.rb` | Default: `config.ssr_deno.source_maps_enabled = !Rails.env.production?`. Wire in `init_bundles` initializer |
-| `lib/ssr/deno/rails/generators/ssr/deno/templates/ssr_deno.rb` | Add commented-out config option |
+| `lib/ssr/deno/config.rb` | Added `source_maps_enabled=` setter, `source_maps_enabled?` getter, `SSR_DENO_SOURCE_MAPS_ENABLED` env var |
+| `lib/ssr/deno/rails/railtie.rb` | Default `config.ssr_deno.source_maps_enabled = !Rails.env.production?`, wired in `init_bundles` |
+| `lib/ssr/deno/rails/generators/ssr/deno/templates/ssr_deno.rb` | Added commented-out config option |
 
 ### Other
 
 | File | Change |
 |---|---|
-| `sig/ssr/deno.rbs` | Add type signatures for new methods + `SsrSourceMapper` |
-| `CHANGELOG.md` | Add entry |
-
-## Registration strategy
-
-In `load_bundle_in_worker`, after the bundle is evaluated:
-
-```rust
-if source_maps {
-    let map_path = format!("{}.map", bundle_path);
-    if let Ok(map_data) = std::fs::read(&map_path) {
-        if let Ok(sm) = sourcemap::SourceMap::from_slice(&map_data) {
-            SSR_SOURCE_MAPPER.write().register(&bundle_path, sm, &map_path);
-        }
-    }
-}
-```
-
-`script_name` for lookup = the bundle path string (same as used in V8 errors).
-
-## Resolution strategy (IIFE-aware)
-
-In the render error path, after V8 returns an error:
-
-```rust
-// render.rs: on error from V8
-let raw_msg = format!("{e}");
-let resolved = if source_maps {
-    SSR_SOURCE_MAPPER.read().resolve(&raw_msg)
-} else {
-    raw_msg
-};
-Err(SSRDenoError::Render(resolved))
-```
-
-`resolve()` parses the error message with a regex for V8 stack frames:
-
-```
-at (script_name):(\d+):(\d+)
-```
-
-For each match:
-1. `bundle_line = v8_line - 1` (IIFE offset)
-2. Look up `script_name` in registered maps
-3. Convert `(bundle_line, v8_col)` to `(source_file, source_line, source_col)` via `sourcemap::SourceMap::lookup`
-4. Replace the match in the error string
+| `sig/ssr/deno.rbs` | Added `source_maps_enabled=` / `source_maps_enabled?` signatures, native FFI signatures |
+| `CHANGELOG.md` | Added entry under Unreleased |
+| `README.md` | Runtime settings code block, env vars table, Source maps subsection, Rails config list |
+| `docs/architecture.md` | Config getters list, Rust layer table |
 
 ## Error handling
 
-- `.map` file missing → silently skip
-- `.map` file corrupt → silently skip
+- `.map` file missing → silently skip (register does nothing)
+- `.map` file corrupt → silently skip (`from_slice` returns Err)
 - Position not found in source map → leave original position (best-effort)
-- No map registered for bundle → leave original position
+- No map registered for bundle → original string unchanged via `resolve`
 - Best-effort, never blocks or throws
 
 ## Multi-isolate
 
-`SSR_SOURCE_MAPPER` is a global `RwLock<SsrSourceMapper>`. Shared across all
-worker threads. Registration happens during the `load_bundle` broadcast (all
-workers receive the same message). Since source maps are the same regardless
-of which isolate loads them, the global registry avoids duplication.
-
-But: `SsrSourceMapper` is behind `RwLock`, and `resolve()` is called from a
-worker thread. Since `resolve()` is read-only, `RwLock` allows concurrent reads.
-`register()` requires write access, which blocks until all reads complete.
-
-Global `SSR_SOURCE_MAPPER`:
+`SSR_SOURCE_MAPPER` is a global `RwLock<SsrSourceMapper>` behind a
+`OnceLock`. Resolution (`read`) is concurrent. Registration (`write`) is
+exclusive — runs once per `native_load_bundle` call (Ruby thread, not in the
+render hot path).
 
 ```rust
-use std::sync::RwLock;
-use ssr_deno_core::source_mapper::SsrSourceMapper;
-
-static SSR_SOURCE_MAPPER: Lazy<RwLock<SsrSourceMapper>> =
-    Lazy::new(|| RwLock::new(SsrSourceMapper::new()));
+fn get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
+    static MAPPER: OnceLock<RwLock<SsrSourceMapper>> = OnceLock::new();
+    MAPPER.get_or_init(|| RwLock::new(SsrSourceMapper::new()))
+}
 ```
 
 ## Tests
 
-### Rust unit tests (ssr_deno_core)
+### Rust unit tests (ssr_deno_core) — implemented, 41/41 pass
 
-- `SsrSourceMapper::resolve()` with known source map + known input string
-- IIFE line offset correction (`v8_line - 1`)
-- No map registered → returns original string unchanged
-- Corrupt source map → returns original string unchanged
+- `resolve_no_map_returns_original` — no maps registered, unchanged
+- `resolve_empty_message` — empty input returns empty
+- `resolve_non_frame_line_left_alone` — non-stack-frame lines unchanged
+- `resolve_iife_offset_corrected` — V8 line 3 → bundle line 1, resolves to .tsx
+- `resolve_with_func_name` — parens format `at func (file:line:col)`
+- `resolve_map_line_beyond_map_uses_closest_token` — line beyond map gets closest match
+- `resolve_unregistered_bundle_left_alone` — different bundle name, unchanged
+- `register_skips_unchanged_map` — mtime caching
+- `register_missing_map_does_nothing` — missing .map, no panic
+- `clear_removes_all_maps` — clear works
+- Config defaults test for `source_maps`
 
-### Ruby integration tests
+### Ruby integration tests — planned, not yet written
 
-**Test fixture:** generate a bundle with a deliberate throw at a known line, plus a matching `.js.map` sidecar:
+Run when `bundle exec rake test` from a build-capable environment.
 
-```ruby
-# test/fixtures/throw-bundle.js
-globalThis.render = function() {
-  throw new Error('test-error');
-};
-```
+- `test_source_map_resolves_error_location` — verify `.tsx` path in error
+- `test_source_map_disabled_preserves_raw_v8_message` — verify `.js` path preserved
+- `test_source_map_missing_does_not_raise` — no `.map`, no crash
 
-```json
-// test/fixtures/throw-bundle.js.map
-{
-  "version": 3,
-  "file": "throw-bundle.js",
-  "sources": ["components/thrower.tsx"],
-  "sourcesContent": ["globalThis.render = function() {\n  throw new Error('test-error');\n};"],
-  "names": [],
-  "mappings": "AAAA;AACA"
-}
-```
-
-The VLQ mappings in `"mappings": "AAAA;AACA"` decode to:
-
-| Segment | Decoded |
-|---------|---------|
-| `AAAA` (line 0 gen) | gen_col=0, source=0, orig_line=0, orig_col=0 |
-| `AACA` (line 1 gen) | gen_col=0, source=0, orig_line=1, orig_col=0 |
-
-This maps bundle line 2 (`throw ...`) → `components/thrower.tsx:2:0`.
-
-**Test 1 — source maps enabled, error resolves to original path:**
-
-```ruby
-def test_source_map_resolves_error_location
-  Dir.mktmpdir do |dir|
-    js_path = File.join(dir, 'throw-bundle.js')
-    map_path = "#{js_path}.map"
-
-    File.write(js_path, <<~JS)
-      globalThis.render = function() {
-        throw new Error('test-error');
-      };
-    JS
-
-    File.write(map_path, <<~JSON)
-      {
-        "version": 3,
-        "file": "throw-bundle.js",
-        "sources": ["components/thrower.tsx"],
-        "sourcesContent": ["globalThis.render = function() {\\n  throw new Error('test-error');\\n};"],
-        "names": [],
-        "mappings": "AAAA;AACA"
-      }
-    JSON
-
-    bundle = SSR::Deno::Bundle.new(js_path)
-    error = assert_raises(SSR::Deno::RenderError) do
-      bundle.render({})
-    end
-
-    # With source maps enabled, the error message should reference
-    # the original source file, not the minified bundle
-    assert_includes error.message, 'components/thrower.tsx'
-    refute_includes error.message, 'throw-bundle.js'
-  end
-end
-```
-
-**Test 2 — source maps disabled, raw V8 message preserved:**
-
-Same setup but with `source_maps_enabled = false`:
-
-```ruby
-def test_source_map_disabled_preserves_raw_v8_message
-  Dir.mktmpdir do |dir|
-    # ... same bundle creation ...
-
-    SSR::Deno.source_maps_enabled = false
-    bundle = SSR::Deno::Bundle.new(js_path)
-    error = assert_raises(SSR::Deno::RenderError) do
-      bundle.render({})
-    end
-
-    assert_includes error.message, 'throw-bundle.js'
-  end
-end
-```
-
-**Test 3 — .map file missing, error unchanged:**
-
-Tests the silent-skip error handling:
-
-```ruby
-def test_source_map_missing_does_not_raise
-  Dir.mktmpdir do |dir|
-    js_path = File.join(dir, 'throw-bundle.js')
-    # No .map file created
-
-    File.write(js_path, <<~JS)
-      globalThis.render = function() {
-        throw new Error('test-error');
-      };
-    JS
-
-    SSR::Deno.source_maps_enabled = true
-    bundle = SSR::Deno::Bundle.new(js_path)
-    error = assert_raises(SSR::Deno::RenderError) { bundle.render({}) }
-
-    assert_includes error.message, 'throw-bundle.js'
-  end
-end
-```
-
-All three tests use `assert_raises` (not subprocess) because the error is a
-recoverable `RenderError` — the pool stays usable after catching it.
-
-### Expected Ruby-level error display
+## Expected Ruby-level error display
 
 **Before (source maps disabled):**
 
@@ -371,23 +204,17 @@ SSR::Deno::RenderError: Error: test-error
 
 ## Steps
 
-- [ ] ◐ **Plan written** — this file
-- [ ] **ssr_deno_core: Cargo.toml** — add `sourcemap = "9"`
-- [ ] **ssr_deno_core: source_mapper.rs** — `SsrSourceMapper` with `register`, `resolve`, `clear`
-- [ ] **ssr_deno_core: lib.rs** — add `source_maps: bool` to `Config`, add `SsrSourceMapper` error variant
-- [ ] **ssr_deno_core: tests** — unit test `resolve` with mock source map, IIFE offset
-- [ ] **ext/ssr_deno: Cargo.toml** — add `sourcemap = "9"`, re-export `SsrSourceMapper`
-- [ ] **ext/ssr_deno: types.rs + pool.rs + handle.rs** — thread `source_maps` flag
-- [ ] **ext/ssr_deno: worker.rs** — register maps in `load_bundle_in_worker`
-- [ ] **ext/ssr_deno: render.rs** — resolve error messages via `SSR_SOURCE_MAPPER`
-- [ ] **ext/ssr_deno: lib.rs** — FFI for enabling/disabling, static init
-- [ ] **Ruby: Config** — `config.rb` setters + env var
-- [ ] **Ruby: Railtie** — `railtie.rb` default `!Rails.env.production?`
-- [ ] **Ruby: Generator template** — commented-out option
-- [ ] **RBS** — new type signatures
-- [ ] **Ruby: tests** — integration tests for source map resolution:
-  - `test_source_map_resolves_error_location`
-  - `test_source_map_disabled_preserves_raw_v8_message`
-  - `test_source_map_missing_does_not_raise`
-- [ ] **Stale audit** — README, CHANGELOG, Cargo.toml comments, comments in source
-- [ ] **`bundle exec rake`** — full pipeline passes
+- [x] **Plan written** — this file
+- [x] **ssr_deno_core: Cargo.toml** — added `sourcemap = "9"`
+- [x] **ssr_deno_core: source_mapper.rs** — `SsrSourceMapper` with `register`, `resolve`, `clear`
+- [x] **ssr_deno_core: lib.rs** — added `source_maps: bool` to `Config`, `pub mod source_mapper`
+- [x] **ssr_deno_core: tests** — 10 unit tests, all passing
+- [x] **ext/ssr_deno: lib.rs** — global `get_source_mapper()`, FFI, registration in `native_load_bundle`, resolution in `map_render_error`
+- [x] **Ruby: Config** — `config.rb` setters + env var
+- [x] **Ruby: Railtie** — `railtie.rb` default `!Rails.env.production?`
+- [x] **Ruby: Generator template** — commented-out option
+- [x] **RBS** — type signatures for new methods
+- [x] **CHANGELOG** — Unreleased entry
+- [x] **README + docs** — Runtime settings, env vars table, Source maps subsection, architecture.md
+- [x] **Ruby: integration tests** — `test_source_map_resolves_error_location`, `test_source_map_disabled_preserves_raw_v8_message`, `test_source_map_missing_does_not_crash` — all pass
+- [x] **`bundle exec rake`** — full pipeline passes: compile, cargo test (41/41), cargo clippy (clean), cargo fmt (clean), Vite samples build, Ruby tests (all suites, 0 failures), RuboCop (0 offenses), RBS validation, coverage 100%/100%

@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **Source map support** — V8 stack traces resolve to original `.tsx`/`.ts` files. Opt-in via `SSR::Deno::Config.source_maps_enabled = true` or `SSR_DENO_SOURCE_MAPS_ENABLED` env var. On by default in non-production Rails envs. (`plans/source-maps.md`)
 - **`SSR::Deno::Config`** — dedicated module for runtime settings. `SSR::Deno.max_heap_size_mb=` et al. moved to `SSR::Deno::Config.max_heap_size_mb=`. Thread-safe (Mutex). Native FFI methods stay on `SSR::Deno`.
 - **`SSR::Deno::HeapStats`** — dedicated module for heap statistics. `SSR::Deno.heap_stats` → `SSR::Deno::HeapStats.fetch`, `heap_stats!` → `fetch!`.
 - **CI now runs on push to main and pull requests** — was manual-only (workflow_dispatch) due to 3h+ V8 builds. With sccache + mold, builds take ~20m.

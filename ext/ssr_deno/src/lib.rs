@@ -4,11 +4,19 @@ mod nop_types;
 mod require_loader;
 mod sys;
 
+use std::path::Path;
+use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
+
 use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
+use ssr_deno_core::source_mapper::SsrSourceMapper;
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+
+fn get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
+    static MAPPER: OnceLock<RwLock<SsrSourceMapper>> = OnceLock::new();
+    MAPPER.get_or_init(|| RwLock::new(SsrSourceMapper::new()))
+}
 
 // Recover from poisoned mutex instead of panicking. Poison happens if a thread
 // panics while holding the lock — extremely rare, but unrecoverable if we
@@ -130,9 +138,15 @@ fn heap_stats_serialization_error(ruby: &Ruby, msg: impl Into<String>) -> Error 
 
 fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
     match e {
+        SSRDenoError::Render(msg) => {
+            let resolved = get_source_mapper()
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .resolve(&msg);
+            render_error(ruby, resolved)
+        }
         SSRDenoError::WorkerDied(msg) => js_runtime_worker_error(ruby, msg),
         SSRDenoError::BundleNotFound(msg) => bundle_not_found_error(ruby, msg),
-        SSRDenoError::Render(msg) => render_error(ruby, msg),
         SSRDenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(ruby, msg),
         SSRDenoError::BundleLoad(msg) => js_runtime_initialization_error(ruby, msg),
         SSRDenoError::WorkerInit(msg) => js_runtime_initialization_error(ruby, msg),
@@ -204,6 +218,16 @@ fn native_get_node_builtins_enabled() -> bool {
     lock_config().node_builtins
 }
 
+fn native_set_source_maps_enabled(ruby: &Ruby, enabled: bool) -> Result<(), Error> {
+    check_not_initialized(ruby)?;
+    lock_config().source_maps = enabled;
+    Ok(())
+}
+
+fn native_get_source_maps_enabled() -> bool {
+    lock_config().source_maps
+}
+
 // ---------------------------------------------------------------------------
 // Pool initialization (OnceLock + init mutex)
 // ---------------------------------------------------------------------------
@@ -250,10 +274,25 @@ fn get_pool(ruby: &Ruby) -> Result<&'static IsolatePool, Error> {
 /// Loads a bundle into every isolate in the pool, registering its render
 /// function under `globalThis.__ssr_bundles[bundle_id]`.
 /// Initializes the pool lazily on first call.
+/// If source maps are enabled, reads `.js.map` sidecar and registers it.
 fn native_load_bundle(ruby: &Ruby, bundle_id: String, bundle_path: String) -> Result<(), Error> {
     get_or_init_pool(ruby)?
         .load_bundle(&bundle_id, &bundle_path)
-        .map_err(|e| js_runtime_initialization_error(ruby, e.to_string()))
+        .map_err(|e| js_runtime_initialization_error(ruby, e.to_string()))?;
+
+    if lock_config().source_maps {
+        let map_path = Path::new(&bundle_path).with_extension("js.map");
+        let script_name = Path::new(&bundle_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("(unknown)");
+        get_source_mapper()
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .register(script_name, &map_path);
+    }
+
+    Ok(())
 }
 
 /// Dispatches a render request to the next available isolate.
@@ -399,6 +438,14 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     deno_module.define_singleton_method(
         "native_get_node_builtins_enabled",
         function!(native_get_node_builtins_enabled, 0),
+    )?;
+    deno_module.define_singleton_method(
+        "native_set_source_maps_enabled",
+        function!(native_set_source_maps_enabled, 1),
+    )?;
+    deno_module.define_singleton_method(
+        "native_get_source_maps_enabled",
+        function!(native_get_source_maps_enabled, 0),
     )?;
     deno_module
         .define_singleton_method("native_render_chunks", method!(native_render_chunks, 2))?;

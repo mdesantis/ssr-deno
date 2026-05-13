@@ -42,6 +42,7 @@ SSR::Deno::Config.max_heap_size_mb = 128   # Per-isolate V8 heap (default: 64 MB
 SSR::Deno::Config.isolate_pool_size = 4    # V8 isolate count (default: 1)
 SSR::Deno::Config.render_timeout_ms = 1000 # Render timeout (default: 500ms, min 100, max 300000)
 SSR::Deno::Config.node_builtins_enabled = true  # Node.js built-in modules (default: false)
+SSR::Deno::Config.source_maps_enabled = true  # Resolve V8 errors to original .tsx/.ts files (default: false)
 ```
 
 ```ruby
@@ -63,6 +64,7 @@ which act as **defaults** — explicit setter calls override them.
 | `SSR_DENO_ISOLATE_POOL_SIZE` | `isolate_pool_size` | Integer | 1 |
 | `SSR_DENO_RENDER_TIMEOUT_MS` | `render_timeout_ms` | Integer (ms) | 500 |
 | `SSR_DENO_NODE_BUILTINS_ENABLED` | `node_builtins_enabled` | Boolean | false |
+| `SSR_DENO_SOURCE_MAPS_ENABLED` | `source_maps_enabled` | Boolean | false |
 
 Boolean env vars accept `true`, `1`, `yes` (case-insensitive) for true;
 anything else is treated as false. Invalid integer formats print a warning
@@ -73,6 +75,20 @@ and are skipped. Env vars are read once at `require 'ssr/deno'` time.
 Enable when your SSR bundle or its dependencies call `require()` for `stream`,
 `buffer`, `events`, etc. (e.g. `@emotion/server`). Adds ~50ms to worker init.
 Must be set before pool init.
+
+#### Source maps
+
+When enabled, V8 stack traces from SSR render errors are resolved to original
+`.tsx`/`.ts` source files instead of minified bundle positions. The gem reads
+`.js.map` sidecars next to your bundles and corrects for the IIFE wrapper
+offset used during bundle evaluation.
+
+```ruby
+SSR::Deno::Config.source_maps_enabled = true # or set SSR_DENO_SOURCE_MAPS_ENABLED=true
+```
+
+Best-effort — silently skips missing or corrupt `.map` files. On by default in
+development and test Rails environments (`!Rails.env.production?`).
 
 ### Heap statistics
 
@@ -298,6 +314,7 @@ Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
 
 - `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs, returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
 - `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs, returns empty string.
+- `source_maps_enabled` (default: `!Rails.env.production?`): resolve V8 errors to original `.tsx`/`.ts` files. Requires `.js.map` sidecars next to bundles.
 - `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable.
 
 ### Basic

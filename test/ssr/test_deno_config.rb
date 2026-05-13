@@ -47,11 +47,13 @@ module SSR
       assert_kind_of Integer, SSR::Deno::Config.isolate_pool_size
       assert_kind_of Integer, SSR::Deno::Config.render_timeout_ms
       assert_includes [true, false], SSR::Deno::Config.node_builtins_enabled?
+      assert_includes [true, false], SSR::Deno::Config.source_maps_enabled?
     end
 
     def test_env_var_apply_methods
       ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = '128'
       ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'true'
+      ENV['SSR_DENO_SOURCE_MAPS_ENABLED'] = 'true'
 
       SSR::Deno::Config.send(:apply_integer_env, 'SSR_DENO_MAX_HEAP_SIZE_MB', :max_heap_size_mb=)
 
@@ -60,6 +62,10 @@ module SSR
       SSR::Deno::Config.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)
 
       assert_predicate SSR::Deno::Config, :node_builtins_enabled?
+
+      SSR::Deno::Config.send(:apply_bool_env, 'SSR_DENO_SOURCE_MAPS_ENABLED', :source_maps_enabled=)
+
+      assert_predicate SSR::Deno::Config, :source_maps_enabled?
 
       _, err = capture_io do
         ENV['SSR_DENO_MAX_HEAP_SIZE_MB'] = 'abc'
@@ -78,6 +84,7 @@ module SSR
 
       ENV.delete('SSR_DENO_MAX_HEAP_SIZE_MB')
       ENV.delete('SSR_DENO_NODE_BUILTINS_ENABLED')
+      ENV.delete('SSR_DENO_SOURCE_MAPS_ENABLED')
     end
 
     def test_bool_predicate_reader
@@ -88,6 +95,14 @@ module SSR
       SSR::Deno::Config.node_builtins_enabled = false
 
       refute_predicate SSR::Deno::Config, :node_builtins_enabled?
+
+      SSR::Deno::Config.source_maps_enabled = true
+
+      assert_predicate SSR::Deno::Config, :source_maps_enabled?
+
+      SSR::Deno::Config.source_maps_enabled = false
+
+      refute_predicate SSR::Deno::Config, :source_maps_enabled?
     end
   end
 end
