@@ -1,6 +1,6 @@
 # SSR Source Dev Mode — skip the build step entirely
 
-## Problem (motivated by denpro)
+## Problem
 
 Developer currently runs 3 processes (`web` + `vite` + `rolldown --watch`) plus an npx-rolldown pre-build. SSR requires a bundling step before Rails boots. This leaks build infrastructure into the dev workflow.
 
@@ -300,7 +300,7 @@ The `transpile` feature (`deno_ast`) depends on V8's parser — this is the real
 6. Expose `dev_load_entry` as a `#[magnus::function]` in `lib.rs`
 7. Write Ruby `DevBundle` class with codegen (`Dir.glob`, `__ssr_imports__.ts` generation)
 8. Wire up auto-reload (mtime tracking per loaded module + component dir)
-9. Test with denpro: remove Rolldown from Procfile, verify SSR works with `rails s` alone
+9. Test with side-project: remove Rolldown from Procfile, verify SSR works with `rails s` alone
 10. Update plans, docs, stale audit
 
 ## Future
