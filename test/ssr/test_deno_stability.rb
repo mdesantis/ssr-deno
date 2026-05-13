@@ -19,6 +19,8 @@ module SSR
 
       assert_operator final, :<, baseline * 3,
                       "Heap grew #{final / baseline}x — possible leak"
+      # 3x = generous allowance for GC timing + V8 heap fragmentation.
+      # Empirical: steady-state after 100 renders is ~1.5-2x baseline.
     end
 
     def test_large_data_payload_does_not_crash

@@ -187,9 +187,9 @@ before reading source files.
 ### LOW
 
 - `test/ssr/test_perf.rb` — single method bundles all benchmarks, poor failure isolation
-- `test/ssr/test_deno_concurrency.rb:23` — uses `instance_variable_get` instead of public accessor
-- `test/ssr/test_deno_render.rb:42` — inconsistent `.to_json` vs `JSON.generate`
-- `test/support/subprocess_helper.rb` — doesn't capture subprocess stderr on failure
-- `test/support/perf_helpers.rb` — arbitrary thresholds (1.5x, 1.3x) may be flaky on single-core CI
-- `test/ssr/test_deno_stability.rb:16-22` — 3x heap growth allowance is generous, GC timing dependent
-- `test/ssr/test_deno_macrotasks.rb:63-69` — temp bundle destroyed during test, may confuse pool
+- `test/ssr/test_deno_concurrency.rb:23` — uses `instance_variable_get` instead of public accessor ✅ Fixed
+- `test/ssr/test_deno_render.rb:42` — inconsistent `.to_json` vs `JSON.generate` ✅ Fixed
+- `test/support/subprocess_helper.rb` — doesn't capture subprocess stderr on failure ✅ Fixed
+- `test/support/perf_helpers.rb` — arbitrary thresholds (1.5x, 1.3x) may be flaky on single-core CI ✅ Fixed (extracted to named constants)
+- `test/ssr/test_deno_stability.rb:16-22` — 3x heap growth allowance is generous, GC timing dependent ✅ Fixed (comment with rationale)
+- `test/ssr/test_deno_macrotasks.rb:63-69` — temp bundle destroyed during test, may confuse pool ✅ Fixed (non-block temp dir with teardown)

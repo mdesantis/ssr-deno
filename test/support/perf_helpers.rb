@@ -163,14 +163,17 @@ end
 # ---------------------------------------------------------------------------
 
 module PerfAssertions
-  def assert_ractor_faster(single_ops, ractor_ops, factor: 1.5)
+  RACTOR_SPEEDUP_FACTOR = 1.5
+  THREAD_PARALLEL_FACTOR = 1.3
+
+  def assert_ractor_faster(single_ops, ractor_ops, factor: RACTOR_SPEEDUP_FACTOR)
     threshold = single_ops * factor
 
     assert_operator ractor_ops, :>, threshold,
                     "Expected Ractor ops (#{ractor_ops}) > #{factor}x Single ops (#{single_ops})"
   end
 
-  def assert_thread_parallel(single_ops, thread_ops, min_factor: 1.3)
+  def assert_thread_parallel(single_ops, thread_ops, min_factor: THREAD_PARALLEL_FACTOR)
     ratio = thread_ops.to_f / [single_ops, 1].max
 
     assert_operator ratio, :>, min_factor,

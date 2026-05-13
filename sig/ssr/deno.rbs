@@ -49,6 +49,7 @@ module SSR
       def initialize: (String bundle_path) -> void
 
       attr_reader auto_reload: bool
+      attr_reader bundle_path: String
 
       def auto_reload=: (bool value) -> void
 

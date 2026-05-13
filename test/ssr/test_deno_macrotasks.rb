@@ -4,6 +4,15 @@ require 'test_helper'
 
 module SSR
   class TestDenoMacrotasks < Minitest::Test
+    def setup
+      @tmp_dirs = []
+    end
+
+    def teardown
+      @tmp_dirs&.each { |d| FileUtils.rm_rf(d) }
+      super
+    end
+
     ASYNC_TIMEOUT = <<~JS
       var fired = false;
       setTimeout(function() { fired = true; }, 0);
@@ -57,15 +66,15 @@ module SSR
     private
 
     def render_in_subprocess(js_code)
-      with_temp_bundle(js_code) { |b| b.render({}) }
+      with_temp_bundle(js_code).render({})
     end
 
     def with_temp_bundle(js_code)
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, 'bundle.js')
-        File.write(path, js_code)
-        yield SSR::Deno::Bundle.new(path)
-      end
+      dir = Dir.mktmpdir
+      @tmp_dirs << dir
+      path = File.join(dir, 'bundle.js')
+      File.write(path, js_code)
+      SSR::Deno::Bundle.new(path)
     end
   end
 end

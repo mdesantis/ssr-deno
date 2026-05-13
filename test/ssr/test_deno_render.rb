@@ -31,7 +31,7 @@ module SSR
     end
 
     def test_render_with_raw_input
-      result = @bundle.render({ data: { name: 'raw-input' } }.to_json, raw_input: true)
+      result = @bundle.render(JSON.generate({ data: { name: 'raw-input' } }), raw_input: true)
 
       assert_includes result, '<h1>raw-input</h1>'
     end
@@ -39,7 +39,7 @@ module SSR
     def test_render_with_raw_input_and_raw_output
       data = { data: { name: 'both' } }
 
-      result = @bundle.render(data.to_json, raw_input: true, raw_output: true)
+      result = @bundle.render(JSON.generate(data), raw_input: true, raw_output: true)
 
       assert_includes result, '<h1>both</h1>'
     end

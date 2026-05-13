@@ -17,8 +17,8 @@ module SubprocessHelper
   end
 
   def assert_subprocess(script, msg, env: {})
-    _, _, status = run_subprocess(script, env: env)
+    _, stderr, status = run_subprocess(script, env: env)
 
-    assert_predicate status, :success?, msg
+    assert_predicate status, :success?, "#{msg}\nstderr: #{stderr}"
   end
 end

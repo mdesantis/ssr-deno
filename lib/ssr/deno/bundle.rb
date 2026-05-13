@@ -53,7 +53,7 @@ module SSR
 
       # @return [Boolean] Reader is unsynchronized — benign on MRI (GVL),
       #   atomic in practice on JRuby/TruffleRuby (single-word write).
-      attr_reader :auto_reload
+      attr_reader :auto_reload, :bundle_path
 
       # Enable or disable auto-reload (mtime check before each render).
       # @param value [Boolean]
