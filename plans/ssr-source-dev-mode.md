@@ -175,7 +175,7 @@ If codegen needed:
 pub fn build_dev_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
-    resolve_aliases: HashMap<String, PathBuf>,
+    resolve_aliases: HashMap<String, String>,
     project_root: &Path,
 ) -> Result<MainWorker, String> {
     // 1. ByonmNpmResolver<Sys> + ByonmInNpmPackageChecker (from deno_resolver::npm)
@@ -423,7 +423,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 1. ~~Add `dev-mode` feature flag to `Cargo.toml`~~ ✅ DONE — compiles clean
 2. ~~Render-routing FFI stubs in `lib.rs`~~ ✅ DONE — 4 stub functions, cfg-gated, compiles clean
 3. ~~`dev_handle.rs` + `dev_worker.rs`~~ ✅ DONE — single-isolate worker with LoadEntry/Render/RenderChunked messages; + stub dev_builder.rs & dev_load.rs for compilation; compiles clean under `--features dev-mode`. Post-review hardening: (a) `setup_require` failure bubbles to `init_tx` instead of being swallowed (matches prod); (b) FFI handle switched from `usize` to magnus-wrapped `SSR::Deno::DevWorkerHandle` (`Arc<DevIsolateHandle>` inside, `free_immediately, size`); FFI fns now take `&DevWorkerHandle`. Dev-mode FFI methods only registered on the module when feature is enabled — no `not(dev-mode)` stub variants needed.
-4. `dev_builder.rs` — `build_dev_worker()` with parity to prod (heap-limit cb, web-worker panic guard, OOM atomic), real resolver(s) + dev permissions
+4. ~~`dev_builder.rs` — `build_dev_worker()`~~ ✅ DONE — full builder with dev permissions (`PermissionsOptions` w/ `allow_read=[project_root]`), always-on deno_node services (Nop types as placeholders for step 5), NoopModuleLoader placeholder (step 6), heap-limit cb, web-worker panic guard. `oom_triggered` shared with worker thread via parameter (same pattern as prod). Compiles clean under both default and dev-mode features.
 5. `real_npm_types.rs` — re-export + tiny constructor wiring `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` (no walker)
 6. `dev_module_loader.rs` — alias resolution, npm/`node:` delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache
 7. `source_mapper.rs` — `register_inline()` API; wire dev module loads through it

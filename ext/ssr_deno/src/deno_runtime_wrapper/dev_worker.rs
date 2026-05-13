@@ -43,6 +43,7 @@ pub fn dev_worker_thread_main(
             max_heap_size_mb,
             resolve_aliases,
             &project_root,
+            oom_triggered.clone(),
         ) {
             Ok(w) => w,
             Err(e) => {
