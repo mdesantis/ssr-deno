@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,14 +18,11 @@ use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::{NodeConditionOptions, NodeResolverOptions, PackageJsonResolver};
 
+use crate::dev_module_loader::{DevModuleLoader, SharedAliasMap};
 use crate::nop_types::{NopInNpmPackageChecker, NopNpmPackageFolderResolver};
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
 
-// Step 5 placeholder: swap NopInNpmPackageChecker / NopNpmPackageFolderResolver
-// for `deno_resolver::npm::ByonmInNpmPackageChecker` + `ByonmNpmResolver<Sys>`
-// so bare specifiers (`react`, `@mui/material`, …) resolve via the user's
-// `node_modules/`.
 type DevNodeServices =
     NodeExtInitServices<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>;
 
@@ -68,26 +64,17 @@ fn build_dev_node_services() -> Option<DevNodeServices> {
 pub fn build_dev_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
-    // Step 6: aliases (e.g. `@/foo` → `app/frontend/foo`) get wired into
-    // `DevModuleLoader`. Untouched here — kept in the signature so step 6
-    // doesn't need to widen it.
-    _resolve_aliases: HashMap<String, String>,
+    resolve_aliases: SharedAliasMap,
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
 ) -> Result<MainWorker, String> {
     let node_services = build_dev_node_services();
 
-    // Step 6 placeholder: swap for `DevModuleLoader` (alias + bare-specifier
-    // resolution, transpile, source-map registration).
-    let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> =
-        Rc::new(deno_runtime::deno_core::NoopModuleLoader);
+    let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
+        let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases);
+        Rc::new(loader)
+    };
 
-    // Dev permissions: only the project root is readable; everything else
-    // (write, net, env, run, sys, ffi) is denied because the corresponding
-    // `allow_*` options stay `None` and `prompt: false`. See
-    // `deno_permissions::global_from_option` for the underlying semantics.
-    // RealFs (below) is the raw filesystem driver; PermissionsContainer is
-    // consulted before every fs op, so it is the actual safety boundary.
     let perms_parser = Arc::new(RuntimePermissionDescriptorParser::new(Sys));
     let perms_opts = PermissionsOptions {
         allow_read: Some(vec![project_root.to_string_lossy().into_owned()]),
@@ -106,8 +93,6 @@ pub fn build_dev_worker(
         module_loader,
         node_services,
         npm_process_state_provider: None,
-        // Same parser for runtime permission queries (e.g. `Deno.permissions.query`)
-        // as was used to build `perms` — single source of truth.
         permissions: PermissionsContainer::new(perms_parser, perms),
         root_cert_store_provider: None,
         fetch_dns_resolver: Default::default(),
@@ -138,9 +123,6 @@ pub fn build_dev_worker(
         create_params,
         unsafely_ignore_certificate_errors: None,
         seed: None,
-        // Web workers unsupported — same panic-on-spawn contract as prod.
-        // See `builder.rs:127-134` for rationale (panic is contained to the
-        // worker-spawn thread, no UB across the FFI boundary).
         create_web_worker_cb: Arc::new(|_| unimplemented!("web workers are not supported")),
         format_js_error_fn: None,
         should_break_on_first_statement: false,
@@ -160,10 +142,6 @@ pub fn build_dev_worker(
         Sys,
     >(main_module, services, options);
 
-    // OOM guard. `current_limit * 2` is Deno's standard pattern (matches
-    // `builder.rs:155-161` rationale): terminate execution, double the limit
-    // so V8 can unwind cleanly. Sticky per-worker — once OOM, the dev worker
-    // is considered tainted; the auto-reload path will respawn it.
     let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     worker
         .js_runtime

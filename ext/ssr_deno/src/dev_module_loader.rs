@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use deno_ast::{
@@ -23,6 +23,8 @@ use node_resolver::{
 
 use crate::sys::Sys;
 
+pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
+
 static EMPTY_JS: &str = "export {};\n";
 
 struct CacheEntry {
@@ -31,15 +33,9 @@ struct CacheEntry {
     source_map: Option<String>,
 }
 
-// Step 9 wires the loader into `build_dev_worker`; until then, every item
-// here is reported dead. One module-level allow keeps commits warning-free.
-#[allow(dead_code)]
 pub struct DevModuleLoader {
     project_root: PathBuf,
-    // Sorted by descending prefix length so longest-prefix wins (Vite/webpack
-    // semantics). HashMap iteration order is randomized and would make match
-    // selection run-to-run unstable when two prefixes overlap.
-    resolve_alias: Vec<(String, String)>,
+    resolve_alias: SharedAliasMap,
     node_resolver:
         NodeResolver<ByonmInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver<Sys>, Sys>,
     cache: Mutex<HashMap<PathBuf, CacheEntry>>,
@@ -49,9 +45,6 @@ fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
     if base.exists() {
         return Some(base.to_path_buf());
     }
-    // `Path::with_extension` prepends its own `.` separator. The extensions
-    // here MUST NOT include a leading dot, otherwise the result is a
-    // double-dot path that never exists on disk (`foo..ts`).
     for ext in &["ts", "tsx", "js", "jsx"] {
         let candidate = base.with_extension(ext);
         if candidate.exists() {
@@ -69,9 +62,6 @@ fn is_asset_import(path: &Path) -> bool {
 }
 
 fn needs_transpile(media_type: MediaType) -> bool {
-    // `.d.ts` / `.d.mts` / `.d.cts` declaration files are type-only and
-    // shouldn't appear in a runtime import graph. If they do, transpilation
-    // produces an empty module — harmless but wasted work. Exclude them.
     matches!(
         media_type,
         MediaType::TypeScript
@@ -82,15 +72,11 @@ fn needs_transpile(media_type: MediaType) -> bool {
     )
 }
 
-#[allow(dead_code)]
 impl DevModuleLoader {
     pub fn new(
         project_root: PathBuf,
-        resolve_alias: HashMap<String, String>,
+        resolve_alias: SharedAliasMap,
     ) -> Self {
-        let mut resolve_alias: Vec<(String, String)> = resolve_alias.into_iter().collect();
-        resolve_alias.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-
         let root_node_modules_dir = Some(project_root.join("node_modules"));
         let pkg_json_resolver: MaybeArc<PackageJsonResolver<Sys>> =
             MaybeArc::new(PackageJsonResolver::new(Sys, None));
@@ -131,14 +117,11 @@ impl DevModuleLoader {
     }
 
     fn resolve_alias_specifier(&self, specifier: &str) -> Option<PathBuf> {
-        for (prefix, target) in &self.resolve_alias {
-            let Some(rest) = specifier.strip_prefix(prefix) else {
+        let guard = self.resolve_alias.lock().ok()?;
+        for (prefix, target) in guard.iter() {
+            let Some(rest) = specifier.strip_prefix(prefix.as_str()) else {
                 continue;
             };
-            // Require a `/` boundary (or end-of-string) so that `prefix = "@"`
-            // matches `@/foo/bar` but not `@mui/material`. Without the boundary
-            // every scoped npm import would incur a spurious filesystem walk
-            // under `project_root/target/`.
             if !rest.is_empty() && !rest.starts_with('/') {
                 continue;
             }
@@ -162,9 +145,6 @@ impl DevModuleLoader {
 
     fn check_cache(&self, path: &Path) -> Option<(String, Option<String>)> {
         let current_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
-        // Recover from poisoned mutex instead of degrading silently to a cache
-        // miss. Matches the pattern used by `SsrSourceMapper` and `CONFIG`
-        // locks in the prod path.
         let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let entry = cache.get(path)?;
         if entry.mtime == current_mtime {
@@ -317,10 +297,7 @@ impl ModuleLoader for DevModuleLoader {
         }
 
         if let Some((code, source_map)) = self.check_cache(&path) {
-            // Re-register in case the global mapper was cleared between
-            // cache hits (eg auto-reload that respawns the worker but keeps
-            // the static mapper alive in the parent process).
-            register_source_map(&path, source_map.as_deref());
+            register_source_map(module_specifier, &path, source_map.as_deref());
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
                 ModuleSourceCode::String(code.into()),
@@ -331,7 +308,7 @@ impl ModuleLoader for DevModuleLoader {
 
         match self.load_and_transpile_source(&path) {
             Ok((code, source_map)) => {
-                register_source_map(&path, source_map.as_deref());
+                register_source_map(module_specifier, &path, source_map.as_deref());
                 self.update_cache(&path, code.clone(), source_map);
                 ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                     ModuleType::JavaScript,
@@ -345,21 +322,39 @@ impl ModuleLoader for DevModuleLoader {
     }
 }
 
+/// Sort a `HashMap` of aliases by descending prefix length and store in the
+/// shared map. Longest-prefix wins at resolve time (Vite/webpack semantics).
+/// Called by `dev_load_entry` before each entry load.
+pub fn set_aliases(shared: &SharedAliasMap, aliases: &HashMap<String, String>) {
+    let mut sorted: Vec<(String, String)> = aliases
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
+    *guard = sorted;
+}
+
 /// Registers a transpile-produced source map with the global `SsrSourceMapper`
 /// so V8 stack frames from transpiled JS resolve back to `.tsx` originals.
+///
+/// **Keying:** V8 emits stack frames using the module's URL specifier
+/// (eg `file:///abs/path/foo.tsx`), not the filesystem path. The mapper key
+/// must match what `SsrSourceMapper::resolve_line` extracts from the trace
+/// — register under `specifier.as_str()`, not the raw path.
+///
 /// No-op when the transpile step produced no map (eg `.js` files that
 /// `needs_transpile` returned false for) or when the file's mtime can't be
 /// read. Best-effort — failure here leaves the trace unmapped, never panics.
-fn register_source_map(path: &Path, source_map: Option<&str>) {
+fn register_source_map(specifier: &ModuleSpecifier, path: &Path, source_map: Option<&str>) {
     let Some(map_json) = source_map else {
         return;
     };
     let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
         return;
     };
-    let key = path.to_string_lossy();
     let mut mapper = crate::get_source_mapper()
         .write()
         .unwrap_or_else(|e| e.into_inner());
-    mapper.register_inline(&key, map_json, mtime);
+    mapper.register_inline(specifier.as_str(), map_json, mtime);
 }

@@ -153,7 +153,16 @@ fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
         SSRDenoError::WorkerDied(msg) => js_runtime_worker_error(ruby, msg),
         SSRDenoError::BundleNotFound(msg) => bundle_not_found_error(ruby, msg),
         SSRDenoError::OutOfMemory(msg) => js_runtime_out_of_memory_error(ruby, msg),
-        SSRDenoError::BundleLoad(msg) => js_runtime_initialization_error(ruby, msg),
+        // Entry-evaluation errors (dev mode) carry V8 stack traces over
+        // transpiled .tsx → .js — resolve through the source mapper so
+        // line numbers point at the original sources.
+        SSRDenoError::BundleLoad(msg) => {
+            let resolved = get_source_mapper()
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .resolve(&msg);
+            js_runtime_initialization_error(ruby, resolved)
+        }
         SSRDenoError::WorkerInit(msg) => js_runtime_initialization_error(ruby, msg),
         SSRDenoError::HeapStatsSerialization(msg) => heap_stats_serialization_error(ruby, msg),
     }

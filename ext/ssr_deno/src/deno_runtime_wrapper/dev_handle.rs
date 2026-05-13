@@ -39,7 +39,6 @@ impl DevIsolateHandle {
     pub fn spawn(
         max_heap_size_mb: usize,
         render_timeout_ms: u64,
-        resolve_aliases: HashMap<String, String>,
         project_root: PathBuf,
     ) -> Result<Self, SSRDenoError> {
         let (tx, rx) = tokio::sync::mpsc::channel::<DevWorkerMsg>(1);
@@ -52,7 +51,6 @@ impl DevIsolateHandle {
                     rx,
                     init_tx,
                     max_heap_size_mb,
-                    resolve_aliases,
                     project_root,
                 )
             })

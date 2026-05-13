@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 
 use deno_runtime::deno_core::url::Url;
 use tokio::runtime;
@@ -16,7 +15,6 @@ pub fn dev_worker_thread_main(
     mut rx: tokio::sync::mpsc::Receiver<DevWorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
     max_heap_size_mb: usize,
-    resolve_aliases: HashMap<String, String>,
     project_root: PathBuf,
 ) {
     let rt = match runtime::Builder::new_current_thread().enable_all().build() {
@@ -37,11 +35,13 @@ pub fn dev_worker_thread_main(
         };
 
         let oom_triggered = Arc::new(AtomicBool::new(false));
+        let alias_map: crate::dev_module_loader::SharedAliasMap =
+            Arc::new(Mutex::new(Vec::new()));
 
         let mut worker = match build_dev_worker(
             &main_module_url,
             max_heap_size_mb,
-            resolve_aliases,
+            alias_map.clone(),
             &project_root,
             oom_triggered.clone(),
         ) {
@@ -52,10 +52,6 @@ pub fn dev_worker_thread_main(
             }
         };
 
-        // Always enable require for CJS compatibility in dev.
-        // Match production failure handling: bubble up to init_tx so the
-        // caller observes a clean error rather than seeing a broken worker
-        // surface "require is undefined" at first render.
         if let Err(e) = super::worker::setup_require(&mut worker) {
             let _ = init_tx.send(Err(format!("Failed to set up require: {e}")));
             return;
@@ -73,8 +69,10 @@ pub fn dev_worker_thread_main(
                     let result = super::dev_load::dev_load_entry(
                         &mut worker,
                         &entry_path,
+                        &alias_map,
                         &resolve_alias,
-                    );
+                    )
+                    .await;
                     let _ = reply.send(result);
                 }
                 DevWorkerMsg::Render {
