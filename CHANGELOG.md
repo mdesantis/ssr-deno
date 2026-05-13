@@ -1,6 +1,8 @@
 ## Unreleased
 
 ### Added
+- **Dev-mode auto-reload** — `DevModeBundle` now supports `auto_reload = true`: checks source file mtimes before each render and respawns the Deno worker (fresh V8 isolate) on any change. Disabled by default. (`plans/ssr-source-dev-mode.md` step 11)
+- **`DevMtimeCache`** — shared (Arc) per-file mtime cache extracted from `DevModuleLoader`. `native_dev_check_stale(handle)` queries it without worker message.
 - **Source map support** — V8 stack traces resolve to original `.tsx`/`.ts` files. Opt-in via `SSR::Deno::Config.source_maps_enabled = true` or `SSR_DENO_SOURCE_MAPS_ENABLED` env var. On by default in non-production Rails envs. (`plans/archived/source-maps.md`)
 - **`SSR::Deno::Config`** — dedicated module for runtime settings. `SSR::Deno.max_heap_size_mb=` et al. moved to `SSR::Deno::Config.max_heap_size_mb=`. Thread-safe (Mutex). Native FFI methods stay on `SSR::Deno`.
 - **`SSR::Deno::HeapStats`** — dedicated module for heap statistics. `SSR::Deno.heap_stats` → `SSR::Deno::HeapStats.fetch`, `heap_stats!` → `fetch!`.

@@ -93,6 +93,28 @@ Acceptable in dev because:
 
 Future: wrap in `rb_thread_call_without_gvl` like [`native_dev_render`](../ext/ssr_deno/src/lib.rs). Pattern is identical — box `(handle, entry_path, aliases)`, callback calls `block_on_load_entry`. Defer until multi-thread dev becomes a real use case.
 
+## Future — `native_dev_check_stale` GVL release
+
+`native_dev_check_stale` ([`lib.rs`](../ext/ssr_deno/src/lib.rs)) walks the mtime cache and stats every loaded path. On a 500-module graph that's ~500 syscalls per render call (worst case — `auto_reload` enabled). Holds Ruby GVL throughout. Multi-threaded Puma dev workers stall tens of ms per render.
+
+Acceptable for typical dev. Future: same `rb_thread_call_without_gvl` pattern — the body is FFI-only, no Ruby objects touched.
+
+## Future — Carry transpile cache across auto-reload
+
+Current step-11 strategy: on reload, drop the worker + its `Arc<DevMtimeCache>`; spawn a fresh worker with empty cache. Every module re-transpiled even though most are unchanged.
+
+V8's *module map* must be fresh on every reload (cached compiled modules are keyed by URL; reusing them would serve stale code). But the *transpile* cache could survive — for each module whose mtime matches, deno_ast's work is skipped. Only V8's compile pass runs against the (already-transpiled) source.
+
+On a 500-module graph where a single file changed:
+- Current: 500 transpiles + 500 V8 compiles
+- With cache carry: 1 transpile + 500 V8 compiles
+
+Transpile is the dominant cost. Wiring: store `Arc<DevMtimeCache>` on the Ruby `DevModeBundle`; pass into `native_dev_worker_new` (or a new `native_dev_worker_with_cache`) so the new worker reuses the cache. `update_cache` overwrites entries with new mtime, automatically invalidating changed files.
+
+Risk: stale cache entries for files that became invalid (parse error fixed, but cache still holds the OLD valid transpile output keyed under the same mtime). Mitigation: invalidate by content hash, not mtime alone.
+
+Defer — measure reload latency first.
+
 ## Future — Source-map registry lifecycle on worker respawn
 
 `SsrSourceMapper` is a global `OnceLock<RwLock<SsrSourceMapper>>` ([`lib.rs:get_source_mapper`](../ext/ssr_deno/src/lib.rs)). It survives worker drops. Source maps registered under URLs accumulate forever (replaced on same URL re-registration, leaked on stale URLs).

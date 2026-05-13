@@ -1,12 +1,26 @@
 # frozen_string_literal: true
 
 require_relative '../test_helper'
+require_relative '../support/temp_bundle_helper'
 
 module SSR
   module Deno
     class TestDevModeBundle < Minitest::Test
+      prepend TempBundleHelper
+
       ROOT = File.expand_path('../..', __dir__)
       FIXTURE = File.join(ROOT, 'test', 'fixtures', 'dev-entry.tsx')
+      # Counter lives in module-local closure: persists across renders within
+      # the same worker, resets to 0 when the module is re-evaluated by a
+      # fresh V8 isolate (i.e. on auto-reload). Without the per-render
+      # increment we couldn't distinguish reload from same-worker behavior.
+      COUNTER_TSX = <<~JS
+        let count = 0;
+        globalThis.render = function () {
+          count++;
+          return { count: count };
+        };
+      JS
 
       def setup
         # Each test creates its own DevModeBundle and registers it. Reset the
@@ -133,6 +147,105 @@ module SSR
         assert_raises SSR::Deno::RenderError do
           bundle.render('not-json{', raw_input: true)
         end
+      end
+
+      def test_dev_bundle_auto_reload_disabled_no_check
+        temp_entry = File.join(temp_dir, 'entry.tsx')
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function() {
+            return { value: 1 };
+          };
+        JS
+
+        bundle = DevModeBundle.new(temp_entry)
+
+        assert_equal({ 'value' => 1 }, bundle.render)
+
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function() {
+            return { value: 2 };
+          };
+        JS
+
+        # auto_reload defaults to false — render must still return 1
+        assert_equal({ 'value' => 1 }, bundle.render)
+      end
+
+      def test_dev_bundle_auto_reload_detects_file_change
+        temp_entry = File.join(temp_dir, 'entry.tsx')
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function() {
+            return { version: 1 };
+          };
+        JS
+
+        bundle = DevModeBundle.new(temp_entry)
+        bundle.auto_reload = true
+
+        assert_equal({ 'version' => 1 }, bundle.render)
+
+        # Modify the file with a future mtime to avoid filesystem resolution
+        # issues on coarse-grained timers (ext3, FAT, Docker overlay).
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function() {
+            return { version: 2 };
+          };
+        JS
+        new_time = Time.now + 1
+        File.utime(new_time, new_time, temp_entry)
+
+        assert_equal({ 'version' => 2 }, bundle.render)
+      end
+
+      def test_dev_bundle_auto_reload_uses_fresh_v8_context
+        temp_entry = File.join(temp_dir, 'counter.tsx')
+        File.write(temp_entry, COUNTER_TSX)
+
+        bundle = DevModeBundle.new(temp_entry)
+        bundle.auto_reload = true
+
+        # Same worker: closure-local counter persists between renders.
+        assert_equal({ 'count' => 1 }, bundle.render)
+        assert_equal({ 'count' => 2 }, bundle.render)
+
+        # Touch the file with a future mtime — auto-reload fires, fresh V8
+        # isolate re-evaluates the module, counter resets to 0 then ++ to 1.
+        File.write(temp_entry, COUNTER_TSX)
+        new_time = Time.now + 1
+        File.utime(new_time, new_time, temp_entry)
+
+        assert_equal({ 'count' => 1 }, bundle.render)
+      end
+
+      def test_dev_bundle_auto_reload_retries_after_failed_reload
+        temp_entry = File.join(temp_dir, 'entry.tsx')
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function () { return { status: 'ok' }; };
+        JS
+
+        bundle = DevModeBundle.new(temp_entry)
+        bundle.auto_reload = true
+
+        assert_equal({ 'status' => 'ok' }, bundle.render)
+
+        # Introduce a parse error and bump mtime — reload triggers, transpile
+        # fails, the new worker's mtime cache stays empty.
+        File.write(temp_entry, 'this is not valid typescript {{{')
+        broken_time = Time.now + 1
+        File.utime(broken_time, broken_time, temp_entry)
+        assert_raises SSR::Deno::JsRuntimeInitializationError do
+          bundle.render
+        end
+
+        # Fix the file. Without the retry flag, an empty mtime cache would
+        # make `check_stale` return false forever — user would be stuck.
+        File.write(temp_entry, <<~JS)
+          globalThis.render = function () { return { status: 'recovered' }; };
+        JS
+        fixed_time = Time.now + 2
+        File.utime(fixed_time, fixed_time, temp_entry)
+
+        assert_equal({ 'status' => 'recovered' }, bundle.render)
       end
     end
   end

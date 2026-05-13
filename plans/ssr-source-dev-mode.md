@@ -435,7 +435,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
    **9b — FFI wiring.** `native_dev_worker_new` calls `DevIsolateHandle::spawn`, wraps in `Arc → DevWorkerHandle`. `native_dev_load_entry` parses alias JSON and calls `block_on_load_entry`. `native_dev_render` uses GVL-release pattern (`rb_thread_call_without_gvl` + `dev_render_worker` callback). `native_dev_render_chunks` yields chunks from `start_render_chunked` (blockless raises ArgError). Both default and dev-mode compile clean.
 10. ~~Ruby `DevModeBundle` (registers in `Bundle.registry`)~~ ✅ DONE — `lib/ssr/deno/dev_mode_bundle.rb` with `#render` / `#render_chunks` parity. Default `resolve_alias` from `Config.dev_resolve_alias`. Registers in `Bundle.registry` for `find_bundle!` compatibility. `import.meta.glob` codegen deferred to future work. RBS signatures added. 6 tests covering render, render_chunks (block + Enumerator), registry registration, alias defaults, alias override. All pass. Full `bundle exec rake` passes.
-11. Auto-reload: `native_dev_check_stale` queries module-cache; on `true` rebuild via fresh worker + `dev_load_entry`
+11. ~~Auto-reload: `native_dev_check_stale` queries module-cache; on `true` rebuild via fresh worker + `dev_load_entry`~~ ✅ DONE — `DevMtimeCache` extracted into shared `Arc`, `native_dev_check_stale` FFI, `reload_if_changed` guard on `render`/`render_chunks`, 3 tests (disabled, enabled, fresh-V8-context), RBS, CHANGELOG. Full `bundle exec rake` passes.
 
     ### Design
 

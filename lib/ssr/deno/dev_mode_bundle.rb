@@ -16,8 +16,9 @@ module SSR
     #   on by default). Build with `--no-default-features` to strip dev-mode
     #   from a production gem; calling +DevModeBundle.new+ on such a build
     #   raises +NoMethodError+ on the missing native methods.
-    # @note No automatic source-file reload yet (planned, dev-mode step 11).
-    #   Edits to source files require a +rails s+ restart until then.
+    # @note Source-file auto-reload is available: set +auto_reload = true+
+    #   to check for changes on every render (respawning the worker on stale).
+    #   Disabled by default (opt-in via +auto_reload+ accessor).
     class DevModeBundle
       # @param bundle_path [String] Path to the source entry file (.tsx/.ts).
       # @param name [Symbol, String] Registry name for +find_bundle!+ lookup.
@@ -45,11 +46,12 @@ module SSR
         Bundle.registry[@name] = self
       end
 
-      # @return [Boolean] Auto-reload is not yet implemented for dev mode
-      #   (planned in step 11). Reader returns +false+ unconditionally.
+      # @return [Boolean] When enabled, checks source files for changes before
+      #   each render and respawns the worker if any file was modified. Disabled
+      #   by default — no change-detection overhead when unused.
       attr_reader :auto_reload, :bundle_path
 
-      # @param value [Boolean] Stored but ignored until step 11.
+      # @param value [Boolean] Enable auto-reload (mtime check before each render).
       def auto_reload=(value)
         @_bundle_mutex.synchronize { @auto_reload = value }
       end
@@ -59,6 +61,8 @@ module SSR
       # @param raw_input [Boolean] Skip +JSON.generate+.
       # @param raw_output [Boolean] Skip +JSON.parse+.
       def render(data = nil, raw_input: false, raw_output: false)
+        reload_if_changed
+
         json = raw_input ? data : JSON.generate(data)
 
         instrument 'render.ssr_deno', bundle_name: @bundle_path do |payload|
@@ -77,6 +81,8 @@ module SSR
       # @param raw_input [Boolean] Skip +JSON.generate+.
       # @return [Enumerator, nil] Enumerator of chunks (no block) or nil (block given).
       def render_chunks(data = nil, raw_input: false, &)
+        reload_if_changed
+
         json = raw_input ? data : JSON.generate(data)
 
         instrument 'render.ssr_deno', bundle_name: @bundle_path do
@@ -88,6 +94,28 @@ module SSR
 
       def instrument(...)
         Instrumenter.instrument(...)
+      end
+
+      # Reload guard. Triggers a fresh worker on either:
+      # - any tracked source file's mtime changed (`native_dev_check_stale`), or
+      # - the previous reload attempt failed (`@reload_pending`). Without this
+      #   second condition a transpile error in the entry leaves the new worker
+      #   with an empty mtime cache, `check_stale` returns false forever, and
+      #   subsequent edits would never trigger a retry — user stuck until they
+      #   restart Rails.
+      def reload_if_changed
+        return unless @auto_reload
+
+        @_bundle_mutex.synchronize do
+          next unless @reload_pending || SSR::Deno.native_dev_check_stale(@handle)
+
+          create_worker
+          load_entry
+          @reload_pending = false
+        rescue StandardError
+          @reload_pending = true
+          raise
+        end
       end
 
       def create_worker

@@ -435,6 +435,11 @@ fn native_dev_worker_new(
 }
 
 #[cfg(feature = "dev-mode")]
+fn native_dev_check_stale(handle: &DevWorkerHandle) -> bool {
+    handle.0.check_stale()
+}
+
+#[cfg(feature = "dev-mode")]
 fn native_dev_load_entry(
     ruby: &Ruby,
     handle: &DevWorkerHandle,
@@ -620,6 +625,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         deno_module.define_singleton_method(
             "native_dev_worker_new",
             function!(native_dev_worker_new, 3),
+        )?;
+        deno_module.define_singleton_method(
+            "native_dev_check_stale",
+            function!(native_dev_check_stale, 1),
         )?;
         deno_module.define_singleton_method(
             "native_dev_load_entry",

@@ -18,7 +18,7 @@ use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
 
-use crate::dev_module_loader::{DevModuleLoader, SharedAliasMap};
+use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap};
 use crate::real_npm_types::build_dev_npm_resolver;
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
@@ -67,13 +67,14 @@ pub fn build_dev_worker(
     resolve_aliases: SharedAliasMap,
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
+    mtime_cache: Arc<DevMtimeCache>,
 ) -> Result<MainWorker, String> {
     let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(project_root);
 
     let node_services = build_dev_node_services(npm_checker, npm_resolver, pkg_json_resolver);
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
-        let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases);
+        let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases, mtime_cache);
         Rc::new(loader)
     };
 

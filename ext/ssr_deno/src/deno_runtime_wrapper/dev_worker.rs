@@ -10,12 +10,14 @@ use super::dev_builder::build_dev_worker;
 use super::dev_handle::DevWorkerMsg;
 use super::render;
 use super::render_chunked;
+use crate::dev_module_loader::DevMtimeCache;
 
 pub fn dev_worker_thread_main(
     mut rx: tokio::sync::mpsc::Receiver<DevWorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
     max_heap_size_mb: usize,
     project_root: PathBuf,
+    mtime_cache: Arc<DevMtimeCache>,
 ) {
     let rt = match runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
@@ -43,6 +45,7 @@ pub fn dev_worker_thread_main(
             alias_map.clone(),
             &project_root,
             oom_triggered.clone(),
+            mtime_cache,
         ) {
             Ok(w) => w,
             Err(e) => {

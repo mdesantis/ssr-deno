@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use tokio::sync::oneshot;
 
 use super::types::ChunkedRenderResult;
 use super::SSRDenoError;
+use crate::dev_module_loader::DevMtimeCache;
 
 pub(crate) enum DevWorkerMsg {
     LoadEntry {
@@ -34,6 +35,7 @@ pub(crate) enum DevWorkerMsg {
 pub struct DevIsolateHandle {
     tx: tokio::sync::mpsc::Sender<DevWorkerMsg>,
     render_timeout_ms: u64,
+    cache: Arc<DevMtimeCache>,
 }
 
 impl DevIsolateHandle {
@@ -42,6 +44,8 @@ impl DevIsolateHandle {
         render_timeout_ms: u64,
         project_root: PathBuf,
     ) -> Result<Self, SSRDenoError> {
+        let cache = Arc::new(DevMtimeCache::new());
+        let cache_for_worker = cache.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<DevWorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
@@ -58,6 +62,7 @@ impl DevIsolateHandle {
                     init_tx,
                     max_heap_size_mb,
                     project_root,
+                    cache_for_worker,
                 )
             })
             .map_err(|e| {
@@ -76,6 +81,7 @@ impl DevIsolateHandle {
         Ok(Self {
             tx,
             render_timeout_ms,
+            cache,
         })
     }
 
@@ -119,6 +125,13 @@ impl DevIsolateHandle {
             .map_err(|_| SSRDenoError::WorkerDied("Deno dev worker thread has exited".into()))?;
 
         Ok((chunk_rx, reply_rx))
+    }
+
+    /// Check if any loaded module's source file has changed on disk since
+    /// the last `dev_load_entry`. Pure filesystem stat on the caller thread —
+    /// no worker message needed (the mtime cache is `Arc`-shared).
+    pub fn check_stale(&self) -> bool {
+        self.cache.any_stale()
     }
 
     pub fn block_on_load_entry(

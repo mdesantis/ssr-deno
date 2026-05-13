@@ -31,6 +31,56 @@ struct CacheEntry {
     source_map: Option<String>,
 }
 
+pub struct DevMtimeCache {
+    inner: Mutex<HashMap<PathBuf, CacheEntry>>,
+}
+
+impl DevMtimeCache {
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn any_stale(&self) -> bool {
+        let snapshot: Vec<(PathBuf, SystemTime)> = {
+            let cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            cache.iter().map(|(p, e)| (p.clone(), e.mtime)).collect()
+        };
+        snapshot.into_iter().any(|(path, cached_mtime)| {
+            std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .map_or(true, |current| current != cached_mtime)
+        })
+    }
+
+    fn check(&self, path: &Path) -> Option<(String, Option<String>)> {
+        let current_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
+        let cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = cache.get(path)?;
+        if entry.mtime == current_mtime {
+            Some((entry.code.clone(), entry.source_map.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn update(&self, path: &Path, code: String, source_map: Option<String>) {
+        let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
+            return;
+        };
+        let mut cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(
+            path.to_path_buf(),
+            CacheEntry {
+                mtime,
+                code,
+                source_map,
+            },
+        );
+    }
+}
+
 pub struct DevModuleLoader {
     project_root: PathBuf,
     resolve_alias: SharedAliasMap,
@@ -40,7 +90,7 @@ pub struct DevModuleLoader {
         ByonmNpmResolver<Sys>,
         Sys,
     >,
-    cache: Mutex<HashMap<PathBuf, CacheEntry>>,
+    cache: Arc<DevMtimeCache>,
 }
 
 fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
@@ -84,7 +134,11 @@ fn needs_transpile(media_type: MediaType) -> bool {
 }
 
 impl DevModuleLoader {
-    pub fn new(project_root: PathBuf, resolve_alias: SharedAliasMap) -> Self {
+    pub fn new(
+        project_root: PathBuf,
+        resolve_alias: SharedAliasMap,
+        cache: Arc<DevMtimeCache>,
+    ) -> Self {
         let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
 
         let node_resolver = NodeResolver::new(
@@ -112,7 +166,7 @@ impl DevModuleLoader {
             project_root,
             resolve_alias,
             node_resolver,
-            cache: Mutex::new(HashMap::new()),
+            cache,
         }
     }
 
@@ -144,29 +198,11 @@ impl DevModuleLoader {
     }
 
     fn check_cache(&self, path: &Path) -> Option<(String, Option<String>)> {
-        let current_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
-        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        let entry = cache.get(path)?;
-        if entry.mtime == current_mtime {
-            Some((entry.code.clone(), entry.source_map.clone()))
-        } else {
-            None
-        }
+        self.cache.check(path)
     }
 
     fn update_cache(&self, path: &Path, code: String, source_map: Option<String>) {
-        let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
-            return;
-        };
-        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        cache.insert(
-            path.to_path_buf(),
-            CacheEntry {
-                mtime,
-                code,
-                source_map,
-            },
-        );
+        self.cache.update(path, code, source_map)
     }
 
     fn load_and_transpile_source(

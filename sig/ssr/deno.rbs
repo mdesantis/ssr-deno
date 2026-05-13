@@ -158,6 +158,7 @@ module SSR
     def self.native_get_source_maps_enabled: () -> bool
     def self.native_heap_stats: () -> String
     def self.native_dev_worker_new: (String project_root, Integer max_heap_size_mb, Integer render_timeout_ms) -> untyped
+    def self.native_dev_check_stale: (untyped handle) -> bool
     def self.native_dev_load_entry: (untyped handle, String entry_path, String alias_map_json) -> void
     def self.native_dev_render: (untyped handle, String bundle_id, String json) -> String
     def self.native_dev_render_chunks: (untyped handle, String bundle_id, String json) -> Enumerator[String, void]
@@ -190,6 +191,8 @@ module SSR
       private
 
       def instrument: (untyped name, ?::Hash[untyped, untyped] payload) ?{ (::Hash[untyped, untyped]) -> untyped } -> untyped
+
+      def reload_if_changed: () -> void
 
       def create_worker: () -> void
 
