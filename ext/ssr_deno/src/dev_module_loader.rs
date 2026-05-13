@@ -13,14 +13,13 @@ use deno_core::{
     ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
-use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver, ByonmNpmResolverCreateOptions};
-use deno_runtime::deno_fs::sync::MaybeArc;
-use node_resolver::cache::NodeResolutionSys;
+use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
-    DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution, NodeResolutionKind,
-    NodeResolver, NodeResolverOptions, PackageJsonResolver, ResolutionMode,
+    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions,
+    NodeResolution, NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
 };
 
+use crate::real_npm_types::build_dev_npm_resolver;
 use crate::sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
@@ -77,18 +76,11 @@ impl DevModuleLoader {
         project_root: PathBuf,
         resolve_alias: SharedAliasMap,
     ) -> Self {
-        let root_node_modules_dir = Some(project_root.join("node_modules"));
-        let pkg_json_resolver: MaybeArc<PackageJsonResolver<Sys>> =
-            MaybeArc::new(PackageJsonResolver::new(Sys, None));
-        let npm_resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
-            root_node_modules_dir,
-            search_stop_dir: Some(project_root.clone()),
-            sys: NodeResolutionSys::new(Sys, None),
-            pkg_json_resolver: pkg_json_resolver.clone(),
-        });
+        let (npm_checker, npm_resolver, pkg_json_resolver) =
+            build_dev_npm_resolver(&project_root);
 
         let node_resolver = NodeResolver::new(
-            ByonmInNpmPackageChecker,
+            npm_checker,
             DenoIsBuiltInNodeModuleChecker,
             npm_resolver,
             pkg_json_resolver,

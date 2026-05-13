@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs::sync::MaybeArc;
@@ -15,28 +16,32 @@ use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
-use node_resolver::{NodeConditionOptions, NodeResolverOptions, PackageJsonResolver};
+use node_resolver::{
+    DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions,
+};
 
 use crate::dev_module_loader::{DevModuleLoader, SharedAliasMap};
-use crate::nop_types::{NopInNpmPackageChecker, NopNpmPackageFolderResolver};
+use crate::real_npm_types::build_dev_npm_resolver;
 use crate::require_loader::SSRDenoNodeRequireLoader;
 use crate::sys::Sys;
 
 type DevNodeServices =
-    NodeExtInitServices<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>;
+    NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
 
-fn build_dev_node_services() -> Option<DevNodeServices> {
+fn build_dev_node_services(
+    npm_checker: ByonmInNpmPackageChecker,
+    npm_resolver: ByonmNpmResolver<Sys>,
+    pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys>,
+) -> Option<DevNodeServices> {
     let loader: NodeRequireLoaderRc = Rc::new(SSRDenoNodeRequireLoader);
-    let pkg_json_resolver = MaybeArc::new(PackageJsonResolver::new(Sys, None));
 
     let resolver: MaybeArc<
-        NodeResolver<NopInNpmPackageChecker, NopNpmPackageFolderResolver, Sys>,
+        NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>,
     > = {
         let r = NodeResolver::new(
-            NopInNpmPackageChecker,
+            npm_checker,
             DenoIsBuiltInNodeModuleChecker,
-            NopNpmPackageFolderResolver,
+            npm_resolver,
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
@@ -68,7 +73,14 @@ pub fn build_dev_worker(
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
 ) -> Result<MainWorker, String> {
-    let node_services = build_dev_node_services();
+    let (npm_checker, npm_resolver, pkg_json_resolver) =
+        build_dev_npm_resolver(project_root);
+
+    let node_services = build_dev_node_services(
+        npm_checker,
+        npm_resolver,
+        pkg_json_resolver,
+    );
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
         let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases);
@@ -137,8 +149,8 @@ pub fn build_dev_worker(
     };
 
     let mut worker = MainWorker::bootstrap_from_options::<
-        NopInNpmPackageChecker,
-        NopNpmPackageFolderResolver,
+        ByonmInNpmPackageChecker,
+        ByonmNpmResolver<Sys>,
         Sys,
     >(main_module, services, options);
 

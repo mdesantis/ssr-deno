@@ -5,12 +5,19 @@ mod require_loader;
 mod sys;
 
 #[cfg(feature = "dev-mode")]
-mod dev_module_loader;
-#[cfg(feature = "dev-mode")]
 mod real_npm_types;
+#[cfg(feature = "dev-mode")]
+mod dev_module_loader;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
+
+#[cfg(feature = "dev-mode")]
+use std::collections::HashMap;
+#[cfg(feature = "dev-mode")]
+use std::path::PathBuf;
+#[cfg(feature = "dev-mode")]
+use std::sync::Arc;
 
 use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
@@ -391,7 +398,7 @@ fn native_render_chunks(
 }
 
 // ---------------------------------------------------------------------------
-// Dev-mode FFI stubs — fix dispatch surface before any logic
+// Dev-mode FFI — real implementations
 // ---------------------------------------------------------------------------
 
 /// Opaque Ruby-side handle to a dev worker. Cannot be forged from Ruby
@@ -401,7 +408,7 @@ fn native_render_chunks(
 #[cfg(feature = "dev-mode")]
 #[magnus::wrap(class = "SSR::Deno::DevWorkerHandle", free_immediately, size)]
 pub struct DevWorkerHandle(
-    pub std::sync::Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
+    pub Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
 );
 
 #[cfg(feature = "dev-mode")]
@@ -411,48 +418,125 @@ fn native_dev_worker_new(
     max_heap_size_mb: usize,
     render_timeout_ms: u64,
 ) -> Result<DevWorkerHandle, Error> {
-    let _ = (project_root, max_heap_size_mb, render_timeout_ms);
-    Err(js_runtime_initialization_error(
-        ruby,
-        "dev-mode not yet implemented",
-    ))
+    if let Err(msg) = max_heap_size_mb_checked(max_heap_size_mb) {
+        return Err(Error::new(
+            ruby.exception_arg_error(),
+            format!("{msg} (max: {})", usize::MAX / 1024 / 1024),
+        ));
+    }
+    if let Err(msg) = validate_render_timeout_ms(render_timeout_ms) {
+        return Err(Error::new(ruby.exception_arg_error(), msg));
+    }
+    let handle = deno_runtime_wrapper::dev_handle::DevIsolateHandle::spawn(
+        max_heap_size_mb,
+        render_timeout_ms,
+        PathBuf::from(project_root),
+    )
+    .map_err(|e| map_render_error(ruby, e))?;
+    Ok(DevWorkerHandle(Arc::new(handle)))
 }
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_load_entry(
     ruby: &Ruby,
-    _handle: &DevWorkerHandle,
-    _entry_path: String,
-    _alias_map_json: String,
+    handle: &DevWorkerHandle,
+    entry_path: String,
+    alias_map_json: String,
 ) -> Result<(), Error> {
-    Err(js_runtime_initialization_error(
-        ruby,
-        "dev-mode not yet implemented",
-    ))
+    let aliases: HashMap<String, String> = serde_json::from_str(&alias_map_json).map_err(|e| {
+        Error::new(
+            ruby.exception_arg_error(),
+            format!("Invalid alias map JSON: {e}"),
+        )
+    })?;
+    handle
+        .0
+        .block_on_load_entry(&entry_path, aliases)
+        .map_err(|e| map_render_error(ruby, e))
+}
+
+// -- GVL-release helpers for dev render ------------------------------------
+
+#[cfg(feature = "dev-mode")]
+struct DevRenderArgs {
+    handle: Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
+    bundle_id: String,
+    args_json: String,
+}
+
+// SAFETY: `data` is a `Box<DevRenderArgs>` leaked by `Box::into_raw`.
+// Ownership reclaimed here via `Box::from_raw`. No Ruby objects touched.
+#[cfg(feature = "dev-mode")]
+unsafe extern "C" fn dev_render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+    let args = Box::from_raw(data as *mut DevRenderArgs);
+    let result = args
+        .handle
+        .block_on_render(&args.bundle_id, &args.args_json);
+    Box::into_raw(Box::new(RawRenderResult { result })) as *mut std::ffi::c_void
 }
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_render(
     ruby: &Ruby,
-    _handle: &DevWorkerHandle,
-    _bundle_id: String,
-    _args_json: String,
+    handle: &DevWorkerHandle,
+    bundle_id: String,
+    args_json: String,
 ) -> Result<String, Error> {
-    Err(render_error(ruby, "dev-mode not yet implemented"))
+    let args = Box::new(DevRenderArgs {
+        handle: handle.0.clone(),
+        bundle_id,
+        args_json,
+    });
+
+    let result_ptr = unsafe {
+        let ptr = Box::into_raw(args) as *mut std::ffi::c_void;
+        rb_thread_call_without_gvl(dev_render_worker, ptr, None, std::ptr::null_mut())
+    };
+
+    let raw = unsafe { Box::from_raw(result_ptr as *mut RawRenderResult) };
+    raw.result.map_err(|e| map_render_error(ruby, e))
 }
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_render_chunks(
     ruby: &Ruby,
-    _rb_self: Value,
-    _handle: &DevWorkerHandle,
-    _bundle_id: String,
-    _args_json: String,
+    rb_self: Value,
+    handle_val: Value,
+    bundle_id: String,
+    args_json: String,
 ) -> Result<Yield<impl Iterator<Item = String>>, Error> {
-    Err::<Yield<std::iter::Empty<String>>, Error>(render_error(
-        ruby,
-        "dev-mode not yet implemented",
-    ))
+    if !ruby.block_given() {
+        // Rack-3 compatible — block-less call returns an Enumerator usable
+        // directly as a streaming response body. Matches prod's
+        // `native_render_chunks` contract. The handle Ruby value is captured
+        // verbatim in the Enumerator args so the method receives the same
+        // typed-data wrapper when resumed.
+        return Ok(Yield::Enumerator(rb_self.enumeratorize(
+            "native_dev_render_chunks",
+            (handle_val, bundle_id, args_json),
+        )));
+    }
+
+    let handle: &DevWorkerHandle = magnus::TryConvert::try_convert(handle_val)?;
+    let (mut chunk_rx, reply_rx) = handle
+        .0
+        .start_render_chunked(&bundle_id, &args_json)
+        .map_err(|e| map_render_error(ruby, e))?;
+
+    while let Some(chunk) = chunk_rx.blocking_recv() {
+        let _: Value = ruby.yield_value(ruby.str_new(&chunk))?;
+    }
+
+    match reply_rx.blocking_recv() {
+        Ok(Ok(())) => Ok(Yield::Iter(std::iter::empty())),
+        Ok(Err(e)) => Err(map_render_error(ruby, e)),
+        Err(_) => Err(map_render_error(
+            ruby,
+            SSRDenoError::WorkerDied(
+                "Deno dev worker thread exited before signaling render completion".into(),
+            ),
+        )),
+    }
 }
 
 /// The magnus init function — called when Ruby loads the native extension.
