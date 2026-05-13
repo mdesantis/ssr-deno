@@ -30,10 +30,12 @@ source .tsx entry → [Ruby: generate __ssr_imports__.ts via Dir.glob]
                   → [Rust: DevModuleLoader resolves @/, node_modules, reads files]
                   → [Rust: deno_ast transpile TS/JSX → JS]
                   → [Rust: mod_evaluate() → globalThis.render in V8]
-                  → render via existing render() path
+                   → render via existing render() path (⚠️ see render routing gap below)
 ```
 
 The render engine (`render()` / `render_chunked()`) is shared. The V8 isolate pool is **not** shared — dev mode uses dedicated single-isolate workers outside the pool. This keeps the pool's `NoopModuleLoader` untouched.
+
+**⚠️ Render routing gap:** Dev workers live outside the pool, but `native_render` looks up bundle IDs in the pool's registered render functions. It won't find a dev worker. Need either a separate `native_dev_render` FFI or an alternative dispatch path. See [Known gaps](#known-gaps).
 
 ### Pool isolation
 
@@ -154,7 +156,7 @@ Implements `deno_core::ModuleLoader`:
 | `node:*` | Delegates to Deno's Node builtin compat |
 | `import.meta.glob` | Not resolved at module level — removed by Ruby-side codegen |
 
-Uses Deno's native `deno_ast` for transpilation (TS strip + JSX → JS). This is what the removed `transpile` feature provided — re-enable it behind `dev-mode` feature flag.
+Uses Deno's native `deno_ast` for transpilation (TS strip + JSX → JS). `deno_ast` is already compiled in — `deno_runtime/hmr` (always on) pulls in `deno_runtime/transpile` which pulls in `deno_ast 0.53.1` with `transpiling` feature (emit + proposal + react + transforms + typescript). No new dependency cost. The `#[cfg(feature = "dev-mode")]` flag gates the Rust code paths only.
 
 ## New Rust module: `dev_builder`
 
@@ -211,14 +213,15 @@ end
 
 ## Cargo changes
 
-Only one change: re-enable `transpile` feature behind an optional `dev-mode` flag.
+Add optional `dev-mode` feature flag. This gates the Rust code (module loader, builder), **not** any dependency — `deno_ast` is already compiled via `deno_runtime/hmr`.
 
 ```toml
 [features]
 default = []
-dev-mode = ["deno_runtime/transpile"]
+dev-mode = []  # gates DevModuleLoader + dev_builder Rust code
 
 [dependencies]
+# deno_ast already available via deno_runtime/hmr → transpile → deno_ast
 deno_runtime = { version = "0.255.0", features = ["hmr"] }
 ```
 
@@ -250,7 +253,7 @@ Ruby: DevBundle.new(entry.tsx)
     → Deno's NodeResolver (real NpmPackageFolderResolver) resolves bare specifiers
     → module evaluated, render registered
   → Ruby: bundle.render(data)
-    → calls same native_render as production Bundle
+    → calls native_render (⚠️ see render routing gap — needs separate FFI or dispatch)
 ```
 
 ## What does NOT change
@@ -263,7 +266,7 @@ Ruby: DevBundle.new(entry.tsx)
 - `build_worker()` — untouched, production only
 - V8 isolate pool — untouched, dev mode uses separate single-isolate workers
 - `Permissions::none_without_prompt()` — stays for production
-- `Cargo.toml` default features — `transpile` only included with `dev-mode`
+- `Cargo.toml` default features — `dev-mode` gates Rust code only (no dependency change)
 - Test suite — existing tests all test production path, continue passing
 
 ## What changes
@@ -283,25 +286,54 @@ Ruby: DevBundle.new(entry.tsx)
 
 ## Compile time risk
 
-The `transpile` feature (`deno_ast`) depends on V8's parser — this is the real cost. No new crate deps beyond that. Mitigation:
+**No risk.** `deno_ast` (with `transpiling` feature) is already compiled in via `deno_runtime/hmr` → `deno_runtime/transpile` → `deno_ast`. The cost is already paid in every build. The `dev-mode` feature flag gates Rust code only — negligible compared to `deno_ast` itself.
 
-1. Gate behind optional `dev-mode` Cargo feature (default-off)
-2. Dev mode init fails with a clear error if compiled without `dev-mode`
-3. CI builds both `default` and `dev-mode` feature sets
-4. Production compile times unchanged — only dev-mode users pay the tax
+## Known gaps
+
+### HIGH — `native_render` routing for dev workers (blocking)
+
+Dev workers live outside the pool. `native_render` looks up bundle IDs in the pool's registered render functions — it won't find a dev worker. The plan says "delegates to same `SSR::Deno.native_render` as Bundle" but this is incorrect without additional mechanism.
+
+Options:
+- **A. Separate FFI function** — add `native_dev_render(worker_handle, payload)` that invokes the dev worker's `globalThis.render` directly. DevBundle holds a reference to its worker.
+- **B. Register dev render in pool** — register the dev worker's render function in the pool's function table with a different namespace. Contradicts "pool untouched" constraint.
+- **C. Ruby-side dispatch** — DevBundle wraps the dev worker handle and Ruby calls the native function directly, bypassing the pool entirely.
+
+Option A or C is preferred. Implementation order step 1 is to resolve this design before any other Rust work.
+
+### MEDIUM — npm resolver availability
+
+`RealNpmPackageFolderResolver` and `InNpmPackageChecker` need to be confirmed exportable from `deno_runtime = "0.255.0"`. If only traits exist (not concrete types), implement a lightweight `node_modules/` walker that reads `package.json` + resolves bare specifiers to filesystem paths.
+
+### LOW — barrel file eager loading
+
+`__ssr_imports__.ts` via `Dir.glob` re-exports every component file. Deno loads all of them on startup. Mitigation: skip barrel file; rely on the entry's existing explicit imports. The codegen only needs `Dir.glob` if the app uses `import.meta.glob` — strip those lines via regex in Ruby instead.
+
+### LOW — auto-reload ambiguity
+
+Plan mentions both "directory mtime" and "file mtime". Recommended approach: track individual file mtimes in `DevModuleLoader`'s transpile cache. Expose earliest stale mtime to Ruby for `reload_if_changed`. Skip directory mtime entirely.
+
+### LOW — `import.meta.glob` removal
+
+Codegen can't parse TS/JS. For dev mode: (a) document `import.meta.glob` as unsupported, (b) best-effort regex strip `import.meta.glob\(...\)` lines from the generated imports file, (c) warn on detection.
+
+### LOW — Rails helper integration
+
+The `.dev` block in the API example suggests a separate config namespace — `Config.dev_entries?` or similar. Needs specification: does `DevBundle` register in `Config.bundles`, or is there a parallel `Config.dev_bundles`? The helper's `find_bundle!` would need updating for dev bundle lookup.
 
 ## Implementation order
 
-1. Add optional `dev-mode` feature to Cargo.toml, verify compile-time impact of enabling `transpile`
-2. Implement real `NpmPackageFolderResolver` + `InNpmPackageChecker` in `real_npm_types.rs`
-3. Implement `build_dev_worker()` in `dev_builder.rs` — separate builder, relaxed permissions
-4. Implement `DevModuleLoader` in `dev_module_loader.rs` — alias resolution, npm resolution, CSS/noop handling, transpiled module cache
-5. Add `dev_load_entry()` in `dev_load.rs` — single-isolate worker, ES module evaluation, render registration
-6. Expose `dev_load_entry` as a `#[magnus::function]` in `lib.rs`
-7. Write Ruby `DevBundle` class with codegen (`Dir.glob`, `__ssr_imports__.ts` generation)
-8. Wire up auto-reload (mtime tracking per loaded module + component dir)
-9. Test with side-project: remove Rolldown from Procfile, verify SSR works with `rails s` alone
-10. Update plans, docs, stale audit
+1. Design and implement render routing for dev workers (resolve HIGH gap)
+2. Add `dev-mode` feature flag to Cargo.toml
+3. Verify concrete npm resolver availability: spike to confirm `deno_runtime 0.255.0` exports usable `RealNpmPackageFolderResolver` + `InNpmPackageChecker` (or implement lightweight `node_modules/` walker)
+4. Implement `build_dev_worker()` in `dev_builder.rs` — separate builder, relaxed permissions
+5. Implement `DevModuleLoader` in `dev_module_loader.rs` — alias resolution, npm resolution, CSS/noop handling, transpiled module cache
+6. Add `dev_load_entry()` in `dev_load.rs` — single-isolate worker, ES module evaluation, render registration
+7. Expose `dev_load_entry` as a `#[magnus::function]` in `lib.rs` (+ render FFI entry)
+8. Write Ruby `DevBundle` class with codegen (`Dir.glob`, `__ssr_imports__.ts` generation)
+9. Wire up auto-reload (mtime tracking per loaded module + component dir)
+10. Test with side-project: remove Rolldown from Procfile, verify SSR works with `rails s` alone
+11. Update plans, docs, stale audit
 
 ## Future
 
