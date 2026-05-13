@@ -55,11 +55,12 @@ DevBundle holds opaque `usize`/`magnus::TypedData` handle to a single `IsolateHa
 
 `build_dev_worker()` mirrors `build_worker()` but:
 - Passes `DevModuleLoader` instead of `NoopModuleLoader` / `NodeBuiltinOnlyModuleLoader`
-- Grants `--allow-read` for the project directory (exact API shape TBD — spike required, see [Known gaps](#known-gaps))
+- Grants `--allow-read` for the project directory (`PermissionsOptions { allow_read: Some(vec![project_root.into_owned()]), .. }`)
 - Keeps all other restrictions (no net, no env, no run, no write, no ffi, no sys)
 - **Re-registers `add_near_heap_limit_callback`** (parity with prod `builder.rs:163` — else dev OOM crashes process)
 - **Re-registers Web Workers panic guard** (`create_web_worker_cb` from `builder.rs:135`)
-- If user code needs CJS `require`: replicate or invoke `worker::setup_require` after entry load. Production's `setup_require` is gated by `node_builtins`; for dev, force-enabled when `node_modules` resolution active.
+- **Always enables `deno_node` extension** (irrespective of `Config.node_builtins`) — required for `node_modules` resolution and `node:*` polyfills. Production `node_builtins` flag is ignored in dev path.
+- **Always invokes `worker::setup_require`** after entry load — `globalThis.require` available for CJS-only packages (MUI internals, etc.). Cost ~10ms once, idempotent.
 
 ### Permissions for dev mode
 
@@ -117,6 +118,19 @@ Some component files import CSS or other non-JS assets. The `DevModuleLoader` ha
 - Unknown extensions → return empty module with a dev-mode debug warning
 
 Exact list of ignored extensions matches what `ssr.noExternal: true` in Vite config effectively does.
+
+### Auto-reload strategy
+
+`DevModuleLoader` maintains a per-file mtime cache (entry: `{path, mtime, transpiled_js, source_map}`). On every render, `DevBundle#reload_if_changed` calls `native_dev_check_stale(handle)` which walks the cache, stat-s each tracked path, and returns `true` if any current mtime exceeds the cached mtime.
+
+On stale → **drop + respawn worker** (v1):
+1. Drop the dev worker's `Sender<WorkerMsg>` → channel closes → worker thread exits cleanly → `MainWorker` dropped → V8 isolate torn down
+2. `DevBundle` calls `native_dev_worker_new` to spawn a fresh worker
+3. `native_dev_load_entry` re-evaluates the entry; transpile cache rebuilt from scratch (no carry-over to avoid stale V8 module refs)
+
+Trade-off accepted: full re-init (~1-3s on a 500-module graph) on every change. V8 state guaranteed clean — no leaked modules, no zombie globals. In-flight renders during reload fail with `JsRuntimeWorkerError` — acceptable in Rails dev (serial-ish request stream).
+
+Hot module replacement (preserve worker, swap modules in V8 module map) is **v2**, listed under [Future](#future).
 
 ### Source maps for transpiled code
 
@@ -380,34 +394,28 @@ Ruby: DevBundle.new(entry.tsx)
 
 ## Known gaps
 
-### ~~HIGH — Permissions + npm resolver API shape (spike required)~~ ✅ SPIKE COMPLETE
+### Spike findings (resolved)
 
-All four targets verified against the actual crate sources under `~/.cargo/registry/src/.../{deno_permissions-0.106.0, deno_resolver-0.78.0, deno_ast-0.53.1}` and our Cargo.lock:
+Spike against `~/.cargo/registry/src/.../{deno_permissions-0.106.0, deno_resolver-0.78.0, deno_ast-0.53.1}` complete; findings folded into the body sections above (Permissions, Existing resolver infrastructure, DevModuleLoader specifier table, Source maps). Summary citations retained for reviewers:
 
-1. **`Permissions::from_options`** — verified at `deno_permissions-0.106.0/lib.rs:3591`. Takes `&dyn PermissionDescriptorParser` + `&PermissionsOptions`. Returns `Result<Self, PermissionsFromOptionsError>`. `PermissionsOptions` has `#[derive(Default)]` (lib.rs:3500). `Sys` satisfies `RuntimePermissionDescriptorParserSys` (`WhichSys + FsCanonicalize + Send + Sync`) via existing `sys.rs` impls + `#[sys_traits::auto_impl]` blanket. See [Permissions section](#permissions-for-dev-mode).
-2. **`InNpmPackageChecker` / `NpmPackageFolderResolver`** — concrete impls **DO** exist in `deno_resolver 0.78.0` (already in our Cargo.lock as transitive dep). Use `ByonmNpmResolver<Sys>` (byonm.rs:71) + `ByonmInNpmPackageChecker` (byonm.rs:501) — designed for host-managed `node_modules/` (user runs `npm install` / `pnpm install` independently). `Sys` satisfies `ByonmNpmResolverSys` via existing `FsRead + FsMetadata` impls. Requires adding `deno_resolver = "=0.78.0"` as direct dep. No walker needed; pnpm symlinks handled by Byonm.
-3. **`node:*` resolution** — extension-served, not loader-delegated. `deno_node` extension serves `node:*` polyfills via `Extension::esm` *before* the loader is queried (see `NodeBuiltinOnlyModuleLoader::load` returning error — it's never actually called for `node:*` polyfills). `DevModuleLoader::resolve` follows the same pattern as `NodeBuiltinOnlyModuleLoader::resolve` ([node_builtin_loader.rs:23-24](ext/ssr_deno/src/node_builtin_loader.rs#L23-L24)): when `specifier.starts_with("node:")`, return `ModuleSpecifier::parse(specifier)`. Load step rejects `node:*` (extension already handled it).
-4. **`deno_ast::transpile` API** — verified against `deno_ast-0.53.1/src/{emit.rs:14,55; transpiling/mod.rs:62,278,284}`. `ParsedSource::transpile(self, &TranspileOptions, &TranspileModuleOptions, &EmitOptions) -> Result<TranspileResult, TranspileError>`; `TranspileResult::into_source(self) -> EmittedSourceText { text, source_map: Option<String> }`. `SourceMapOption::Inline` is `#[default]`. `TranspileOptions::default()` already sets `jsx: Some(Default::default())` (transpiling/mod.rs:216), so explicit JSX setup unnecessary. The `transpiling` feature compiled via `deno_runtime/hmr` → `deno_runtime/transpile`.
+- `Permissions::from_options` — `deno_permissions-0.106.0/lib.rs:3591`
+- `PermissionsOptions` `#[derive(Default)]` — lib.rs:3500
+- `ByonmNpmResolver<Sys>` — `deno_resolver-0.78.0/npm/byonm.rs:71`
+- `ByonmInNpmPackageChecker` — `byonm.rs:501`
+- `TranspileResult::into_source` — `deno_ast-0.53.1/src/transpiling/mod.rs:62`
+- `EmittedSourceText { text, source_map }` — `emit.rs:55`
+- `SourceMapOption::Inline` `#[default]` — `emit.rs:14`
+- `TranspileOptions::default { jsx: Some(_) }` — `transpiling/mod.rs:216`
 
-### HIGH — Render-chunks parity
+### LOW — Open documentation items
 
-`native_render_chunks` ([lib.rs:341](ext/ssr_deno/src/lib.rs#L341)) also routes through the static pool. Must add `native_dev_render_chunks(handle, ...)` mirror — else `DevBundle#render_chunks` either crashes or accidentally hits prod pool. Both `render::render` and `render_chunked::render_chunked` work with `&mut MainWorker`, so engine reuse is straightforward; only the dispatch layer is new.
+These are decided behaviors that need a one-line callout in user-facing docs (README / `lib/ssr/deno/dev_bundle.rb` docstring):
 
-### MEDIUM — `setup_require` for dev
-
-Production `setup_require` ([worker.rs:127](ext/ssr_deno/src/deno_runtime_wrapper/worker.rs#L127)) runs only when `node_builtins=true`. Dev worker likely needs `require` if any user code imports CJS-only packages (some MUI subpackages do). Decision: force `setup_require` invocation in dev worker init regardless of node_builtins flag, or document CJS unsupported in dev.
-
-### MEDIUM — Auto-reload semantics with module-cache
-
-Reload strategy: `DevModuleLoader` per-file mtime cache. `DevBundle#reload_if_changed` queries the cache for "any file changed since last render" via a new FFI `native_dev_check_stale(handle) -> bool`. On stale → rebuild worker (drop + respawn) or call `dev_load_entry` with cache invalidation. Hot module replacement is out of scope (v2).
-
-### LOW — Rails helper integration
-
-`SSR::Deno::Helpers.find_bundle!` currently looks up by name in `Bundle.registry`. DevBundle registers there too (polymorphism: same `#render` + `#render_chunks` interface). No separate `dev_bundles` registry. The `c.dev do ... end` config block becomes a thin builder that calls `DevBundle.new(...)` per entry and inserts into `Bundle.registry`.
-
-### LOW — Pool size config ignored in dev
-
-Dev mode hardcodes 1 isolate. Document that `SSR::Deno::Config.isolate_pool_size` has no effect on `DevBundle`. Prod path still honours it.
+- `SSR::Deno::Config.isolate_pool_size` has no effect on `DevBundle` (dev hardcodes 1 isolate per bundle).
+- `SSR::Deno::Config.node_builtins` has no effect on `DevBundle` (always-on; required for `node_modules` resolution).
+- DevBundle registers itself in `Bundle.registry` (polymorphic with `Bundle` — `Helpers.find_bundle!` works transparently).
+- Auto-reload is full worker respawn — in-flight renders during reload fail with `JsRuntimeWorkerError`; acceptable in dev.
+- CJS packages supported via auto-injected `globalThis.require`. ESM is preferred path.
 
 ## Implementation order
 
