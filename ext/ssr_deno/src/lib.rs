@@ -18,7 +18,7 @@ use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Obje
 use ssr_deno_core::source_mapper::SsrSourceMapper;
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
 
-fn get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
+pub(crate) fn get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
     static MAPPER: OnceLock<RwLock<SsrSourceMapper>> = OnceLock::new();
     MAPPER.get_or_init(|| RwLock::new(SsrSourceMapper::new()))
 }

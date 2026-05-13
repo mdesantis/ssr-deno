@@ -4,17 +4,31 @@ use std::time::SystemTime;
 
 use sourcemap::SourceMap;
 
+/// V8 emits 1-indexed line numbers. Subtract the per-entry offset to recover
+/// the source map's 0-indexed generated line.
+const IIFE_LINE_OFFSET: u32 = 2;
+const ESM_LINE_OFFSET: u32 = 1;
+
+struct MapEntry {
+    map: SourceMap,
+    mtime: SystemTime,
+    line_offset: u32,
+}
+
 /// Self-managed source map registry for SSR bundles.
 ///
-/// Stores parsed source maps keyed by bundle path. Applies IIFE line offset
-/// correction (-2 from V8 lines, since the IIFE wrapper adds 2 lines:
-/// `(function(){\n` before the bundle and `\n})();` after) when resolving
-/// stack frame positions.
+/// Stores parsed source maps keyed by bundle path (prod) or absolute file
+/// path (dev). Each entry stores its own `line_offset`:
+///
+/// | Source | Offset | Reason |
+/// |--------|--------|--------|
+/// | Prod IIFE | `IIFE_LINE_OFFSET` (2) | `(function(){\n` before + `\n})()` after |
+/// | Dev ESM | `ESM_LINE_OFFSET` (1) | V8 1-indexed → 0-indexed (no wrapper) |
 ///
 /// Pure Rust — no V8 dependency. Used in error formatting before errors
 /// reach Ruby.
 pub struct SsrSourceMapper {
-    maps: HashMap<String, (SourceMap, SystemTime)>,
+    maps: HashMap<String, MapEntry>,
 }
 
 impl SsrSourceMapper {
@@ -24,13 +38,13 @@ impl SsrSourceMapper {
         }
     }
 
-    /// Register a source map from disk.
+    /// Register a source map from disk (production path, IIFE offset).
     /// Skips if the `.map` file mtime hasn't changed since last registration.
     pub fn register(&mut self, bundle_path: &str, map_path: &Path) {
         let current_mtime = std::fs::metadata(map_path).and_then(|m| m.modified()).ok();
 
-        if let Some((_, cached_mtime)) = self.maps.get(bundle_path) {
-            if Some(*cached_mtime) == current_mtime {
+        if let Some(entry) = self.maps.get(bundle_path) {
+            if Some(entry.mtime) == current_mtime {
                 return;
             }
         }
@@ -38,13 +52,43 @@ impl SsrSourceMapper {
         let Ok(map_data) = std::fs::read(map_path) else {
             return;
         };
-        let Ok(sm) = SourceMap::from_slice(&map_data) else {
+        let Ok(map) = SourceMap::from_slice(&map_data) else {
             return;
         };
 
         if let Some(mtime) = current_mtime {
-            self.maps.insert(bundle_path.to_string(), (sm, mtime));
+            self.maps.insert(
+                bundle_path.to_string(),
+                MapEntry {
+                    map,
+                    mtime,
+                    line_offset: IIFE_LINE_OFFSET,
+                },
+            );
         }
+    }
+
+    /// Register a source map from an in-memory JSON string (dev path,
+    /// ESM offset). Keyed by the absolute file path of the source file.
+    /// Skips re-parsing if `mtime` matches the cached entry (parity with
+    /// [`register`]).
+    pub fn register_inline(&mut self, path: &str, sourcemap_json: &str, mtime: SystemTime) {
+        if let Some(entry) = self.maps.get(path) {
+            if entry.mtime == mtime {
+                return;
+            }
+        }
+        let Ok(map) = SourceMap::from_slice(sourcemap_json.as_bytes()) else {
+            return;
+        };
+        self.maps.insert(
+            path.to_string(),
+            MapEntry {
+                map,
+                mtime,
+                line_offset: ESM_LINE_OFFSET,
+            },
+        );
     }
 
     /// Resolve V8 stack frame positions to original source locations.
@@ -52,9 +96,10 @@ impl SsrSourceMapper {
     /// Processes each line of the error message. Lines matching the V8
     /// stack-frame pattern `at <file>:<line>:<col>` or
     /// `at <func> (<file>:<line>:<col>)` are checked against registered
-    /// source maps. The IIFE wrapper offset is corrected:
-    /// `sourcemap_line = v8_line - 2` (V8 line 1 = IIFE prefix,
-    /// V8 line 2 = bundle line 1 = source map generated index 0).
+    /// source maps. The stored per-entry `line_offset` is subtracted from
+    /// V8's 1-indexed line number to recover the source-map generated line:
+    /// `sm_line = v8_line - line_offset` (2 for IIFE-wrapped prod bundles,
+    /// 1 for raw ESM dev modules).
     ///
     /// Best-effort — returns original message unchanged on any failure.
     pub fn resolve(&self, msg: &str) -> String {
@@ -91,17 +136,18 @@ impl SsrSourceMapper {
         let v8_col: u32 = col_str.parse().ok()?;
 
         // Check if this file matches a registered bundle
-        let (sm, _) = self.maps.get(file_and_path)?;
+        let entry = self.maps.get(file_and_path)?;
 
-        // IIFE offset: V8 line 1 = IIFE prefix, V8 line 2 = bundle line 1
-        let sm_line = v8_line.saturating_sub(2);
+        // Apply the stored line offset (2 for IIFE prod, 1 for ESM dev)
+        let sm_line = v8_line.saturating_sub(entry.line_offset);
         let sm_col = v8_col.saturating_sub(1);
 
-        let source = sm
+        let source = entry
+            .map
             .lookup_token(sm_line, sm_col)
             .and_then(|t| t.get_source())
             .unwrap_or("<unknown>");
-        let src_line = sm.lookup_token(sm_line, sm_col).map_or(v8_line, |t| {
+        let src_line = entry.map.lookup_token(sm_line, sm_col).map_or(v8_line, |t| {
             let l = t.get_src_line();
             if l > 0 {
                 l + 1
@@ -109,7 +155,7 @@ impl SsrSourceMapper {
                 v8_line
             }
         });
-        let src_col = sm.lookup_token(sm_line, sm_col).map_or(v8_col, |t| {
+        let src_col = entry.map.lookup_token(sm_line, sm_col).map_or(v8_col, |t| {
             let c = t.get_src_col();
             if c > 0 {
                 c + 1
@@ -127,9 +173,15 @@ impl SsrSourceMapper {
     }
 
     #[cfg(test)]
-    fn insert_map(&mut self, bundle_path: &str, sm: SourceMap) {
-        self.maps
-            .insert(bundle_path.to_string(), (sm, SystemTime::now()));
+    fn insert_map(&mut self, bundle_path: &str, map: SourceMap) {
+        self.maps.insert(
+            bundle_path.to_string(),
+            MapEntry {
+                map,
+                mtime: SystemTime::now(),
+                line_offset: IIFE_LINE_OFFSET,
+            },
+        );
     }
 }
 
@@ -287,6 +339,39 @@ mod tests {
         let mut mapper = SsrSourceMapper::new();
         mapper.register("test.js", Path::new("/nonexistent/missing.js.map"));
         assert!(mapper.maps.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // register_inline
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn register_inline_stores_map() {
+        let mut mapper = SsrSourceMapper::new();
+        let json = r#"{"version":3,"file":"mod.js","sources":["mod.tsx"],"mappings":"AAAA"}"#;
+        mapper.register_inline("/abs/path/mod.tsx", json, SystemTime::now());
+        let msg = "Error: oops\n    at /abs/path/mod.tsx:2:1";
+        let resolved = mapper.resolve(msg);
+        assert!(resolved.contains("mod.tsx"));
+    }
+
+    #[test]
+    fn register_inline_zero_offset_for_absolute_paths() {
+        let mut mapper = SsrSourceMapper::new();
+        // Source map mapping line 0 → line 0
+        let json = r#"{"version":3,"file":"mod.js","sources":["mod.tsx"],"mappings":"AAAA"}"#;
+        mapper.register_inline("/abs/path/mod.tsx", json, SystemTime::now());
+        // V8 line 1 = source map line 0 (offset 1 for ESM, no IIFE)
+        let msg = "Error: oops\n    at /abs/path/mod.tsx:1:1";
+        let resolved = mapper.resolve(msg);
+        assert!(resolved.contains("mod.tsx:1:1"));
+    }
+
+    #[test]
+    fn register_inline_bad_json_does_nothing() {
+        let mut mapper = SsrSourceMapper::new();
+        mapper.register_inline("/x.tsx", "not-json", SystemTime::now());
+        assert_eq!(mapper.resolve("at /x.tsx:1:1"), "at /x.tsx:1:1");
     }
 
     // -----------------------------------------------------------------------

@@ -316,7 +316,11 @@ impl ModuleLoader for DevModuleLoader {
             )));
         }
 
-        if let Some((code, _source_map)) = self.check_cache(&path) {
+        if let Some((code, source_map)) = self.check_cache(&path) {
+            // Re-register in case the global mapper was cleared between
+            // cache hits (eg auto-reload that respawns the worker but keeps
+            // the static mapper alive in the parent process).
+            register_source_map(&path, source_map.as_deref());
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
                 ModuleSourceCode::String(code.into()),
@@ -327,6 +331,7 @@ impl ModuleLoader for DevModuleLoader {
 
         match self.load_and_transpile_source(&path) {
             Ok((code, source_map)) => {
+                register_source_map(&path, source_map.as_deref());
                 self.update_cache(&path, code.clone(), source_map);
                 ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                     ModuleType::JavaScript,
@@ -338,4 +343,23 @@ impl ModuleLoader for DevModuleLoader {
             Err(e) => ModuleLoadResponse::Sync(Err(e)),
         }
     }
+}
+
+/// Registers a transpile-produced source map with the global `SsrSourceMapper`
+/// so V8 stack frames from transpiled JS resolve back to `.tsx` originals.
+/// No-op when the transpile step produced no map (eg `.js` files that
+/// `needs_transpile` returned false for) or when the file's mtime can't be
+/// read. Best-effort — failure here leaves the trace unmapped, never panics.
+fn register_source_map(path: &Path, source_map: Option<&str>) {
+    let Some(map_json) = source_map else {
+        return;
+    };
+    let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
+        return;
+    };
+    let key = path.to_string_lossy();
+    let mut mapper = crate::get_source_mapper()
+        .write()
+        .unwrap_or_else(|e| e.into_inner());
+    mapper.register_inline(&key, map_json, mtime);
 }
