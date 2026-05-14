@@ -387,7 +387,8 @@ impl ModuleLoader for DevModuleLoader {
         {
             let abs_literal = serde_json::to_string(&path.to_string_lossy())
                 .expect("serde_json::to_string cannot fail for &str");
-            let shim = format!("const _m = globalThis.require({abs_literal}); export default _m;\n");
+            let shim =
+                format!("const _m = globalThis.require({abs_literal}); export default _m;\n");
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
                 ModuleSourceCode::String(shim.into()),

@@ -24,6 +24,7 @@ mod tests {
     use deno_runtime::worker::MainWorker;
 
     use crate::deno_runtime_wrapper::dev_builder::build_dev_worker;
+    use crate::deno_runtime_wrapper::worker::setup_require;
     use crate::dev_module_loader::DevMtimeCache;
 
     static DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -64,7 +65,9 @@ mod tests {
         .expect("write package.json");
         std::fs::write(
             pkg.join("index.js"),
-            "Object.defineProperty(exports, '__esModule', { value: true }); exports.default = 42;",
+            "Object.defineProperty(exports, '__esModule', { value: true });\n\
+             exports.default = 42;\n\
+             exports.named = 7;\n",
         )
         .expect("write index.js");
         std::fs::write(
@@ -72,13 +75,25 @@ mod tests {
             "import { default as val } from 'foo-cjs';\nglobalThis.__probe = 'top';\n",
         )
         .expect("write entry.tsx");
+        std::fs::write(
+            root.join("entry-default.tsx"),
+            "import defaultVal from 'foo-cjs';\n\
+             globalThis.__default = defaultVal;\n",
+        )
+        .expect("write entry-default.tsx");
+        std::fs::write(
+            root.join("entry-named.tsx"),
+            "import { named } from 'foo-cjs';\n\
+             globalThis.__named = named;\n",
+        )
+        .expect("write entry-named.tsx");
         std::fs::write(root.join("control.tsx"), "globalThis.__ctrl = 'ok';\n")
             .expect("write control.tsx");
         (dir, root)
     }
 
     fn build_worker(project_root: &PathBuf) -> MainWorker {
-        build_dev_worker(
+        let mut worker = build_dev_worker(
             &Url::parse("https://ssr-deno.local/").unwrap(),
             64,
             Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -86,7 +101,12 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(DevMtimeCache::new()),
         )
-        .expect("build_dev_worker")
+        .expect("build_dev_worker");
+        // Production path calls setup_require from dev_worker_thread_main
+        // before any entry load — replicate here so `globalThis.require` is
+        // available to the require-shim emitted for node_modules/*.{js,cjs}.
+        setup_require(&mut worker).expect("setup_require");
+        worker
     }
 
     fn probe_is_set(worker: &mut MainWorker, name: &str) -> bool {
@@ -100,6 +120,23 @@ mod tests {
                 .into(),
             )
             .is_ok()
+    }
+
+    /// Asserts `lhs === rhs` in the worker's V8 context. Returns `Ok` if
+    /// equal, `Err(message)` with the actual value (JSON-stringified) when
+    /// the check trips. Both arguments must be valid JS expressions; the
+    /// caller is responsible for quoting string literals.
+    fn js_strict_eq(worker: &mut MainWorker, lhs: &str, rhs: &str) -> Result<(), String> {
+        let script = format!(
+            "if (!({lhs} === {rhs})) {{ \
+                 throw new Error('expected ' + JSON.stringify({rhs}) + \
+                                 ', got ' + JSON.stringify({lhs})); \
+             }}"
+        );
+        worker
+            .execute_script("<eq>", script.into())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     #[tokio::test]
@@ -130,6 +167,55 @@ mod tests {
             probe_is_set(&mut worker, "__probe"),
             "entry body should execute with deno_node native CJS"
         );
+    }
+
+    /// Validates the shim's default-export path end-to-end:
+    /// `import foo from 'pkg'` should yield the CJS exports object (NOT
+    /// `_m.default` — the shim does no `__esModule` unwrapping).
+    #[tokio::test]
+    async fn shim_default_import_yields_whole_exports() {
+        let (_dir, root) = create_fixtures();
+        let mut worker = build_worker(&root);
+        let url = Url::from_file_path(root.join("entry-default.tsx")).unwrap();
+        let id = worker
+            .js_runtime
+            .load_main_es_module(&url)
+            .await
+            .expect("load_main_es_module");
+        worker.evaluate_module(id).await.expect("evaluate_module");
+
+        // defaultVal === whole exports obj → __esModule key set and equals true
+        js_strict_eq(&mut worker, "globalThis.__default.__esModule", "true")
+            .expect("default import should be whole exports obj with __esModule:true");
+        // defaultVal.default === 42 (raw CJS export)
+        js_strict_eq(&mut worker, "globalThis.__default.default", "42")
+            .expect("exports.default reachable via .default");
+    }
+
+    /// Documents the shim's named-export gap. `import { named } from 'pkg'`
+    /// asks V8 for a `named` export from our shim, but the shim only emits
+    /// `export default _m`.
+    ///
+    /// Currently FAILS for the same reason as `shim_default_import_yields_whole_exports`
+    /// (the file-reading require loader); even once that's fixed, this test
+    /// will still fail because named CJS exports can't be reflected through
+    /// a default-only shim. Needs a richer shim that statically emits each
+    /// known CJS export name (or a full `NodeCodeTranslator` revival once
+    /// the upstream re-entrancy bug is fixed).
+    #[tokio::test]
+    #[ignore = "shim emits only `default`; named CJS exports unreachable"]
+    async fn shim_named_import_unsupported() {
+        let (_dir, root) = create_fixtures();
+        let mut worker = build_worker(&root);
+        let url = Url::from_file_path(root.join("entry-named.tsx")).unwrap();
+        let id = worker
+            .js_runtime
+            .load_main_es_module(&url)
+            .await
+            .expect("load_main_es_module");
+        worker.evaluate_module(id).await.expect("evaluate_module");
+        js_strict_eq(&mut worker, "globalThis.__named", "7")
+            .expect("named import should reach exports.named");
     }
 
     #[tokio::test]

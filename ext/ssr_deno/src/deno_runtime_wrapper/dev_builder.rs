@@ -20,7 +20,7 @@ use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeRe
 
 use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap};
 use crate::real_npm_types::build_dev_npm_resolver;
-use crate::require_loader::SSRDenoNodeRequireLoader;
+use crate::require_loader::DevNodeRequireLoader;
 use crate::sys::Sys;
 
 type DevNodeServices = NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
@@ -30,7 +30,7 @@ fn build_dev_node_services(
     npm_resolver: ByonmNpmResolver<Sys>,
     pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys>,
 ) -> Option<DevNodeServices> {
-    let loader: NodeRequireLoaderRc = Rc::new(SSRDenoNodeRequireLoader);
+    let loader: NodeRequireLoaderRc = Rc::new(DevNodeRequireLoader);
 
     let resolver: MaybeArc<NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>> = {
         let r = NodeResolver::new(

@@ -124,7 +124,7 @@ pub fn worker_thread_main(
 
 /// Injects `globalThis.require` into the V8 context by loading
 /// `createRequire` from Deno's built-in `node:module` via async import.
-pub(super) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), String> {
+pub(crate) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), String> {
     // Idempotency guard: skip the async import + microtask polling when
     // `globalThis.require` is already set from a prior bundle load into
     // the same isolate. Saves ~10ms per subsequent bundle load.
