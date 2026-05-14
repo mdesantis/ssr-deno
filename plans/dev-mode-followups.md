@@ -72,6 +72,12 @@ Callers `.clone()` the `NodeResolutionSys` if both need owned values (it's `Clon
 
 Tradeoff: tuple grows to 4-arity. Could switch to a named struct `DevNpmResolverParts { ... }`. Defer.
 
+## Cleanup — `build_dev_npm_module_loader` unused param + comment gap
+
+[`real_npm_types.rs:62`](../ext/ssr_deno/src/real_npm_types.rs) `build_dev_npm_module_loader(_project_root: &Path, ...)` takes the project root but never uses it — the `ByonmNpmResolver` arg already has it baked in. Drop the param or use it (eg pass to a future `ParsedSourceCache` keyed on file paths).
+
+Same file, line 66: `DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker)` wraps the raw checker in the enum variant. The wrap is required because `NpmModuleLoader`'s generic param is `DenoInNpmPackageChecker` (enum) but `build_dev_node_services` in `dev_builder.rs` uses raw `ByonmInNpmPackageChecker`. The two checker types thread through the type system with different generics — easy to confuse on read. Add a one-line comment explaining the wrap vs raw choice at each construction site.
+
 ## Rename — `real_npm_types.rs` → `dev_npm_resolver.rs`
 
 [`real_npm_types.rs`](../ext/ssr_deno/src/real_npm_types.rs) — name dates back to the plan's pre-spike phase when we expected to implement a walker. Now it's just a Byonm builder. `dev_npm_resolver.rs` is more descriptive.
@@ -134,6 +140,33 @@ For typical dev sessions the leak is bounded by total distinct module URLs visit
 Could lazy-init on first CJS-requiring import. But detection requires hooking into `node_resolver`'s decision path. Disproportionate complexity for a 10ms saving.
 
 Defer — accept the constant cost.
+
+## Cleanup — Explicit close for stale workers on auto-reload
+
+`DevModeBundle#reload_if_changed` ([`dev_mode_bundle.rb`](../lib/ssr/deno/dev_mode_bundle.rb)) reassigns `@handle = SSR::Deno.native_dev_worker_new(...)`. The old `DevWorkerHandle` Ruby object becomes GC-eligible, but the Rust `Arc<DevIsolateHandle>` (and the V8 isolate ~64 MB + worker thread) only drops when Ruby GC reclaims the wrapper.
+
+Typical dev (1-2 reloads/min): GC keeps up; no observable buildup.
+
+Rapid-save bursts (user mass-saves 10 files via editor "save all"): several stale workers may co-exist for tens of seconds until GC fires. Each ~64 MB V8 heap. Peak RSS spikes.
+
+Fixes:
+- **A**: explicit `close` method on `DevModeBundle` — call before reassigning `@handle`. Old Arc dropped synchronously; worker thread observes channel close immediately.
+- **B**: store `IsolateHandle::thread_safe_handle()` in `DevWorkerHandle`; Drop impl triggers `terminate_execution()` to force worker thread to fast-exit even before the channel closes.
+
+A is the Ruby-friendly path. Reload flow becomes:
+```ruby
+def reload_if_changed
+  ...
+  @_bundle_mutex.synchronize do
+    ...
+    close_handle(@handle)  # explicit drain before reassign
+    create_worker
+    load_entry
+  end
+end
+```
+
+Cleaner GC-independent lifecycle. Defer until rapid-reload RSS spikes show up in practice.
 
 ## Future — Better `Drop` story for in-flight render on handle drop
 

@@ -12,13 +12,14 @@ use deno_core::{
     ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
+use deno_resolver::loader::{LoadedModuleSource, RequestedModuleType};
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
     cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution,
     NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
 };
 
-use crate::real_npm_types::build_dev_npm_resolver;
+use crate::real_npm_types::{build_dev_npm_resolver, DevNpmModuleLoader};
 use crate::sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
@@ -83,6 +84,9 @@ impl DevMtimeCache {
 
 pub struct DevModuleLoader {
     project_root: PathBuf,
+    // Precomputed `project_root.join("node_modules")` — avoids allocating a
+    // PathBuf on every `load()` call when discriminating npm vs project source.
+    node_modules_dir: PathBuf,
     resolve_alias: SharedAliasMap,
     node_resolver: NodeResolver<
         ByonmInNpmPackageChecker,
@@ -90,6 +94,7 @@ pub struct DevModuleLoader {
         ByonmNpmResolver<Sys>,
         Sys,
     >,
+    npm_module_loader: Arc<DevNpmModuleLoader>,
     cache: Arc<DevMtimeCache>,
 }
 
@@ -147,22 +152,20 @@ impl DevModuleLoader {
         project_root: PathBuf,
         resolve_alias: SharedAliasMap,
         cache: Arc<DevMtimeCache>,
+        npm_module_loader: Arc<DevNpmModuleLoader>,
     ) -> Self {
         let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
 
         let node_resolver = NodeResolver::new(
             npm_checker,
             DenoIsBuiltInNodeModuleChecker,
-            npm_resolver,
+            npm_resolver.clone(),
             pkg_json_resolver,
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
                 conditions: NodeConditionOptions {
                     conditions: vec![
                         std::borrow::Cow::Borrowed("node"),
-                        std::borrow::Cow::Borrowed("worker"),
-                        std::borrow::Cow::Borrowed("edge-light"),
-                        std::borrow::Cow::Borrowed("development"),
                         std::borrow::Cow::Borrowed("import"),
                     ],
                     import_conditions_override: None,
@@ -174,10 +177,13 @@ impl DevModuleLoader {
             },
         );
 
+        let node_modules_dir = project_root.join("node_modules");
         Self {
             project_root,
+            node_modules_dir,
             resolve_alias,
             node_resolver,
+            npm_module_loader,
             cache,
         }
     }
@@ -316,9 +322,7 @@ impl ModuleLoader for DevModuleLoader {
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
             )
-            .map_err(|e| {
-                JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}"))
-            })?;
+            .map_err(|e| JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}")))?;
 
         match resolution {
             NodeResolution::Module(url_or_path) => {
@@ -357,9 +361,6 @@ impl ModuleLoader for DevModuleLoader {
         if is_asset_import(&path) {
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
-                // Zero-copy — `FastString::from_static` stores the `&'static str`
-                // directly (no allocation), and is `const fn` so the empty-module
-                // source is shared across every asset import.
                 ModuleSourceCode::String(FastString::from_static(EMPTY_JS)),
                 module_specifier,
                 None,
@@ -374,6 +375,55 @@ impl ModuleLoader for DevModuleLoader {
                 module_specifier,
                 None,
             )));
+        }
+
+        // npm CJS/ESM files: use NpmModuleLoader which handles CJS→ESM
+        // translation. Async because `translate_cjs_to_esm` recursively
+        // analyzes re-exports.
+        if path.starts_with(&self.node_modules_dir) {
+            let loader = self.npm_module_loader.clone();
+            let spec = module_specifier.clone();
+            return ModuleLoadResponse::Async(Box::pin(async move {
+                let loaded = loader
+                    .load(
+                        std::borrow::Cow::Owned(spec.clone()),
+                        None,
+                        &RequestedModuleType::None,
+                    )
+                    .await
+                    .map_err(|e| JsErrorBox::generic(format!("NpmModuleLoader::load: {e}")))?;
+
+                // Map deno's `MediaType` → V8's `ModuleType`. JSON imports are
+                // legal in npm graphs (eg `package.json` introspection); rest
+                // collapses to JavaScript.
+                let module_type = match loaded.media_type {
+                    deno_ast::MediaType::Json => ModuleType::Json,
+                    _ => ModuleType::JavaScript,
+                };
+
+                // Avoid full source clone when possible. `FastString::from(Arc<str>)`
+                // is a refcount bump; `from(String)` is an owning move. Bytes
+                // variants only appear for non-UTF8 source (rare in JS); for
+                // `Cow<'static, str>` the `into_owned()` is a no-op when the
+                // variant is already owned.
+                let code: FastString = match loaded.source {
+                    LoadedModuleSource::ArcStr(s) => FastString::from(s),
+                    LoadedModuleSource::String(s) => FastString::from(s.into_owned()),
+                    LoadedModuleSource::ArcBytes(b) => {
+                        FastString::from(String::from_utf8_lossy(&b).into_owned())
+                    }
+                    LoadedModuleSource::Bytes(b) => {
+                        FastString::from(String::from_utf8_lossy(&b).into_owned())
+                    }
+                };
+
+                Ok(ModuleSource::new(
+                    module_type,
+                    ModuleSourceCode::String(code),
+                    &spec,
+                    None,
+                ))
+            }));
         }
 
         match self.load_and_transpile_source(&path) {

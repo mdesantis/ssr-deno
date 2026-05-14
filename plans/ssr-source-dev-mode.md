@@ -560,7 +560,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - Minimal SSR entry (no npm imports) loads and renders correctly
     - `render_chunks` with Enumerator works
 
-13. **CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.
+13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ✅ DONE — `build_dev_npm_module_loader` constructs the full `NpmModuleLoader<DenoCjsCodeAnalyzer, DenoInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver, Sys>` chain. `DevModuleLoader::load` detects `node_modules/` paths and dispatches async via `NpmModuleLoader::load`. Conditions reverted to `["node", "import"]`. Post-review hardening: (a) initial impl wired `NotImplementedModuleExportAnalyzer` which panics on `parse_module` call — fixed by enabling `deno_resolver/deno_ast` feature in Cargo.toml and using `DenoAstModuleExportAnalyzer::new(ParsedSourceCacheRc)` instead; pulls `deno_graph` into the dep tree; (b) `node_modules_dir` precomputed in `DevModuleLoader` to avoid per-load `PathBuf` allocation; (c) `loaded.media_type` now maps to `ModuleType::Json` for JSON imports; (d) `LoadedModuleSource` extraction uses `FastString::from(Arc<str>)` refcount-bump path instead of full clone. Full `bundle exec rake` passes.
 
     ### Root cause
 
@@ -604,7 +604,20 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
     ~150-250 LOC for the wiring (mostly constructor boilerplate with deeply-nested generics). The async load path is the structural change but limited to one branch in `load()`. Recommend a 14a (real_npm_types builder extension), 14b (DevModuleLoader async branch + NpmModuleLoader integration), 14c (revert conditions + side-project re-test) split.
 
-14. Update `plans/` index, ONBOARDING/README dev-mode section
+14. **Validate against side-project (`denpro`) with real npm imports** — step 13 unblocks emotion/MUI/React loading. Re-test:
+    - `bundle exec rails s` boots with `DevModeBundle` pointing at `app/frontend/entrypoints/ssr-app.tsx` (the real entry, not `ssr-dev-test.tsx`)
+    - `renderToString` from `react-dom/server` returns valid HTML
+    - `createEmotionServer.extractCriticalToChunks` + `constructStyleTagsFromChunks` produce the `<style>` tags for SSR
+    - Revert side-project workarounds in `denpro`: `@emotion/*/package.json` `exports`-key reordering, `worker`/`edge-light`/`development` condition additions
+    - Decide A (inject `globalThis.__VITE_SOURCE_DIR__` + `import.meta.env` stub at namespace-script time) vs B (document required user-code guards) for Vite-isms — pick once we see what side-project actually needs after CJS works
+    - Verify source-map stack frames resolve to `.tsx` originals (V8 emits `file://` URLs; mapper key already matches)
+    - Verify auto-reload (mtime check) survives the bigger graph (~500 modules)
+
+15. **NpmModuleLoader caching** — npm loads currently bypass `DevMtimeCache` and `NullNodeAnalysisCache` is a no-op. Every render re-walks the full transpile graph. Acceptable for POC; for daily use, wire a real `NodeAnalysisCache` impl (`Arc<DashMap<...>>`) shared across worker respawns. Combined with the transpile-cache-carry follow-up in `plans/dev-mode-followups.md`, gets reload cost down from ~1-3s to sub-second.
+
+16. **Resolver dedup** — three `NodeResolver` instances per worker (DevModuleLoader, build_dev_node_services, build_dev_npm_module_loader). Memory cost ~KB but conceptually wasteful. Refactor `build_dev_npm_resolver` to return a fully-built `Arc<NodeResolver<Byonm...>>` consumed by all three sites. `DevModuleLoader::new` second `build_dev_npm_resolver` call also goes away — pass the trio from `build_dev_worker`. Mechanical refactor, no behavior change.
+
+17. Update `plans/` index, ONBOARDING/README dev-mode section
 
 ## Future
 
