@@ -9,6 +9,9 @@ mod dev_module_loader;
 #[cfg(feature = "dev-mode")]
 mod real_npm_types;
 
+#[cfg(all(test, feature = "dev-mode"))]
+mod cjs_interop_repro_test;
+
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
 

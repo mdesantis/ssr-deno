@@ -521,7 +521,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - NodeResolver picks the `cjs.mjs` shim (eg `emotion-cache.cjs.mjs`); the shim re-exports from CJS files (`emotion-cache.cjs.js`) which contain `exports.X = ...` / `require(...)` syntax → V8 ESM SyntaxError
     - Side-project worked around by tuning conditions to `["node", "worker", "edge-light", "development", "import"]` and patching `@emotion/*/package.json` `exports` — neither is a real fix, both will be reverted by step 13
 
-    ### File changes made to side-project (`denpro`)
+    ### File changes made to side-project
 
     | File | Change |
     |------|--------|
@@ -604,11 +604,11 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
     ~150-250 LOC for the wiring (mostly constructor boilerplate with deeply-nested generics). The async load path is the structural change but limited to one branch in `load()`. Recommend a 14a (real_npm_types builder extension), 14b (DevModuleLoader async branch + NpmModuleLoader integration), 14c (revert conditions + side-project re-test) split.
 
-14. **Validate against side-project (`denpro`) with real npm imports** — step 13 unblocks emotion/MUI/React loading. Re-test:
-    - `bundle exec rails s` boots with `DevModeBundle` pointing at `app/frontend/entrypoints/ssr-app.tsx` (the real entry, not `ssr-dev-test.tsx`)
+14. **Validate against side-project with real npm imports** — step 13 unblocks emotion/MUI/React loading. Re-test:
+    - `bundle exec rails s` boots with `DevModeBundle` pointing at real entry files (not the test stub)
     - `renderToString` from `react-dom/server` returns valid HTML
     - `createEmotionServer.extractCriticalToChunks` + `constructStyleTagsFromChunks` produce the `<style>` tags for SSR
-    - Revert side-project workarounds in `denpro`: `@emotion/*/package.json` `exports`-key reordering, `worker`/`edge-light`/`development` condition additions
+    - Revert side-project workarounds in `node_modules/`: `@emotion/*/package.json` `exports`-key reordering, `worker`/`edge-light`/`development` condition additions
     - Decide A (inject `globalThis.__VITE_SOURCE_DIR__` + `import.meta.env` stub at namespace-script time) vs B (document required user-code guards) for Vite-isms — pick once we see what side-project actually needs after CJS works
     - Verify source-map stack frames resolve to `.tsx` originals (V8 emits `file://` URLs; mapper key already matches)
     - Verify auto-reload (mtime check) survives the bigger graph (~500 modules)
