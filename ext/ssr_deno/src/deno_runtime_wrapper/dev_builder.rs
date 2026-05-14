@@ -81,6 +81,15 @@ pub fn build_dev_worker(
     let perms_parser = Arc::new(RuntimePermissionDescriptorParser::new(Sys));
     let perms_opts = PermissionsOptions {
         allow_read: Some(vec![project_root.to_string_lossy().into_owned()]),
+        // `Some(vec![])` = grant globally (per `global_from_option` in
+        // deno_permissions). Required because every CJS-shaped npm package
+        // boots through a `process.env.NODE_ENV` branch (React, MUI,
+        // emotion, scheduler …); without env access the require() throws
+        // before exports are assigned. Reads are non-sensitive.
+        allow_env: Some(vec![]),
+        // `os.platform()` / `os.arch()` lookups inside some npm transitive
+        // deps (cross-spawn, etc.) need sys access to avoid hard-erroring.
+        allow_sys: Some(vec![]),
         prompt: false,
         ..Default::default()
     };

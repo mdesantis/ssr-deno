@@ -145,6 +145,171 @@ fn needs_transpile(media_type: MediaType) -> bool {
     )
 }
 
+/// JS identifier rules (subset of the full Unicode spec — good enough for
+/// the names found in `exports.X = ...` patterns inside npm CJS sources).
+/// Reserved word filtering is handled by the caller's explicit deny-list
+/// because `swc` lets `exports.default = ...` through here as the literal
+/// string "default" — we'd reject it via `RESERVED_NAMES`, not this check.
+fn is_valid_js_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// Names that are syntactically valid identifiers but cannot appear in
+/// `export const NAME = ...`. `default` is handled separately by the shim.
+/// The rest are JS reserved words that occasionally show up as CJS export
+/// names (eg `exports.delete = …` in attribute-style APIs).
+const RESERVED_NAMES: &[&str] = &[
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
+
+/// Statically analyses a CJS source for its exported names so the shim can
+/// re-expose them as ESM named exports. Returns names that are safe to use
+/// in `export const NAME = _m.NAME;`.
+///
+/// Uses `deno_ast::analyze_cjs` (the same routine that `cjs-module-lexer`
+/// implements) — a pure AST walk, never invokes V8, so it sidesteps the
+/// upstream re-entrancy bug that blocked the full `NodeCodeTranslator` path.
+///
+/// Recurses through `module.exports = require('./X')` style re-exports
+/// (React, MUI, emotion all hide their real exports behind a NODE_ENV
+/// branched indirection). `MAX_REEXPORT_DEPTH` caps recursion at a safe
+/// distance — typical depth is 1–2; the limit only guards against runaway
+/// cycles in pathologically authored packages.
+fn analyze_cjs_exports(path: &Path) -> Vec<String> {
+    const MAX_REEXPORT_DEPTH: u8 = 6;
+    let mut visited: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+    collect_cjs_exports(path, MAX_REEXPORT_DEPTH, &mut visited, &mut out);
+    out.sort();
+    out.dedup();
+    out.retain(|n| {
+        is_valid_js_identifier(n) && !RESERVED_NAMES.contains(&n.as_str()) && n != "__esModule"
+    });
+    out
+}
+
+fn collect_cjs_exports(
+    path: &Path,
+    depth: u8,
+    visited: &mut std::collections::HashSet<PathBuf>,
+    out: &mut Vec<String>,
+) {
+    if depth == 0 {
+        return;
+    }
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(canonical) {
+        return;
+    }
+
+    let Ok(source) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(specifier) = Url::from_file_path(path) else {
+        return;
+    };
+    let media_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("cjs") => MediaType::Cjs,
+        _ => MediaType::JavaScript,
+    };
+    let parsed = match deno_ast::parse_program(deno_ast::ParseParams {
+        specifier,
+        text: std::sync::Arc::<str>::from(source.as_str()),
+        media_type,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+    }) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let analysis = parsed.analyze_cjs();
+    out.extend(analysis.exports);
+
+    let parent = path.parent();
+    for reexp in analysis.reexports {
+        if looks_like_relative_path(&reexp) {
+            if let Some(target) = parent.and_then(|dir| resolve_cjs_reexport_target(dir, &reexp)) {
+                collect_cjs_exports(&target, depth - 1, visited, out);
+            }
+        } else {
+            // Bare name (eg `exports.x = require('pkg').x`) — keep it; the
+            // shim's runtime `_m.x` lookup will find it if the package
+            // re-exports correctly. Cross-package recursion is out of scope.
+            out.push(reexp);
+        }
+    }
+}
+
+fn looks_like_relative_path(spec: &str) -> bool {
+    spec.starts_with("./") || spec.starts_with("../") || spec.starts_with('/')
+}
+
+fn resolve_cjs_reexport_target(referrer_dir: &Path, spec: &str) -> Option<PathBuf> {
+    let candidate = referrer_dir.join(spec);
+    if candidate.is_file() {
+        return Some(candidate);
+    }
+    for ext in &["js", "cjs"] {
+        let cand = candidate.with_extension(ext);
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    if candidate.is_dir() {
+        for ext in &["js", "cjs"] {
+            let cand = candidate.join("index").with_extension(ext);
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
 impl DevModuleLoader {
     pub fn new(
         project_root: PathBuf,
@@ -379,6 +544,12 @@ impl ModuleLoader for DevModuleLoader {
         // interop which triggers V8 re-entrancy on deep require() graphs
         // (emotion/MUI etc.) — see plans/dev-mode-cjs-interop-bug.md.
         //
+        // The shim statically re-exports each CJS export name detected by
+        // `analyze_cjs_exports` so ESM consumers can `import { X } from 'pkg'`.
+        // Each binding reads `_m.X` at evaluation time — `_m` is the require()
+        // result, so transitive `module.exports = …` and `Object.defineProperty`
+        // cases just work as long as the name made it through static analysis.
+        //
         // `.mjs` is not handled here: its extension is `mjs`, not `js`/`cjs`,
         // so the gate naturally excludes it and falls through to the standard
         // transpile path.
@@ -387,8 +558,14 @@ impl ModuleLoader for DevModuleLoader {
         {
             let abs_literal = serde_json::to_string(&path.to_string_lossy())
                 .expect("serde_json::to_string cannot fail for &str");
-            let shim =
-                format!("const _m = globalThis.require({abs_literal}); export default _m;\n");
+            let names = analyze_cjs_exports(&path);
+            let mut shim =
+                format!("const _m = globalThis.require({abs_literal});\nexport default _m;\n");
+            for name in &names {
+                use std::fmt::Write as _;
+                let _ = writeln!(shim, "export const {name} = _m.{name};");
+            }
+            self.update_cache(&path, shim.clone(), None);
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
                 ModuleSourceCode::String(shim.into()),

@@ -70,6 +70,35 @@ mod tests {
              exports.named = 7;\n",
         )
         .expect("write index.js");
+
+        // Indirection package: mimics React/MUI/emotion shape — `index.js`
+        // does `module.exports = require('./impl.js')` so its export names
+        // can only be discovered by recursing the analyzer through the
+        // re-export target.
+        let bar = root.join("node_modules").join("bar-cjs");
+        std::fs::create_dir_all(&bar).expect("mkdir bar pkg");
+        std::fs::write(
+            bar.join("package.json"),
+            r#"{"name":"bar-cjs","main":"index.js"}"#,
+        )
+        .expect("write bar package.json");
+        std::fs::write(
+            bar.join("index.js"),
+            "'use strict';\n\
+             if (process.env.NODE_ENV === 'production') {\n\
+                 module.exports = require('./impl.js');\n\
+             } else {\n\
+                 module.exports = require('./impl.js');\n\
+             }\n",
+        )
+        .expect("write bar index.js");
+        std::fs::write(
+            bar.join("impl.js"),
+            "Object.defineProperty(exports, '__esModule', { value: true });\n\
+             exports.StrictMode = 'strict';\n\
+             exports.useState = function () { return 99; };\n",
+        )
+        .expect("write bar impl.js");
         std::fs::write(
             root.join("entry.tsx"),
             "import { default as val } from 'foo-cjs';\nglobalThis.__probe = 'top';\n",
@@ -87,6 +116,12 @@ mod tests {
              globalThis.__named = named;\n",
         )
         .expect("write entry-named.tsx");
+        std::fs::write(
+            root.join("entry-reexport.tsx"),
+            "import { StrictMode } from 'bar-cjs';\n\
+             globalThis.__strict = StrictMode;\n",
+        )
+        .expect("write entry-reexport.tsx");
         std::fs::write(root.join("control.tsx"), "globalThis.__ctrl = 'ok';\n")
             .expect("write control.tsx");
         (dir, root)
@@ -192,19 +227,11 @@ mod tests {
             .expect("exports.default reachable via .default");
     }
 
-    /// Documents the shim's named-export gap. `import { named } from 'pkg'`
-    /// asks V8 for a `named` export from our shim, but the shim only emits
-    /// `export default _m`.
-    ///
-    /// Currently FAILS for the same reason as `shim_default_import_yields_whole_exports`
-    /// (the file-reading require loader); even once that's fixed, this test
-    /// will still fail because named CJS exports can't be reflected through
-    /// a default-only shim. Needs a richer shim that statically emits each
-    /// known CJS export name (or a full `NodeCodeTranslator` revival once
-    /// the upstream re-entrancy bug is fixed).
+    /// Validates that the shim's static CJS-export analysis pass exposes
+    /// named CJS exports as ESM named exports: `import { named } from 'pkg'`
+    /// should reach `exports.named`.
     #[tokio::test]
-    #[ignore = "shim emits only `default`; named CJS exports unreachable"]
-    async fn shim_named_import_unsupported() {
+    async fn shim_named_import_works() {
         let (_dir, root) = create_fixtures();
         let mut worker = build_worker(&root);
         let url = Url::from_file_path(root.join("entry-named.tsx")).unwrap();
@@ -216,6 +243,24 @@ mod tests {
         worker.evaluate_module(id).await.expect("evaluate_module");
         js_strict_eq(&mut worker, "globalThis.__named", "7")
             .expect("named import should reach exports.named");
+    }
+
+    /// Verifies the shim follows `module.exports = require('./impl')` style
+    /// re-exports so React/MUI/emotion-shaped packages expose their named
+    /// exports through the indirection.
+    #[tokio::test]
+    async fn shim_named_import_through_reexport_indirection() {
+        let (_dir, root) = create_fixtures();
+        let mut worker = build_worker(&root);
+        let url = Url::from_file_path(root.join("entry-reexport.tsx")).unwrap();
+        let id = worker
+            .js_runtime
+            .load_main_es_module(&url)
+            .await
+            .expect("load_main_es_module");
+        worker.evaluate_module(id).await.expect("evaluate_module");
+        js_strict_eq(&mut worker, "globalThis.__strict", "'strict'")
+            .expect("reexported named binding should reach impl.js");
     }
 
     #[tokio::test]
