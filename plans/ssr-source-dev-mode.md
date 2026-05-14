@@ -511,7 +511,100 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     | `test_dev_mode_bundle.rb` | Temp-file test: write entry v1 → render → modify file (use `File.utime` with future timestamp to avoid second-granularity mtime collisions on hot writes) → render v2 → verify new output. Also: auto-reload disabled → no reload triggered even on file change. |
     | `sig/ssr/deno.rbs` | `native_dev_check_stale: (DevWorkerHandle) -> bool`. |
 12. Test with side-project: remove Rolldown from Procfile, verify `rails s` boots SSR clean; verify source-map stack frames resolve to `.tsx` files
-13. Update `plans/` index, ONBOARDING/README dev-mode section
+
+    ### Findings — CJS→ESM interop gap
+
+    `DevModuleLoader` + `NodeResolver` correctly resolve npm packages. Rails boots with DevModeBundle, `.tsx` entries transpile, `@/` aliases resolve, bare specifiers resolve. The blocker for MUI/emotion SSR is that **`DevModuleLoader::load` hands file source straight to V8's ESM parser, without invoking the CJS→ESM translator that `deno_resolver 0.78.0` provides**. Step 13 wires the missing path.
+
+    Current symptoms:
+    - Packages shipping CJS-first crash V8: `react`, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm
+    - NodeResolver picks the `cjs.mjs` shim (eg `emotion-cache.cjs.mjs`); the shim re-exports from CJS files (`emotion-cache.cjs.js`) which contain `exports.X = ...` / `require(...)` syntax → V8 ESM SyntaxError
+    - Side-project worked around by tuning conditions to `["node", "worker", "edge-light", "development", "import"]` and patching `@emotion/*/package.json` `exports` — neither is a real fix, both will be reverted by step 13
+
+    ### File changes made to side-project (`denpro`)
+
+    | File | Change |
+    |------|--------|
+    | `config/initializers/ssr_deno.rb` | Use `DevModeBundle.new` in development, `Config.bundles` in production |
+    | `Procfile.dev` | Removed `ssr: npx rolldown ...` line (only `web` + `vite` remain) |
+    | `app/frontend/entrypoints/ssr.tsx` | Hardcoded `/app/frontend` instead of `__VITE_SOURCE_DIR__` (Deno has no compile-time define) — see "Side-project ergonomics" below for a better fix |
+    | `app/frontend/entrypoints/ssr-app.tsx` | Same |
+    | `app/frontend/entrypoints/ssr-demos.tsx` | Same |
+    | `app/frontend/lib/utils.ts` | `isBrowser()` wrapped in try/catch — `import.meta.env` undefined in Deno (see "Side-project ergonomics") |
+    | `ext/ssr_deno/src/dev_module_loader.rs` | `resolve_with_ext_fallback` rejects directories (was matching any `exists()` path including dirs) and handles `dir/index.{ts,tsx,js,jsx}` — **two real bugs, keep in the gem** |
+
+    ### Side-project ergonomics — defer to follow-up
+
+    The `__VITE_SOURCE_DIR__` hardcode and `isBrowser()` try/catch are user-code workarounds for two missing dev-mode features:
+
+    - **Vite-style globals**: `import.meta.env`, `__VITE_SOURCE_DIR__`, etc. are injected by Vite at compile-time. Dev-mode could inject equivalents at namespace-script time, eg:
+      ```js
+      globalThis.__VITE_SOURCE_DIR__ = '/app/frontend';
+      // import.meta.env = { SSR: true, MODE: 'development', PROD: false, DEV: true }; — but import.meta is per-module
+      ```
+      `__VITE_SOURCE_DIR__` is a plain global — trivial to inject in `dev_load.rs`'s namespace script. `import.meta.env` is per-module and not injectable from outside; needs module-loader-level transformation or a documented stub-import shim.
+
+    - **Document the unset globals**: alternatively, document that user code must guard `import.meta.env` access. The plan's `DevModeBundle` class doc mentions it briefly; expand to a dedicated "User code expectations" section.
+
+    Decide A (inject globals) vs B (document + guard) once step 13 lands and we're back to the real fight (which packages actually need this).
+
+    ### POC validation
+
+    DevModeBundle infrastructure validated:
+    - Rails boots with 0 extra processes (no rolldown, no overmind)
+    - `.tsx` transpilation via `deno_ast`
+    - `@/` → `app/frontend/` alias resolution
+    - Bare specifier resolution via `NodeResolver` + `ByonmNpmResolver`
+    - Auto-reload (mtime check) functional
+    - Source maps registered in `SsrSourceMapper`
+    - Minimal SSR entry (no npm imports) loads and renders correctly
+    - `render_chunks` with Enumerator works
+
+13. **CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.
+
+    ### Root cause
+
+    `DevModuleLoader::load` reads files with `std::fs::read_to_string` and returns them as `ModuleType::JavaScript` source. V8 parses as ESM. CJS files (eg `@emotion/cache/dist/emotion-cache.cjs.js`) contain `'use strict'; Object.defineProperty(exports, '__esModule', ...);` and `require(...)` — V8 ESM parser fails on `exports`/`require` as undefined.
+
+    NodeResolver picks the `cjs.mjs` shim under `import` condition; the shim re-exports from CJS files which then crash V8. Tuning conditions (`worker`, `edge-light`, `development`) only steers around individual cases; not a general fix.
+
+    ### Solution
+
+    `deno_resolver 0.78.0` ships the full translator stack (already in our binary as transitive dep):
+
+    | Component | Location |
+    |-----------|----------|
+    | `CjsTracker<...>` | `deno_resolver-0.78.0/cjs/mod.rs` — decides "is this file CJS?" |
+    | `DenoCjsCodeAnalyzer<Sys>` | `deno_resolver-0.78.0/cjs/analyzer/mod.rs:138` — static analysis of `module.exports` |
+    | `NodeCodeTranslator<...>` | `node_resolver-0.85.0/analyze.rs:542` — synthesizes ESM source from CJS |
+    | `NpmModuleLoader<...>` | `deno_resolver-0.78.0/loader/npm.rs:110` — high-level: detect CJS, translate, return ESM |
+
+    Entry point: `NodeCodeTranslator::translate_cjs_to_esm(specifier, source).await -> Cow<str>`. Output is ESM that V8 happily parses — synthesizes shims for `module`, `exports`, `require`, `__filename`, `__dirname`, then emits `export const X = ...` for each statically-analyzed name and `export default module_exports` for the default.
+
+    ### Wiring
+
+    `DevModuleLoader::load` currently returns `ModuleLoadResponse::Sync`. Switch to async for the npm path because `translate_cjs_to_esm` is async (recursively analyzes re-exports).
+
+    | File | Change |
+    |------|--------|
+    | `real_npm_types.rs` | Extend builder to return `(checker, npm_resolver_rc, pkg_json_resolver_rc, npm_module_loader_rc)`. Construct `CjsTracker`, `DenoCjsCodeAnalyzer`, `NodeCodeTranslator`, `NpmModuleLoader` from the shared trio. Use shared `NodeAnalysisCache` (persistent across reloads — CJS analysis is mtime-keyed). |
+    | `dev_module_loader.rs` | New `Arc<NpmModuleLoader<...>>` field. In `load()`, detect `path` is inside `project_root/node_modules/`; for those, return `ModuleLoadResponse::Async(Box::pin(async move { npm_loader.load(...).await }))`. Project source path stays sync. |
+    | `dev_builder.rs` | Plumb the new `Arc<NpmModuleLoader<...>>` from `build_dev_npm_resolver` through `build_dev_worker` → `DevModuleLoader::new`. |
+    | `dev_builder.rs` (revert) | Conditions back to `["node", "import"]`. The `worker`/`edge-light`/`development` workarounds become unnecessary once CJS files load correctly through the real `import` path. |
+    | Tests | Side-project entry with `import { renderToString } from 'react-dom/server'` + `import createCache from '@emotion/cache'` — verify both load + execute. Capture critical CSS via `createEmotionServer` to round-trip the full emotion SSR API. |
+
+    ### Open questions to resolve during impl
+
+    - **`NodeAnalysisCache` lifetime**: shared across worker respawns or per-worker? CJS analysis is deterministic (input source → output ESM) — could persist globally like `SsrSourceMapper`. Saves re-analysis on auto-reload.
+    - **`is_maybe_cjs` heuristic accuracy**: based on `package.json` `type` field + `.cjs` extension + parse-time `is_script` detection. Confirm it correctly identifies `*.cjs.js` files inside ESM-typed packages.
+    - **Sync-vs-Async loader split**: cleanest is "if inside `node_modules/`, async via NpmModuleLoader; else sync via existing path". Edge case: project source that does `import './foo.cjs'` (CJS in user code). Rare; defer.
+    - **Source-map registration for translated modules**: translator output preserves `//# sourceMappingURL=` if the input had one. Most CJS bundles don't have sourcemaps. Stack frames in translated code will point at the synthesized ESM lines. Acceptable v1.
+
+    ### Estimated effort
+
+    ~150-250 LOC for the wiring (mostly constructor boilerplate with deeply-nested generics). The async load path is the structural change but limited to one branch in `load()`. Recommend a 14a (real_npm_types builder extension), 14b (DevModuleLoader async branch + NpmModuleLoader integration), 14c (revert conditions + side-project re-test) split.
+
+14. Update `plans/` index, ONBOARDING/README dev-mode section
 
 ## Future
 
