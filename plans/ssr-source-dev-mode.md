@@ -560,7 +560,19 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - Minimal SSR entry (no npm imports) loads and renders correctly
     - `render_chunks` with Enumerator works
 
-13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ✅ DONE — `build_dev_npm_module_loader` constructs the full `NpmModuleLoader<DenoCjsCodeAnalyzer, DenoInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver, Sys>` chain. `DevModuleLoader::load` detects `node_modules/` paths and dispatches async via `NpmModuleLoader::load`. Conditions reverted to `["node", "import"]`. Post-review hardening: (a) initial impl wired `NotImplementedModuleExportAnalyzer` which panics on `parse_module` call — fixed by enabling `deno_resolver/deno_ast` feature in Cargo.toml and using `DenoAstModuleExportAnalyzer::new(ParsedSourceCacheRc)` instead; pulls `deno_graph` into the dep tree; (b) `node_modules_dir` precomputed in `DevModuleLoader` to avoid per-load `PathBuf` allocation; (c) `loaded.media_type` now maps to `ModuleType::Json` for JSON imports; (d) `LoadedModuleSource` extraction uses `FastString::from(Arc<str>)` refcount-bump path instead of full clone. Full `bundle exec rake` passes.
+13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ⚠️ WORKED AROUND — full `NpmModuleLoader` wiring hit an upstream V8 re-entrancy bug (`evaluate_module` returns `Ok(())` but the entry's top-level body silently never runs). Full analysis + minimal Rust repro: `plans/dev-mode-cjs-interop-bug.md`.
+
+    **Current solution** — `DevModuleLoader::load` returns a tiny synthetic ESM shim for any `node_modules/**/*.{js,cjs}` path:
+
+    ```js
+    const _m = globalThis.require("/abs/path/to/file.js"); export default _m;
+    ```
+
+    `globalThis.require` is `createRequire('file:///')` from `node:module` (set up by `deno_runtime_wrapper/worker.rs::setup_require`). The require call happens at user-eval time, not during V8's `op_import_sync` — re-entrancy never triggers. `NpmModuleLoader` / `CjsTracker` / `DenoCjsCodeAnalyzer` / `NodeCodeTranslator` are no longer instantiated, and `real_npm_types.rs` is back to just `build_dev_npm_resolver`. Conditions stay `["node", "import"]`.
+
+    **Known semantic gap**: shim exposes only `export default`. `import foo from 'pkg'` returns the entire CJS exports object (NOT `_m.default` even when `__esModule: true`), and named imports `import { x } from 'pkg'` are `undefined`. For most npm CJS this is fine because `deno_node`'s internal `require()` does CJS→ESM bridging for the require result; but anything that does `import { jsx } from '@emotion/react'` straight off the shim's default export is broken. To validate against real side-project demo bundle (step 14).
+
+    Step 15 (NpmModuleLoader caching) is obsolete and folded into followups.
 
     ### Root cause
 
@@ -613,9 +625,9 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - Verify source-map stack frames resolve to `.tsx` originals (V8 emits `file://` URLs; mapper key already matches)
     - Verify auto-reload (mtime check) survives the bigger graph (~500 modules)
 
-15. **NpmModuleLoader caching** — npm loads currently bypass `DevMtimeCache` and `NullNodeAnalysisCache` is a no-op. Every render re-walks the full transpile graph. Acceptable for POC; for daily use, wire a real `NodeAnalysisCache` impl (`Arc<DashMap<...>>`) shared across worker respawns. Combined with the transpile-cache-carry follow-up in `plans/dev-mode-followups.md`, gets reload cost down from ~1-3s to sub-second.
+15. ~~**NpmModuleLoader caching** — npm loads currently bypass `DevMtimeCache` and `NullNodeAnalysisCache` is a no-op. Every render re-walks the full transpile graph. Acceptable for POC; for daily use, wire a real `NodeAnalysisCache` impl (`Arc<DashMap<...>>`) shared across worker respawns. Combined with the transpile-cache-carry follow-up in `plans/dev-mode-followups.md`, gets reload cost down from ~1-3s to sub-second.~~ ❌ OBSOLETE — `NpmModuleLoader` removed; CJS now flows through `globalThis.require` + deno_node's internal CJS cache (per-isolate, persists across `dev_load_entry` calls within a worker lifetime). The "shim regeneration" cost is one `format!` per npm file — negligible. CJS hot-reload across worker respawns is moot because the worker is dropped+respawned on `auto_reload` (step 11).
 
-16. **Resolver dedup** — three `NodeResolver` instances per worker (DevModuleLoader, build_dev_node_services, build_dev_npm_module_loader). Memory cost ~KB but conceptually wasteful. Refactor `build_dev_npm_resolver` to return a fully-built `Arc<NodeResolver<Byonm...>>` consumed by all three sites. `DevModuleLoader::new` second `build_dev_npm_resolver` call also goes away — pass the trio from `build_dev_worker`. Mechanical refactor, no behavior change.
+16. **Resolver dedup** — two `NodeResolver` instances per worker (`DevModuleLoader` and `build_dev_node_services`). `build_dev_npm_module_loader` is gone (step 13 workaround). Memory cost ~KB but conceptually wasteful. Refactor `build_dev_npm_resolver` to return a fully-built `Arc<NodeResolver<Byonm...>>` consumed by both. `DevModuleLoader::new`'s second `build_dev_npm_resolver` call also goes away — pass the trio from `build_dev_worker`. Mechanical refactor, no behavior change.
 
 17. Update `plans/` index, ONBOARDING/README dev-mode section
 

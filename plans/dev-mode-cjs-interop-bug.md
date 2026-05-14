@@ -1,8 +1,24 @@
 # Dev-Mode CJS↔ESM Interop Bug
 
+**Status (2026-05-14)**: WORKED AROUND locally via a synthetic ESM shim that defers the `require()` to user-eval time (see "Local workaround landed" below). `NpmModuleLoader` integration is reverted. The upstream bug is unfixed; this document remains as the canonical write-up for the eventual issue filing + as a record of what we explored.
+
 Embedded `deno_runtime 0.255.0`. ESM entry that imports a CJS-wrapped npm package goes through `NpmModuleLoader` → `translate_cjs_to_esm` cleanly; `load_main_es_module` returns `Ok(ModuleId)`; `evaluate_module(id).await` returns `Ok(())` — but the entry's top-level body **never executes**. No exception. No error. `globalThis` is silently unchanged.
 
-This plan documents the bug for upstream filing + tracks our local workaround options. The integration code from step 13 (`NpmModuleLoader` + `DenoCjsCodeAnalyzer` + `NodeCodeTranslator` wiring in [`real_npm_types.rs`](../ext/ssr_deno/src/real_npm_types.rs) and the async `node_modules` branch in [`dev_module_loader.rs`](../ext/ssr_deno/src/dev_module_loader.rs)) is **structurally correct**. The block is upstream.
+This plan documents the bug for upstream filing + tracks our local workaround options. The integration code from step 13 (`NpmModuleLoader` + `DenoCjsCodeAnalyzer` + `NodeCodeTranslator` wiring in [`real_npm_types.rs`](../ext/ssr_deno/src/real_npm_types.rs) and the async `node_modules` branch in [`dev_module_loader.rs`](../ext/ssr_deno/src/dev_module_loader.rs)) was **structurally correct**. The block was upstream.
+
+## Local workaround landed
+
+`DevModuleLoader::load` no longer dispatches `node_modules/**/*.{js,cjs}` through `NpmModuleLoader`. Instead it returns a tiny synthetic ESM shim:
+
+```js
+const _m = globalThis.require("/abs/path/to/file.js"); export default _m;
+```
+
+`globalThis.require = createRequire('file:///')` from `node:module` (set up by `setup_require` in `deno_runtime_wrapper/worker.rs`). The require runs at user-eval time, not during V8's `op_import_sync`, so the re-entrancy never triggers. `NpmModuleLoader` / `CjsTracker` / `DenoCjsCodeAnalyzer` / `NodeCodeTranslator` are no longer instantiated, and `real_npm_types.rs` is back to just `build_dev_npm_resolver`. Conditions stay `["node", "import"]`.
+
+**Trade-off**: shim exposes only `export default`. `import foo from 'pkg'` yields the entire CJS exports object (not `_m.default` even when `__esModule: true`); named imports `import { x } from 'pkg'` are `undefined`. Most npm CJS still works because internal `require()` calls inside the package use `deno_node`'s own CJS handling — only the import-from-shim boundary loses named-export reflection. Validated against the test suite; pending validation against the side-project demo bundle (step 14 of the main plan).
+
+This is option C-lite from the workaround list below.
 
 ## Environment
 
@@ -287,11 +303,9 @@ Cons: requires user code rewrite OR auto-transformation in DevModuleLoader's tra
 
 ## Recommendation
 
-**Short-term**: ship dev-mode as **Option B** (document limitation) + revert step 13 (drop `NpmModuleLoader` integration + `deno_resolver/deno_ast` feature). Pure-ESM packages still work. CSS-in-JS / MUI / emotion users keep using Vite+Rolldown for prod, no dev-mode. Limited but stable.
+**Done**: shipped a **C-lite workaround** (synthetic `globalThis.require` shim — see top of doc). The full Option C (custom CJS loader with statically-emitted named exports) remains the long-term fix if named-import semantics turn out to be required for real workloads.
 
-**Medium-term**: file the upstream issue with the Rust repro above. If a fix lands quickly, drop the revert.
-
-**Long-term, if upstream stalls**: Option C (custom CJS loader). Significant work but unblocks independently.
+**Medium-term**: file the upstream issue with the Rust repro above. If a fix lands, drop the shim and reinstate `NpmModuleLoader`.
 
 Option E is interesting but introduces a public API surface change (user code must use a specific pattern). Defer.
 

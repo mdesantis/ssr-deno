@@ -12,14 +12,13 @@ use deno_core::{
     ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
-use deno_resolver::loader::{LoadedModuleSource, RequestedModuleType};
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
     cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution,
     NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
 };
 
-use crate::real_npm_types::{build_dev_npm_resolver, DevNpmModuleLoader};
+use crate::real_npm_types::build_dev_npm_resolver;
 use crate::sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
@@ -94,7 +93,6 @@ pub struct DevModuleLoader {
         ByonmNpmResolver<Sys>,
         Sys,
     >,
-    npm_module_loader: Arc<DevNpmModuleLoader>,
     cache: Arc<DevMtimeCache>,
 }
 
@@ -152,7 +150,6 @@ impl DevModuleLoader {
         project_root: PathBuf,
         resolve_alias: SharedAliasMap,
         cache: Arc<DevMtimeCache>,
-        npm_module_loader: Arc<DevNpmModuleLoader>,
     ) -> Self {
         let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
 
@@ -183,7 +180,6 @@ impl DevModuleLoader {
             node_modules_dir,
             resolve_alias,
             node_resolver,
-            npm_module_loader,
             cache,
         }
     }
@@ -377,53 +373,27 @@ impl ModuleLoader for DevModuleLoader {
             )));
         }
 
-        // npm CJS/ESM files: use NpmModuleLoader which handles CJS→ESM
-        // translation. Async because `translate_cjs_to_esm` recursively
-        // analyzes re-exports.
-        if path.starts_with(&self.node_modules_dir) {
-            let loader = self.npm_module_loader.clone();
-            let spec = module_specifier.clone();
-            return ModuleLoadResponse::Async(Box::pin(async move {
-                let loaded = loader
-                    .load(
-                        std::borrow::Cow::Owned(spec.clone()),
-                        None,
-                        &RequestedModuleType::None,
-                    )
-                    .await
-                    .map_err(|e| JsErrorBox::generic(format!("NpmModuleLoader::load: {e}")))?;
-
-                // Map deno's `MediaType` → V8's `ModuleType`. JSON imports are
-                // legal in npm graphs (eg `package.json` introspection); rest
-                // collapses to JavaScript.
-                let module_type = match loaded.media_type {
-                    deno_ast::MediaType::Json => ModuleType::Json,
-                    _ => ModuleType::JavaScript,
-                };
-
-                // Avoid full source clone when possible. `FastString::from(Arc<str>)`
-                // is a refcount bump; `from(String)` is an owning move. Bytes
-                // variants only appear for non-UTF8 source (rare in JS); for
-                // `Cow<'static, str>` the `into_owned()` is a no-op when the
-                // variant is already owned.
-                let code: FastString = match loaded.source {
-                    LoadedModuleSource::ArcStr(s) => FastString::from(s),
-                    LoadedModuleSource::String(s) => FastString::from(s.into_owned()),
-                    LoadedModuleSource::ArcBytes(b) => {
-                        FastString::from(String::from_utf8_lossy(&b).into_owned())
-                    }
-                    LoadedModuleSource::Bytes(b) => {
-                        FastString::from(String::from_utf8_lossy(&b).into_owned())
-                    }
-                };
-
-                Ok(ModuleSource::new(
-                    module_type,
-                    ModuleSourceCode::String(code),
-                    &spec,
-                    None,
-                ))
-            }));
+        // node_modules/ .js/.cjs files: wrap in a synthetic ESM shim that
+        // loads via globalThis.require (set up by setup_require, see
+        // deno_runtime_wrapper/worker.rs). This avoids Deno's native CJS→ESM
+        // interop which triggers V8 re-entrancy on deep require() graphs
+        // (emotion/MUI etc.) — see plans/dev-mode-cjs-interop-bug.md.
+        //
+        // `.mjs` is not handled here: its extension is `mjs`, not `js`/`cjs`,
+        // so the gate naturally excludes it and falls through to the standard
+        // transpile path.
+        if path.starts_with(&self.node_modules_dir)
+            && path.extension().is_some_and(|e| e == "js" || e == "cjs")
+        {
+            let abs_literal = serde_json::to_string(&path.to_string_lossy())
+                .expect("serde_json::to_string cannot fail for &str");
+            let shim = format!("const _m = globalThis.require({abs_literal}); export default _m;\n");
+            return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+                ModuleType::JavaScript,
+                ModuleSourceCode::String(shim.into()),
+                module_specifier,
+                None,
+            )));
         }
 
         match self.load_and_transpile_source(&path) {
