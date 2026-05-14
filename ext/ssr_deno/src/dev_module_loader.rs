@@ -15,7 +15,7 @@ use deno_error::JsErrorBox;
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
     cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution,
-    NodeResolutionKind, NodeResolver, NodeResolverOptions, ResolutionMode,
+    NodeResolutionKind, NodeResolver, NodeResolverOptions, PackageJsonResolverRc, ResolutionMode,
 };
 
 use crate::real_npm_types::build_dev_npm_resolver;
@@ -93,6 +93,10 @@ pub struct DevModuleLoader {
         ByonmNpmResolver<Sys>,
         Sys,
     >,
+    /// Cached `PackageJsonResolver` for querying the nearest `package.json`
+    /// `type` field — used to decide whether a `node_modules/*.js` file is
+    /// ESM (`"type": "module"`) and should skip the require() shim.
+    pkg_json_resolver: PackageJsonResolverRc<Sys>,
     cache: Arc<DevMtimeCache>,
 }
 
@@ -143,6 +147,27 @@ fn needs_transpile(media_type: MediaType) -> bool {
         media_type,
         MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx | MediaType::Mts | MediaType::Cts
     )
+}
+
+/// Quick content-based ESM detection for `.js` files that lack a
+/// `"type":"module"` in their nearest `package.json`. Reads the file,
+/// strips leading whitespace and `"use strict"`, then checks whether the
+/// first token is `import` or `export`.  Covers packages that ship ESM
+/// via `"module"` field without setting `"type"` (e.g. `react-transition-group`).
+fn looks_like_esm(path: &Path) -> bool {
+    let Ok(source) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let trimmed = source.trim_start();
+    for prefix in ["'use strict';", "\"use strict\";"] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            let rest = rest.trim_start();
+            if rest.starts_with("import ") || rest.starts_with("export ") {
+                return true;
+            }
+        }
+    }
+    trimmed.starts_with("import ") || trimmed.starts_with("export ")
 }
 
 /// JS identifier rules (subset of the full Unicode spec — good enough for
@@ -322,7 +347,7 @@ impl DevModuleLoader {
             npm_checker,
             DenoIsBuiltInNodeModuleChecker,
             npm_resolver.clone(),
-            pkg_json_resolver,
+            pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
                 conditions: NodeConditionOptions {
@@ -345,6 +370,7 @@ impl DevModuleLoader {
             node_modules_dir,
             resolve_alias,
             node_resolver,
+            pkg_json_resolver,
             cache,
         }
     }
@@ -382,6 +408,20 @@ impl DevModuleLoader {
 
     fn update_cache(&self, path: &Path, code: String, source_map: Option<String>) {
         self.cache.update(path, code, source_map)
+    }
+
+    /// Returns `true` when `path` is inside a `node_modules` package whose
+    /// nearest `package.json` declares `"type": "module"`.  For those files
+    /// the require() shim is wrong — they are genuine ESM and must be
+    /// loaded directly by V8.
+    fn is_esm_inside_node_modules(&self, path: &Path) -> bool {
+        self.pkg_json_resolver
+            .get_closest_package_json(path)
+            .ok()
+            .flatten()
+            .map(|pkg| pkg.typ == "module")
+            .unwrap_or(false)
+            || looks_like_esm(path)
     }
 
     fn load_and_transpile_source(
@@ -430,6 +470,63 @@ impl DevModuleLoader {
 
         Ok((transpiled.text, transpiled.source_map))
     }
+
+    /// Fallback for subpackage patterns that [`NodeResolver`] can't handle.
+    ///
+    /// Packages like `dom-helpers` ship each API surface (`addClass`,
+    /// `removeClass`, …) as a directory with its own `package.json` that
+    /// redirects via `"module": "../esm/addClass.js"`.  The NodeResolver's
+    /// path-traversal guard treats the `../` prefix as escaping the package
+    /// boundary and rejects the resolution.
+    ///
+    /// This method walks the subpath directories manually, reads the
+    /// terminal `package.json`, resolves `module` (preferred) or `main`
+    /// relative to that directory, canonicalizes the result, and returns
+    /// the file URL.  Returns `None` when the spec does not match the
+    /// subpackage pattern or any step fails.
+    fn try_resolve_subpackage(&self, spec: &str) -> Option<ModuleSpecifier> {
+        if spec.starts_with('.') || spec.starts_with('/') {
+            return None;
+        }
+
+        // Split into package name and subpath.
+        // Scoped packages: find second '/'.
+        let slash_pos = spec.find('/')?;
+        let (pkg_name, subpath) = if spec.starts_with('@') {
+            let second = spec[slash_pos + 1..].find('/')?;
+            let split = slash_pos + 1 + second;
+            (&spec[..split], &spec[split + 1..])
+        } else {
+            (&spec[..slash_pos], &spec[slash_pos + 1..])
+        };
+
+        let pkg_dir = self.node_modules_dir.join(pkg_name);
+        if !pkg_dir.is_dir() {
+            return None;
+        }
+
+        let mut target = pkg_dir.join(subpath);
+
+        if target.is_dir() {
+            if let Ok(Some(pkg)) = self
+                .pkg_json_resolver
+                .load_package_json(&target.join("package.json"))
+            {
+                let entry = pkg.module.as_deref().or(pkg.main.as_deref())?;
+                target = target.join(entry);
+            }
+        }
+
+        let canonical = std::path::absolute(&target).ok()?;
+
+        let resolved = resolve_with_ext_fallback(&canonical)?;
+
+        if !resolved.starts_with(&self.node_modules_dir) || !resolved.is_file() {
+            return None;
+        }
+
+        Url::from_file_path(&resolved).ok()
+    }
 }
 
 impl ModuleLoader for DevModuleLoader {
@@ -475,7 +572,7 @@ impl ModuleLoader for DevModuleLoader {
         }
 
         // Bare specifier — use NodeResolver (walks node_modules/)
-        let resolution = self
+        let resolution = match self
             .node_resolver
             .resolve(
                 spec,
@@ -483,7 +580,21 @@ impl ModuleLoader for DevModuleLoader {
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
             )
-            .map_err(|e| JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}")))?;
+        {
+            Ok(r) => r,
+            Err(e) => {
+                // Subpackage fallback: some packages (dom-helpers, …) ship
+                // subdirs with their own package.json whose module/main
+                // field uses ../ to reach sibling dirs — the NodeResolver's
+                // path-traversal guard rejects these.
+                if let Some(url) = self.try_resolve_subpackage(spec) {
+                    return Ok(url);
+                }
+                return Err(JsErrorBox::generic(format!(
+                    "Failed to resolve '{spec}': {e}"
+                )));
+            }
+        };
 
         match resolution {
             NodeResolution::Module(url_or_path) => {
@@ -538,8 +649,8 @@ impl ModuleLoader for DevModuleLoader {
             )));
         }
 
-        // node_modules/ .js/.cjs files: wrap in a synthetic ESM shim that
-        // loads via globalThis.require (set up by setup_require, see
+        // node_modules/ CJS files: wrap in a synthetic ESM shim that loads
+        // via globalThis.require (set up by setup_require, see
         // deno_runtime_wrapper/worker.rs). This avoids Deno's native CJS→ESM
         // interop which triggers V8 re-entrancy on deep require() graphs
         // (emotion/MUI etc.) — see plans/dev-mode-cjs-interop-bug.md.
@@ -550,11 +661,14 @@ impl ModuleLoader for DevModuleLoader {
         // result, so transitive `module.exports = …` and `Object.defineProperty`
         // cases just work as long as the name made it through static analysis.
         //
-        // `.mjs` is not handled here: its extension is `mjs`, not `js`/`cjs`,
-        // so the gate naturally excludes it and falls through to the standard
-        // transpile path.
+        // **ESM .js files are excluded** — `package.json` `"type":"module"`
+        // (or an explicit `exports.import` condition) means the file is genuine
+        // ESM and must be loaded directly by V8, not wrapped in require().
+        // `.mjs` is always ESM and naturally falls through.
         if path.starts_with(&self.node_modules_dir)
-            && path.extension().is_some_and(|e| e == "js" || e == "cjs")
+            && path.extension().is_some_and(|e| {
+                e == "cjs" || (e == "js" && !self.is_esm_inside_node_modules(&path))
+            })
         {
             let abs_literal = serde_json::to_string(&path.to_string_lossy())
                 .expect("serde_json::to_string cannot fail for &str");

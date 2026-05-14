@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixed
+- **Dev-mode ESM package imports** — `.js` files inside `node_modules` packages that declare `"type": "module"` (or are routed via `exports.import`) are now loaded directly as ESM instead of being wrapped in a `require()` shim. Fixes `SyntaxError: does not provide an export named 'X'` errors for packages like `react-transition-group`.
+
 ### Added
 - **Dev-mode auto-reload** — `DevModeBundle` now supports `auto_reload = true`: checks source file mtimes before each render and respawns the Deno worker (fresh V8 isolate) on any change. Disabled by default. (`plans/ssr-source-dev-mode.md` step 11)
 - **`DevMtimeCache`** — shared (Arc) per-file mtime cache extracted from `DevModuleLoader`. `native_dev_check_stale(handle)` queries it without worker message.

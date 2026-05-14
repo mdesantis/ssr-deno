@@ -1,14 +1,18 @@
 # Dev-Mode CJS↔ESM Interop Bug
 
-**Status (2026-05-14)**: WORKED AROUND locally via a synthetic ESM shim that defers the `require()` to user-eval time (see "Local workaround landed" below). `NpmModuleLoader` integration is reverted. The upstream bug is unfixed; this document remains as the canonical write-up for the eventual issue filing + as a record of what we explored.
+**Status (2026-05-14)** ◐ PARTIAL WORKAROUND. The synthetic `require()` shim sidesteps the V8 re-entrancy for shallow npm imports (react alone, react+react-dom alone, emotion alone all load fine). But mid/deep MUI dependency graphs (~30+ components via `__ssr_imports__`) still trigger the silent body-skip — `evaluate_module` returns `Ok(())` but `globalThis.render` is never assigned. See "2026-05-14 investigation" below for the bisection.
+
+`NpmModuleLoader` integration is reverted. The upstream bug is unfixed; this document remains as the canonical write-up for the eventual issue filing + as a record of what we explored.
 
 Embedded `deno_runtime 0.255.0`. ESM entry that imports a CJS-wrapped npm package goes through `NpmModuleLoader` → `translate_cjs_to_esm` cleanly; `load_main_es_module` returns `Ok(ModuleId)`; `evaluate_module(id).await` returns `Ok(())` — but the entry's top-level body **never executes**. No exception. No error. `globalThis` is silently unchanged.
 
 This plan documents the bug for upstream filing + tracks our local workaround options. The integration code from step 13 (`NpmModuleLoader` + `DenoCjsCodeAnalyzer` + `NodeCodeTranslator` wiring in [`real_npm_types.rs`](../ext/ssr_deno/src/real_npm_types.rs) and the async `node_modules` branch in [`dev_module_loader.rs`](../ext/ssr_deno/src/dev_module_loader.rs)) was **structurally correct**. The block was upstream.
 
-## Local workaround landed
+## Local workaround (evolved)
 
-`DevModuleLoader::load` no longer dispatches `node_modules/**/*.{js,cjs}` through `NpmModuleLoader`. Instead it returns a tiny synthetic ESM shim:
+### C-lite shim (original)
+
+`DevModuleLoader::load` no longer dispatches `node_modules/**/*.{js,cjs}` through `NpmModuleLoader`. Instead it returns a synthetic ESM shim:
 
 ```js
 const _m = globalThis.require("/abs/path/to/file.js"); export default _m;
@@ -16,9 +20,47 @@ const _m = globalThis.require("/abs/path/to/file.js"); export default _m;
 
 `globalThis.require = createRequire('file:///')` from `node:module` (set up by `setup_require` in `deno_runtime_wrapper/worker.rs`). The require runs at user-eval time, not during V8's `op_import_sync`, so the re-entrancy never triggers. `NpmModuleLoader` / `CjsTracker` / `DenoCjsCodeAnalyzer` / `NodeCodeTranslator` are no longer instantiated, and `real_npm_types.rs` is back to just `build_dev_npm_resolver`. Conditions stay `["node", "import"]`.
 
-**Trade-off**: shim exposes only `export default`. `import foo from 'pkg'` yields the entire CJS exports object (not `_m.default` even when `__esModule: true`); named imports `import { x } from 'pkg'` are `undefined`. Most npm CJS still works because internal `require()` calls inside the package use `deno_node`'s own CJS handling — only the import-from-shim boundary loses named-export reflection. Validated against the test suite; pending validation against the side-project demo bundle (step 14 of the main plan).
-
 This is option C-lite from the workaround list below.
+
+### Named-export static analysis (2026-05-14)
+
+The shim now statically analyses CJS sources via `deno_ast::analyze_cjs` to discover export names, then emits `export const NAME = _m.NAME;` for each one. Supports recursive re-export indirection (`module.exports = require('./impl')`). This closes the original semantic gap — `import { X } from 'pkg'` now works for statically-analysable CJS exports.
+
+### ESM detection (2026-05-14)
+
+Packages shipping ESM `.js` files via the `import` condition (e.g. `react-transition-group/esm/index.js`, which starts with `export { default as ... }`) were erroneously wrapped in the require() shim. The shim's `analyze_cjs` found zero exports in ESM code → V8 linking error (`does not provide an export named 'X'`).
+
+Fixed with a two-layer check:
+1. `package.json` `"type": "module"` field (via `pkg_json_resolver`)
+2. Content-based fallback `looks_like_esm`: reads the file, strips `use strict`, checks first token for `import`/`export`
+
+### Subpackage resolution fallback (2026-05-14)
+
+Packages like `dom-helpers` ship subdirectories (`addClass/`, `removeClass/`, …) each with their own `package.json` that redirects via `"module": "../esm/addClass.js"`. The `NodeResolver`'s `legacy_main_resolve` has a path-traversal guard:
+
+```rust
+if !guess.starts_with(package_path) {
+    return Err(ModuleNotFoundError { ... });
+}
+```
+
+`guess` = `dom-helpers/esm/addClass.js`, `package_path` = `dom-helpers/addClass/` — the `../` escapes the subdirectory, so the guard rejects the resolution even though the target is within the same root package.
+
+Fixed with `try_resolve_subpackage`: manual walk of subpath directories + `package.json` resolution via `pkg_json_resolver`. Triggers only when `NodeResolver` fails.
+
+### Permissions expanded
+
+Added `allow_env: Some(vec![])` and `allow_sys: Some(vec![])` — required by npm packages that read `process.env.NODE_ENV` and call `os.platform()` / `os.arch()` during require() init.
+
+### Current semantic gap: V8 re-entrancy on deep graphs
+
+The shim works for **shallow** npm imports. Verified individually:
+- `import { StrictMode } from 'react'` → ✓
+- `import { renderToString } from 'react-dom/server'` → ✓
+- `import createEmotionServer from '@emotion/server/create-instance'` → ✓
+- All four imports together → ✓
+
+But `evaluate_module` returns `Ok(())` with `globalThis.render` unset when the entry imports `__ssr_imports__`, which pulls in ~30 MUI component files (each importing from `@mui/material`, `@mui/icons-material`, etc.). The deep transitive chain involves `.mjs` re-export shims (`*@emotion/**/dist/*.cjs.mjs`) that are loaded as genuine ESM. When V8 evaluates these `.mjs` modules, their `export { ... } from './foo.cjs.js'` statement triggers loading of the CJS file, which gets our require() shim. The shim's `globalThis.require(...)` runs deno_node's CJS loader, which may call `op_import_sync` internally for `.mjs` sub-files — re-entering V8's `Module::Evaluate()` and marking the outer entry as "Evaluated" without its body ever running.
 
 ## Environment
 
@@ -303,11 +345,19 @@ Cons: requires user code rewrite OR auto-transformation in DevModuleLoader's tra
 
 ## Recommendation
 
-**Done**: shipped a **C-lite workaround** (synthetic `globalThis.require` shim — see top of doc). The full Option C (custom CJS loader with statically-emitted named exports) remains the long-term fix if named-import semantics turn out to be required for real workloads.
+**Done**: C-lite workaround with named-export static analysis, ESM detection, and subpackage resolution fallback. Individual npm imports (react, react-dom, emotion) load and render correctly through the shim. The `require()` shim avoids the V8 re-entrancy for these shallow cases.
+
+**Blocked**: deep MUI dependency graphs (~30+ components) still trigger the silent body-skip. The `.mjs` re-export shims in `@emotion/*` packages appear to re-enter V8's module evaluator through `op_import_sync`.
+
+**Next steps to unblock** (in priority order):
+
+1. **Verify `.mjs` as the re-entrancy vector.** Write a reduced test: entry imports `@emotion/server/create-instance` (which routes to a `.cjs.mjs` file via exports `import` condition). If that alone triggers the bug, `.mjs` is the gateway. If not, the re-entrancy requires the deeper MUI graph and the vector is likely `@mui/material`'s internal module structure.
+
+2. **Shim `.mjs` files too.** If `.mjs` is confirmed as the gateway, extend the shim to also wrap `.mjs` files: same `const _m = globalThis.require(...); export ...` pattern. Trade-off: genuine ESM features (top-level await, `import.meta`) break for `.mjs` files — but the `.cjs.mjs` files in emotion don't use those features.
+
+3. **Pre-load vendor bundle via `execute_script`.** Option A from the workaround list: have Vite pre-bundle npm deps into a `vendor.bundle.js` (IIFE), load it via `execute_script` before the entry. This bypasses the V8 module evaluator entirely for npm code. Only project source goes through `DevModuleLoader`. Regresses to a build step but guarantees no re-entrancy.
 
 **Medium-term**: file the upstream issue with the Rust repro above. If a fix lands, drop the shim and reinstate `NpmModuleLoader`.
-
-Option E is interesting but introduces a public API surface change (user code must use a specific pattern). Defer.
 
 ## Open questions
 
@@ -315,6 +365,34 @@ Option E is interesting but introduces a public API surface change (user code mu
 2. **Does the bug occur in Deno CLI (`deno run`) too?** Reduced test: write a `.ts` entry that does `import { StrictMode } from 'npm:react'` + `globalThis.x = 1` + `console.log(globalThis.x)`. If logs `1`, the bug is embedder-specific. If logs `undefined`, it's a deno_core / V8 bug surface that affects CLI too. **Worth running before filing** — narrows scope significantly.
 3. **Are other CJS-bridge entrypoints affected?** Our case is `require(<cjs>)` inside an ESM wrapper. What about `await import('npm:...')` dynamic import in the entry? Plausibly works (dynamic = async = different code path). Not tested.
 4. **Does `node:module._load` (the `if (import.meta.main)` branch) trigger the same bug?** Probably yes since it calls into the same CJS loader. Untested.
+5. **(2026-05-14) Can we prevent ESM `.mjs` files from loading natively?** The `.mjs` re-export shims (`@emotion/**/dist/*.cjs.mjs`) are the gateway that lets CJS evaluation re-enter V8's module evaluator. If we shimmed `.mjs` too (wrapping them in `require()` like `.js`/`.cjs`), the re-entrancy path would be blocked. Trade-off: `.mjs` files that genuinely need ESM features (top-level await, import.meta) would break.
+6. **(2026-05-14) Are `@mui` packages valid for dev-mode at all?** MUI v6+ ships `.mjs` entry points that re-export from `.js` CJS bundles. Even if `.mjs` were shimmed, the internal `require()` chain within `@mui/material` is ~300 modules deep — likely exceeds any reasonable time budget for dev mode. Worth profiling once the re-entrancy is resolved.
+
+## 2026-05-14 investigation
+
+**Setup**: side-project (`~/Sviluppo/denpro`), Rails 8 + MUI/emotion/React 19, ~30 components. Entry at `app/frontend/entrypoints/ssr-app.tsx`.
+
+**Bisection** (all tested standalone, same worker, `@` → `app/frontend` alias):
+
+| Entry content | `globalThis.render` set? |
+|---|---|
+| `globalThis.render = ...` (no imports) | ✓ |
+| `import { StrictMode } from 'react'` only | ✓ |
+| `import { renderToString } from 'react-dom/server'` only | ✓ |
+| `import createEmotionServer from '@emotion/server/create-instance'` only | ✓ |
+| All four npm imports together | ✓ |
+| `import * as __c0 from '@/components/app/dashboard.tsx'` only | ✓ |
+| `import * from __ssr_imports__` (30+ components) | ✗ |
+
+**Trigger chain hypothesis**: `__ssr_imports__` → `@/components/app/dashboard.tsx` → `@mui/material/...` → emotion `.cjs.mjs` re-export shims → `export { ... } from './foo.cjs.js'` → V8 evaluates shim for `.cjs.js` → `globalThis.require(...)` → deno_node CJS loader → (some path) `op_import_sync` → `Module::Evaluate()` nested inside the outer evaluation → outer entry marked "Evaluated" without body execution.
+
+**New code shipped** (2026-05-14):
+- `src/dev_module_loader.rs`: `looks_like_esm()`, `is_esm_inside_node_modules()`, `try_resolve_subpackage()`, `analyze_cjs_exports()` + named export shim generation
+- `src/require_loader.rs`: `DevNodeRequireLoader` (reads files from disk for `require()`)
+- `src/deno_runtime_wrapper/dev_builder.rs`: `allow_env`, `allow_sys` permissions
+- `src/deno_runtime_wrapper/worker.rs`: `setup_require` visibility `pub(super)` → `pub(crate)`
+- `test/ssr/test_deno_bundle.rb`: reset `@_bundles_created` in setup (pre-existing test-order fix)
+- `src/cjs_interop_repro_test.rs`: tests for default import, named import, re-export indirection
 
 ## Action items if we proceed
 

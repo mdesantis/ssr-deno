@@ -9,6 +9,7 @@ module SSR
 
     def setup
       @bundle = SSR::Deno::Bundle.new(MINIMAL_BUNDLE)
+      SSR::Deno::Bundle.instance_variable_set(:@_bundles_created, false)
     end
 
     def test_render
