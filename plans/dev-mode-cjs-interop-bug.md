@@ -387,12 +387,38 @@ Cons: requires user code rewrite OR auto-transformation in DevModuleLoader's tra
 **Trigger chain hypothesis**: `__ssr_imports__` → `@/components/app/dashboard.tsx` → `@mui/material/...` → emotion `.cjs.mjs` re-export shims → `export { ... } from './foo.cjs.js'` → V8 evaluates shim for `.cjs.js` → `globalThis.require(...)` → deno_node CJS loader → (some path) `op_import_sync` → `Module::Evaluate()` nested inside the outer evaluation → outer entry marked "Evaluated" without body execution.
 
 **New code shipped** (2026-05-14):
-- `src/dev_module_loader.rs`: `looks_like_esm()`, `is_esm_inside_node_modules()`, `try_resolve_subpackage()`, `analyze_cjs_exports()` + named export shim generation
+- `src/dev_module_loader.rs`: `looks_like_esm()`, `is_esm_inside_node_modules()`, `try_resolve_subpackage()`, `analyze_cjs_exports()` + named export shim generation, header-comment-aware ESM sniff
 - `src/require_loader.rs`: `DevNodeRequireLoader` (reads files from disk for `require()`)
 - `src/deno_runtime_wrapper/dev_builder.rs`: `allow_env`, `allow_sys` permissions
 - `src/deno_runtime_wrapper/worker.rs`: `setup_require` visibility `pub(super)` → `pub(crate)`
+- `src/deno_runtime_wrapper/dev_load.rs`: namespace-script error mentions `__entry_progress` probe + links to this plan
 - `test/ssr/test_deno_bundle.rb`: reset `@_bundles_created` in setup (pre-existing test-order fix)
-- `src/cjs_interop_repro_test.rs`: tests for default import, named import, re-export indirection
+- `src/cjs_interop_repro_test.rs`: tests for default import, named import, re-export indirection, ESM-as-`.js` detection, subpackage fallback
+
+## Bisection procedure (for users hitting the silent body-skip)
+
+If `dev_load_entry` raises `"Entry did not assign a function to globalThis.render"` despite the entry source clearly assigning it, the upstream re-entrancy has fired. To locate the trigger module:
+
+1. **Add progress probes to the entry**:
+   ```tsx
+   globalThis.__entry_progress = 'start';
+   import { StrictMode } from 'react';
+   globalThis.__entry_progress = 'after-react';
+   import { renderToString } from 'react-dom/server';
+   globalThis.__entry_progress = 'after-react-dom';
+   import { __ssrComponentsApp } from './__ssr_imports__';
+   globalThis.__entry_progress = 'after-imports';
+   // … rest of entry …
+   globalThis.__entry_progress = 'end';
+   globalThis.render = render;
+   ```
+   The thrown error now reports the last reached probe — that's the import that triggered the silent skip.
+
+2. **Inside `__ssr_imports__`**, comment out half the `import * as __cN ...` lines. If the error stops, the offending file is in the commented half. Narrow with binary search.
+
+3. **Inside the offending component file**, do the same — comment out half its imports, narrow.
+
+4. **Once narrowed to a single npm dependency**, inspect its `.cjs.mjs` / `.cjs.js` graph in `node_modules`. The trigger is typically an interop shim chain through `@emotion/*` or `@mui/material/internal`.
 
 ## Action items if we proceed
 

@@ -23,6 +23,22 @@ use crate::sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
 
+/// Paths to every `node_modules/*.{js,cjs}` file the require()-shim is going
+/// to wrap. Collected during the load phase; consumed by `dev_load_entry`
+/// to pre-populate `globalThis.__cjs_cache` *before* `evaluate_module` runs,
+/// so the shim bodies never call `globalThis.require()` from inside V8's
+/// module evaluator (the upstream re-entrancy trigger — see
+/// `plans/dev-mode-cjs-interop-bug.md`).
+pub type SharedCjsPaths = Arc<Mutex<Vec<PathBuf>>>;
+
+/// Drains the collector, returning every CJS path the shim has wrapped so
+/// far (in load order). Call this once between `load_main_es_module` and
+/// `evaluate_module` to build the warmup script.
+pub fn drain_cjs_paths(shared: &SharedCjsPaths) -> Vec<PathBuf> {
+    let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
+    std::mem::take(&mut *guard)
+}
+
 static EMPTY_JS: &str = "export {};\n";
 
 struct CacheEntry {
@@ -98,6 +114,12 @@ pub struct DevModuleLoader {
     /// ESM (`"type": "module"`) and should skip the require() shim.
     pkg_json_resolver: PackageJsonResolverRc<Sys>,
     cache: Arc<DevMtimeCache>,
+    /// Every CJS file path the shim wraps gets pushed here during `load()`.
+    /// `dev_load_entry` drains this between `load_main_es_module` and
+    /// `evaluate_module` to pre-populate `globalThis.__cjs_cache`, so the
+    /// shim bodies never call `globalThis.require()` from inside V8's
+    /// module evaluator. See `plans/dev-mode-cjs-interop-bug.md`.
+    cjs_paths: SharedCjsPaths,
 }
 
 fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
@@ -149,25 +171,35 @@ fn needs_transpile(media_type: MediaType) -> bool {
     )
 }
 
-/// Quick content-based ESM detection for `.js` files that lack a
-/// `"type":"module"` in their nearest `package.json`. Reads the file,
-/// strips leading whitespace and `"use strict"`, then checks whether the
-/// first token is `import` or `export`.  Covers packages that ship ESM
-/// via `"module"` field without setting `"type"` (e.g. `react-transition-group`).
+/// Content-based ESM detection for `.js` files that lack a `"type":"module"`
+/// in their nearest `package.json`. Parses the source via `deno_ast` and
+/// returns `true` when the program is a `Module` (i.e. has any top-level
+/// `import` / `export`), regardless of where the first import/export sits
+/// in the source. The first-token sniff was tripping over files like
+/// `dom-helpers/esm/removeClass.js` that begin with a plain `function`
+/// declaration before reaching the `export default`.
 fn looks_like_esm(path: &Path) -> bool {
     let Ok(source) = std::fs::read_to_string(path) else {
         return false;
     };
-    let trimmed = source.trim_start();
-    for prefix in ["'use strict';", "\"use strict\";"] {
-        if let Some(rest) = trimmed.strip_prefix(prefix) {
-            let rest = rest.trim_start();
-            if rest.starts_with("import ") || rest.starts_with("export ") {
-                return true;
-            }
-        }
+    let Ok(specifier) = Url::from_file_path(path) else {
+        return false;
+    };
+    let media_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("mjs") => MediaType::Mjs,
+        _ => MediaType::JavaScript,
+    };
+    match deno_ast::parse_program(deno_ast::ParseParams {
+        specifier,
+        text: std::sync::Arc::<str>::from(source.as_str()),
+        media_type,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+    }) {
+        Ok(parsed) => matches!(parsed.program_ref(), deno_ast::ProgramRef::Module(_)),
+        Err(_) => false,
     }
-    trimmed.starts_with("import ") || trimmed.starts_with("export ")
 }
 
 /// JS identifier rules (subset of the full Unicode spec — good enough for
@@ -340,6 +372,7 @@ impl DevModuleLoader {
         project_root: PathBuf,
         resolve_alias: SharedAliasMap,
         cache: Arc<DevMtimeCache>,
+        cjs_paths: SharedCjsPaths,
     ) -> Self {
         let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
 
@@ -350,13 +383,19 @@ impl DevModuleLoader {
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
+                // Match Node defaults: ESM imports get `import`, CJS
+                // requires get `require`. See dev_builder.rs for why this
+                // matters (emotion's `.cjs.mjs` shim cycles otherwise).
                 conditions: NodeConditionOptions {
-                    conditions: vec![
+                    conditions: vec![std::borrow::Cow::Borrowed("node")],
+                    import_conditions_override: Some(vec![
                         std::borrow::Cow::Borrowed("node"),
                         std::borrow::Cow::Borrowed("import"),
-                    ],
-                    import_conditions_override: None,
-                    require_conditions_override: None,
+                    ]),
+                    require_conditions_override: Some(vec![
+                        std::borrow::Cow::Borrowed("node"),
+                        std::borrow::Cow::Borrowed("require"),
+                    ]),
                 },
                 is_browser_platform: false,
                 bundle_mode: true,
@@ -372,6 +411,7 @@ impl DevModuleLoader {
             node_resolver,
             pkg_json_resolver,
             cache,
+            cjs_paths,
         }
     }
 
@@ -455,6 +495,18 @@ impl DevModuleLoader {
             .transpile(
                 &TranspileOptions {
                     imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+                    // Automatic JSX runtime — emits
+                    //     import { jsx as _jsx, Fragment as _Fragment } from "react/jsx-runtime";
+                    // at the top of each .tsx file instead of `React.createElement(...)`.
+                    // Avoids needing `import React from 'react'` in user code (matches
+                    // Vite/Rolldown/Next defaults; Vite was secretly injecting React
+                    // via `esbuild --inject` in the side-project's prod build).
+                    jsx: Some(deno_ast::JsxRuntime::Automatic(
+                        deno_ast::JsxAutomaticOptions {
+                            development: false,
+                            import_source: Some("react".to_string()),
+                        },
+                    )),
                     ..Default::default()
                 },
                 &TranspileModuleOptions::default(),
@@ -572,15 +624,12 @@ impl ModuleLoader for DevModuleLoader {
         }
 
         // Bare specifier — use NodeResolver (walks node_modules/)
-        let resolution = match self
-            .node_resolver
-            .resolve(
-                spec,
-                &referrer_url,
-                ResolutionMode::Import,
-                NodeResolutionKind::Execution,
-            )
-        {
+        let resolution = match self.node_resolver.resolve(
+            spec,
+            &referrer_url,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+        ) {
             Ok(r) => r,
             Err(e) => {
                 // Subpackage fallback: some packages (dom-helpers, …) ship
@@ -649,17 +698,20 @@ impl ModuleLoader for DevModuleLoader {
             )));
         }
 
-        // node_modules/ CJS files: wrap in a synthetic ESM shim that loads
-        // via globalThis.require (set up by setup_require, see
-        // deno_runtime_wrapper/worker.rs). This avoids Deno's native CJS→ESM
-        // interop which triggers V8 re-entrancy on deep require() graphs
-        // (emotion/MUI etc.) — see plans/dev-mode-cjs-interop-bug.md.
+        // node_modules/ CJS files: wrap in a synthetic ESM shim that reads
+        // from `globalThis.__cjs_cache` — populated outside the V8 module
+        // evaluator by `dev_load_entry` before `evaluate_module` runs. The
+        // shim body itself never calls `globalThis.require()`, so the
+        // upstream V8 re-entrancy on deep CJS graphs (emotion/MUI/…) can't
+        // fire from inside the module-evaluation post-order walk. See
+        // `plans/dev-mode-cjs-interop-bug.md`.
         //
         // The shim statically re-exports each CJS export name detected by
         // `analyze_cjs_exports` so ESM consumers can `import { X } from 'pkg'`.
-        // Each binding reads `_m.X` at evaluation time — `_m` is the require()
-        // result, so transitive `module.exports = …` and `Object.defineProperty`
-        // cases just work as long as the name made it through static analysis.
+        // Each binding reads `_m.X` at evaluation time — `_m` is the
+        // cached require() result, so transitive `module.exports = …` and
+        // `Object.defineProperty` cases just work as long as the name made
+        // it through static analysis.
         //
         // **ESM .js files are excluded** — `package.json` `"type":"module"`
         // (or an explicit `exports.import` condition) means the file is genuine
@@ -670,16 +722,41 @@ impl ModuleLoader for DevModuleLoader {
                 e == "cjs" || (e == "js" && !self.is_esm_inside_node_modules(&path))
             })
         {
-            let abs_literal = serde_json::to_string(&path.to_string_lossy())
+            // Canonicalize the path before using it as a cache key. The
+            // subpackage-fallback (`try_resolve_subpackage`) may return a
+            // url containing `..` segments (eg `dom-helpers/addClass/../esm/…`);
+            // the warmup script's `require()` collapses the `..` so its
+            // cache key is the resolved path, while a separate ESM import
+            // of the same file via the resolved path would otherwise hit
+            // a different shim entry. Canonicalising here unifies the key.
+            let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+            let abs_literal = serde_json::to_string(&canonical.to_string_lossy())
                 .expect("serde_json::to_string cannot fail for &str");
-            let names = analyze_cjs_exports(&path);
-            let mut shim =
-                format!("const _m = globalThis.require({abs_literal});\nexport default _m;\n");
+            let names = analyze_cjs_exports(&canonical);
+            // Record this file in the global collector so `dev_load_entry`
+            // can warm `globalThis.__cjs_cache` for it via `execute_script`
+            // before V8 starts evaluating the module graph.
+            {
+                let mut guard = self.cjs_paths.lock().unwrap_or_else(|e| e.into_inner());
+                guard.push(canonical.clone());
+            }
+            let mut shim = format!(
+                "const _m = (globalThis.__cjs_cache || {{}})[{abs_literal}];\n\
+                 if (_m === undefined) {{\n\
+                     throw new Error('CJS module not warmed: ' + {abs_literal});\n\
+                 }}\n\
+                 export default _m;\n"
+            );
             for name in &names {
                 use std::fmt::Write as _;
                 let _ = writeln!(shim, "export const {name} = _m.{name};");
             }
-            self.update_cache(&path, shim.clone(), None);
+            // Intentionally NOT cached: `check_cache` returns content
+            // without re-running the `cjs_paths.push()` side effect, so a
+            // cached shim from a previous worker lifetime would leave the
+            // warmup list empty. Re-analysing on every `load_main_es_module`
+            // is cheap (single AST walk per file, only called once per
+            // worker lifetime).
             return ModuleLoadResponse::Sync(Ok(ModuleSource::new(
                 ModuleType::JavaScript,
                 ModuleSourceCode::String(shim.into()),

@@ -18,7 +18,7 @@ use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
 
-use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap};
+use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap, SharedCjsPaths};
 use crate::real_npm_types::build_dev_npm_resolver;
 use crate::require_loader::DevNodeRequireLoader;
 use crate::sys::Sys;
@@ -40,10 +40,25 @@ fn build_dev_node_services(
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
+                // Base conditions used when no context is overridden.
+                // Context-specific overrides below match Node's defaults:
+                // `import` for ESM, `require` for CJS. Without the
+                // `require_conditions_override`, deno_node's `createRequire`
+                // would resolve npm packages under `["node","import"]`,
+                // which picks the `.cjs.mjs` ESM-wrapper for emotion/MUI
+                // packages. Node then refuses `require()` of ESM in a
+                // cycle. Splitting the overrides routes `require()` calls
+                // to the `.cjs.js` files directly.
                 conditions: NodeConditionOptions {
-                    conditions: vec![Cow::Borrowed("node"), Cow::Borrowed("import")],
-                    import_conditions_override: None,
-                    require_conditions_override: None,
+                    conditions: vec![Cow::Borrowed("node")],
+                    import_conditions_override: Some(vec![
+                        Cow::Borrowed("node"),
+                        Cow::Borrowed("import"),
+                    ]),
+                    require_conditions_override: Some(vec![
+                        Cow::Borrowed("node"),
+                        Cow::Borrowed("require"),
+                    ]),
                 },
                 is_browser_platform: false,
                 bundle_mode: true,
@@ -68,13 +83,19 @@ pub fn build_dev_worker(
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
     mtime_cache: Arc<DevMtimeCache>,
+    cjs_paths: SharedCjsPaths,
 ) -> Result<MainWorker, String> {
     let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(project_root);
 
     let node_services = build_dev_node_services(npm_checker, npm_resolver, pkg_json_resolver);
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
-        let loader = DevModuleLoader::new(project_root.to_path_buf(), resolve_aliases, mtime_cache);
+        let loader = DevModuleLoader::new(
+            project_root.to_path_buf(),
+            resolve_aliases,
+            mtime_cache,
+            cjs_paths,
+        );
         Rc::new(loader)
     };
 

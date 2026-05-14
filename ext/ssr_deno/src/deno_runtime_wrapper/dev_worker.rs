@@ -10,7 +10,7 @@ use super::dev_builder::build_dev_worker;
 use super::dev_handle::DevWorkerMsg;
 use super::render;
 use super::render_chunked;
-use crate::dev_module_loader::DevMtimeCache;
+use crate::dev_module_loader::{DevMtimeCache, SharedCjsPaths};
 
 pub fn dev_worker_thread_main(
     mut rx: tokio::sync::mpsc::Receiver<DevWorkerMsg>,
@@ -38,6 +38,7 @@ pub fn dev_worker_thread_main(
 
         let oom_triggered = Arc::new(AtomicBool::new(false));
         let alias_map: crate::dev_module_loader::SharedAliasMap = Arc::new(Mutex::new(Vec::new()));
+        let cjs_paths: SharedCjsPaths = Arc::new(Mutex::new(Vec::new()));
 
         let mut worker = match build_dev_worker(
             &main_module_url,
@@ -46,6 +47,7 @@ pub fn dev_worker_thread_main(
             &project_root,
             oom_triggered.clone(),
             mtime_cache,
+            cjs_paths.clone(),
         ) {
             Ok(w) => w,
             Err(e) => {
@@ -73,6 +75,7 @@ pub fn dev_worker_thread_main(
                         &entry_path,
                         &alias_map,
                         &resolve_alias,
+                        &cjs_paths,
                     )
                     .await;
                     let _ = reply.send(result);
