@@ -41,7 +41,13 @@ fn build_dev_node_services(
             NodeResolutionSys::new(Sys, None),
             NodeResolverOptions {
                 conditions: NodeConditionOptions {
-                    conditions: vec![Cow::Borrowed("node"), Cow::Borrowed("import")],
+                    conditions: vec![
+                        Cow::Borrowed("node"),
+                        Cow::Borrowed("worker"),
+                        Cow::Borrowed("edge-light"),
+                        Cow::Borrowed("development"),
+                        Cow::Borrowed("import"),
+                    ],
                     import_conditions_override: None,
                     require_conditions_override: None,
                 },

@@ -94,13 +94,22 @@ pub struct DevModuleLoader {
 }
 
 fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
-    if base.exists() {
+    if base.is_file() {
         return Some(base.to_path_buf());
     }
     for ext in &["ts", "tsx", "js", "jsx"] {
         let candidate = base.with_extension(ext);
-        if candidate.exists() {
+        if candidate.is_file() {
             return Some(candidate);
+        }
+    }
+    // Directory import — resolve to dir/index.{ts,tsx,js,jsx}
+    if base.is_dir() {
+        for ext in &["ts", "tsx", "js", "jsx"] {
+            let candidate = base.join("index").with_extension(ext);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
     None
@@ -151,6 +160,9 @@ impl DevModuleLoader {
                 conditions: NodeConditionOptions {
                     conditions: vec![
                         std::borrow::Cow::Borrowed("node"),
+                        std::borrow::Cow::Borrowed("worker"),
+                        std::borrow::Cow::Borrowed("edge-light"),
+                        std::borrow::Cow::Borrowed("development"),
                         std::borrow::Cow::Borrowed("import"),
                     ],
                     import_conditions_override: None,
@@ -304,7 +316,9 @@ impl ModuleLoader for DevModuleLoader {
                 ResolutionMode::Import,
                 NodeResolutionKind::Execution,
             )
-            .map_err(|e| JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}")))?;
+            .map_err(|e| {
+                JsErrorBox::generic(format!("Failed to resolve '{spec}': {e}"))
+            })?;
 
         match resolution {
             NodeResolution::Module(url_or_path) => {
