@@ -49,7 +49,7 @@ module SSR
         globalThis.render = render
       TS
 
-      build_ok = system('deno', 'task', 'build', chdir: SAMPLE_DIR)
+      build_ok = system('deno', 'task', 'build', chdir: SAMPLE_DIR, out: File::NULL, err: File::NULL)
 
       assert build_ok, 'Vite build failed on second pass'
 
