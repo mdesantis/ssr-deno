@@ -18,8 +18,8 @@ use node_resolver::{
     NodeResolutionKind, NodeResolver, NodeResolverOptions, PackageJsonResolverRc, ResolutionMode,
 };
 
-use crate::dev_npm_resolver::build_dev_npm_resolver;
-use crate::sys::Sys;
+use crate::dev_mode_npm_resolver::build_dev_mode_npm_resolver;
+use ssr_deno_sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
 
@@ -47,17 +47,25 @@ struct CacheEntry {
     source_map: Option<String>,
 }
 
-pub struct DevMtimeCache {
+pub struct DevModeMtimeCache {
     inner: Mutex<HashMap<PathBuf, CacheEntry>>,
 }
 
-impl DevMtimeCache {
+impl DevModeMtimeCache {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
         }
     }
+}
 
+impl Default for DevModeMtimeCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DevModeMtimeCache {
     pub fn any_stale(&self) -> bool {
         let snapshot: Vec<(PathBuf, SystemTime)> = {
             let cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -97,7 +105,7 @@ impl DevMtimeCache {
     }
 }
 
-pub struct DevModuleLoader {
+pub struct DevModeModuleLoader {
     project_root: PathBuf,
     // Precomputed `project_root.join("node_modules")` — avoids allocating a
     // PathBuf on every `load()` call when discriminating npm vs project source.
@@ -113,7 +121,7 @@ pub struct DevModuleLoader {
     /// `type` field — used to decide whether a `node_modules/*.js` file is
     /// ESM (`"type": "module"`) and should skip the require() shim.
     pkg_json_resolver: PackageJsonResolverRc<Sys>,
-    cache: Arc<DevMtimeCache>,
+    cache: Arc<DevModeMtimeCache>,
     /// Every CJS file path the shim wraps gets pushed here during `load()`.
     /// `dev_load_entry` drains this between `load_main_es_module` and
     /// `evaluate_module` to pre-populate `globalThis.__cjs_cache`, so the
@@ -374,14 +382,15 @@ fn resolve_cjs_reexport_target(referrer_dir: &Path, spec: &str) -> Option<PathBu
     None
 }
 
-impl DevModuleLoader {
+impl DevModeModuleLoader {
     pub fn new(
         project_root: PathBuf,
         resolve_alias: SharedAliasMap,
-        cache: Arc<DevMtimeCache>,
+        cache: Arc<DevModeMtimeCache>,
         cjs_paths: SharedCjsPaths,
     ) -> Self {
-        let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(&project_root);
+        let (npm_checker, npm_resolver, pkg_json_resolver) =
+            build_dev_mode_npm_resolver(&project_root);
 
         let node_resolver = NodeResolver::new(
             npm_checker,
@@ -588,7 +597,7 @@ impl DevModuleLoader {
     }
 }
 
-impl ModuleLoader for DevModuleLoader {
+impl ModuleLoader for DevModeModuleLoader {
     fn resolve(
         &self,
         specifier: &str,
@@ -673,7 +682,7 @@ impl ModuleLoader for DevModuleLoader {
     ) -> ModuleLoadResponse {
         if module_specifier.scheme() == "node" {
             return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
-                "node: modules handled by extension, not by DevModuleLoader",
+                "node: modules handled by extension, not by DevModeModuleLoader",
             )));
         }
 
@@ -681,7 +690,7 @@ impl ModuleLoader for DevModuleLoader {
             Ok(p) => p,
             Err(_) => {
                 return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(format!(
-                    "DevModuleLoader cannot load non-file URL: {module_specifier}"
+                    "DevModeModuleLoader cannot load non-file URL: {module_specifier}"
                 ))));
             }
         };
@@ -819,7 +828,7 @@ fn register_source_map(specifier: &ModuleSpecifier, path: &Path, source_map: Opt
     let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
         return;
     };
-    let mut mapper = crate::get_source_mapper()
+    let mut mapper = ssr_deno_core::source_mapper::global_get_source_mapper()
         .write()
         .unwrap_or_else(|e| e.into_inner());
     mapper.register_inline(specifier.as_str(), map_json, mtime);

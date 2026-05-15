@@ -20,7 +20,7 @@ use crate::nop_types::{
     NopInNpmPackageChecker, NopNpmPackageFolderResolver, NopPermissionDescriptorParser,
 };
 use crate::require_loader::SSRDenoNodeRequireLoader;
-use crate::sys::Sys;
+use ssr_deno_sys::Sys;
 
 // ---------------------------------------------------------------------------
 // build_worker — broken into focused helpers

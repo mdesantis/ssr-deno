@@ -18,10 +18,12 @@ use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
 
-use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap, SharedCjsPaths};
-use crate::dev_npm_resolver::build_dev_npm_resolver;
-use crate::require_loader::DevNodeRequireLoader;
-use crate::sys::Sys;
+use crate::dev_mode_module_loader::{
+    DevModeModuleLoader, DevModeMtimeCache, SharedAliasMap, SharedCjsPaths,
+};
+use crate::dev_mode_npm_resolver::build_dev_mode_npm_resolver;
+use crate::require_loader::DevModeNodeRequireLoader;
+use ssr_deno_sys::Sys;
 
 type DevNodeServices = NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
 
@@ -30,7 +32,7 @@ fn build_dev_node_services(
     npm_resolver: ByonmNpmResolver<Sys>,
     pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys>,
 ) -> Option<DevNodeServices> {
-    let loader: NodeRequireLoaderRc = Rc::new(DevNodeRequireLoader);
+    let loader: NodeRequireLoaderRc = Rc::new(DevModeNodeRequireLoader);
 
     let resolver: MaybeArc<NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>> = {
         let r = NodeResolver::new(
@@ -76,21 +78,21 @@ fn build_dev_node_services(
     })
 }
 
-pub fn build_dev_worker(
+pub fn build_dev_mode_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
     resolve_aliases: SharedAliasMap,
     project_root: &Path,
     oom_triggered: Arc<AtomicBool>,
-    mtime_cache: Arc<DevMtimeCache>,
+    mtime_cache: Arc<DevModeMtimeCache>,
     cjs_paths: SharedCjsPaths,
 ) -> Result<MainWorker, String> {
-    let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_npm_resolver(project_root);
+    let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_mode_npm_resolver(project_root);
 
     let node_services = build_dev_node_services(npm_checker, npm_resolver, pkg_json_resolver);
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
-        let loader = DevModuleLoader::new(
+        let loader = DevModeModuleLoader::new(
             project_root.to_path_buf(),
             resolve_aliases,
             mtime_cache,

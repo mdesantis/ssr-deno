@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     ".",
     "crates/ssr_deno_core",
+    "crates/ssr_deno_sys",
+    "crates/ssr_deno_dev_mode",
 ]
 
 [package]
@@ -12,27 +14,25 @@ edition = "2021"
 
 [features]
 default = ["dev-mode"]
-dev-mode = []
+dev-mode = ["ssr_deno_dev_mode"]
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 ssr_deno_core = { path = "crates/ssr_deno_core" }
+ssr_deno_sys = { path = "crates/ssr_deno_sys" }
+ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }
 magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-# hmr: required by deno_telemetry (SyntaxError without it).
-# transpile: not needed (no remote module transpilation, all bundles pre-built).
 deno_runtime = { version = "0.255.0", features = ["hmr"] }
 deno_core = "=0.400.0"
 deno_semver = "=0.9.1"
 deno_error = "=0.7.1"
 node_resolver = "=0.85.0"
 sys_traits = "=0.1.27"
-deno_resolver = { version = "=0.78.0", features = ["deno_ast"] }
-deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 
 [profile.release]
 lto = true

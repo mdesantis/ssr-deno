@@ -4,7 +4,7 @@ use std::path::Path;
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::worker::MainWorker;
 
-use crate::dev_module_loader::{drain_cjs_paths, set_aliases, SharedAliasMap, SharedCjsPaths};
+use ssr_deno_dev_mode::{drain_cjs_paths, set_aliases, SharedAliasMap, SharedCjsPaths};
 
 use super::SSRDenoError;
 

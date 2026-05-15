@@ -6,10 +6,10 @@ pub use deno_resolver::npm::{
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{PackageJsonResolver, PackageJsonResolverRc};
 
-use crate::sys::Sys;
+use ssr_deno_sys::Sys;
 
 /// Builds a BYONM ("Bring Your Own node_modules") resolver trio for dev mode.
-pub fn build_dev_npm_resolver(
+pub fn build_dev_mode_npm_resolver(
     project_root: &Path,
 ) -> (
     ByonmInNpmPackageChecker,

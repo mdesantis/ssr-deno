@@ -194,6 +194,22 @@ impl Default for SsrSourceMapper {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Global instance (shared across root and dev-mode crates)
+// ---------------------------------------------------------------------------
+
+use std::sync::OnceLock;
+use std::sync::RwLock;
+
+/// Returns a reference to the global `SsrSourceMapper` instance.
+/// May be called from the root crate (for prod renderers) and from the
+/// `ssr_deno_dev_mode` crate (for dev-mode transpilation source-map
+/// registration).
+pub fn global_get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
+    static MAPPER: OnceLock<RwLock<SsrSourceMapper>> = OnceLock::new();
+    MAPPER.get_or_init(|| RwLock::new(SsrSourceMapper::new()))
+}
+
 // ===========================================================================
 // Helpers for test source map creation
 // ===========================================================================

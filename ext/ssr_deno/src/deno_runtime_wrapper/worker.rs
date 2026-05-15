@@ -122,78 +122,6 @@ pub fn worker_thread_main(
     });
 }
 
-/// Injects `globalThis.require` into the V8 context by loading
-/// `createRequire` from Deno's built-in `node:module` via async import.
-pub(crate) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), String> {
-    // Idempotency guard: skip the async import + microtask polling when
-    // `globalThis.require` is already set from a prior bundle load into
-    // the same isolate. Saves ~10ms per subsequent bundle load.
-    let check_val = worker
-        .execute_script(
-            "<ssr-deno:require-guard>",
-            "typeof globalThis.require !== 'undefined'"
-                .to_string()
-                .into(),
-        )
-        .map_err(|e| format!("Failed to check require: {e}"))?;
-    let isolate = worker.js_runtime.v8_isolate();
-    let check_ref = check_val.open(isolate);
-    if check_ref.is_true() {
-        return Ok(());
-    }
-
-    // The deno_node extension registers node:module polyfill via its extension
-    // system. When import('node:module') is called, the extension serves the
-    // source code directly (not through the module loader). We use microtask
-    // polling to let the async import resolve synchronously.
-    worker
-        .execute_script(
-            "<ssr-deno:require>",
-            r#"
-            (async () => {
-                const { createRequire } = await import('node:module');
-                globalThis.require = createRequire('file:///');
-            })();
-            "#
-            .to_string()
-            .into(),
-        )
-        .map_err(|e| format!("Failed to start require import: {e}"))?;
-
-    let isolate = worker.js_runtime.v8_isolate();
-    let deadline = Instant::now() + Duration::from_millis(100);
-    // Poll microtasks until the require promise settles or we hit the safety cap.
-    // The import targets a built-in extension (node:module) — normally resolves
-    // in <1ms, but we allow up to 100ms for heavily loaded systems.
-    //
-    // No active timeout watchdog — a hung import could block the worker forever.
-    // This is acceptable because the import target is a local built-in extension
-    // (not network I/O); if it hangs, the entire V8 isolate is already broken.
-    // See archived plans/require-backoff.md for exponential backoff analysis
-    // (closed: low priority, not worth the churn for exceptional-case safety).
-    loop {
-        isolate.perform_microtask_checkpoint();
-        if Instant::now() >= deadline {
-            break;
-        }
-        std::thread::sleep(Duration::from_micros(50));
-    }
-
-    worker
-        .execute_script(
-            "<ssr-deno:require-verify>",
-            r#"
-            if (typeof globalThis.require === 'undefined') {
-                throw new Error('createRequire failed - globalThis.require is undefined');
-            }
-            "#
-            .to_string()
-            .into(),
-        )
-        .map(|_| ())
-        .map_err(|e| format!("setup_require failed: {e}"))
-}
-
 /// Evaluates the bundle code and moves `globalThis.render` into the bundle
 /// namespace: `globalThis.__ssr_bundles[bundle_id] = { render: globalThis.render }`.
 fn load_bundle_in_worker(
@@ -238,4 +166,63 @@ fn load_bundle_in_worker(
         .execute_script("<ssr-deno:namespace>", namespace_script.into())
         .map(|_| ())
         .map_err(|e| format!("Failed to namespace bundle '{bundle_id}': {e}"))
+}
+
+/// Injects `globalThis.require` into the V8 context by loading
+/// `createRequire` from Deno's built-in `node:module` via async import.
+pub(crate) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), String> {
+    // Idempotency guard: skip the async import + microtask polling when
+    // `globalThis.require` is already set from a prior bundle load into
+    // the same isolate. Saves ~10ms per subsequent bundle load.
+    let check_val = worker
+        .execute_script(
+            "<ssr-deno:require-guard>",
+            "typeof globalThis.require !== 'undefined'"
+                .to_string()
+                .into(),
+        )
+        .map_err(|e| format!("Failed to check require: {e}"))?;
+    let isolate = worker.js_runtime.v8_isolate();
+    let check_ref = check_val.open(isolate);
+    if check_ref.is_true() {
+        return Ok(());
+    }
+
+    worker
+        .execute_script(
+            "<ssr-deno:require>",
+            r#"
+            (async () => {
+                const { createRequire } = await import('node:module');
+                globalThis.require = createRequire('file:///');
+            })();
+            "#
+            .to_string()
+            .into(),
+        )
+        .map_err(|e| format!("Failed to start require import: {e}"))?;
+
+    let isolate = worker.js_runtime.v8_isolate();
+    let deadline = Instant::now() + Duration::from_millis(100);
+    loop {
+        isolate.perform_microtask_checkpoint();
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_micros(50));
+    }
+
+    worker
+        .execute_script(
+            "<ssr-deno:require-verify>",
+            r#"
+            if (typeof globalThis.require === 'undefined') {
+                throw new Error('createRequire failed - globalThis.require is undefined');
+            }
+            "#
+            .to_string()
+            .into(),
+        )
+        .map(|_| ())
+        .map_err(|e| format!("setup_require failed: {e}"))
 }

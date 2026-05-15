@@ -2,18 +2,9 @@ mod deno_runtime_wrapper;
 mod node_builtin_loader;
 mod nop_types;
 mod require_loader;
-mod sys;
-
-#[cfg(feature = "dev-mode")]
-mod dev_module_loader;
-#[cfg(feature = "dev-mode")]
-mod dev_npm_resolver;
-
-#[cfg(all(test, feature = "dev-mode"))]
-mod cjs_interop_repro_test;
 
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 #[cfg(feature = "dev-mode")]
 use std::collections::HashMap;
@@ -25,13 +16,8 @@ use std::sync::Arc;
 use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
-use ssr_deno_core::source_mapper::SsrSourceMapper;
+use ssr_deno_core::source_mapper::global_get_source_mapper;
 use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
-
-pub(crate) fn get_source_mapper() -> &'static RwLock<SsrSourceMapper> {
-    static MAPPER: OnceLock<RwLock<SsrSourceMapper>> = OnceLock::new();
-    MAPPER.get_or_init(|| RwLock::new(SsrSourceMapper::new()))
-}
 
 // Recover from poisoned mutex instead of panicking. Poison happens if a thread
 // panics while holding the lock — extremely rare, but unrecoverable if we
@@ -154,7 +140,7 @@ fn heap_stats_serialization_error(ruby: &Ruby, msg: impl Into<String>) -> Error 
 fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
     match e {
         SSRDenoError::Render(msg) => {
-            let resolved = get_source_mapper()
+            let resolved = global_get_source_mapper()
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .resolve(&msg);
@@ -167,7 +153,7 @@ fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
         // transpiled .tsx → .js — resolve through the source mapper so
         // line numbers point at the original sources.
         SSRDenoError::BundleLoad(msg) => {
-            let resolved = get_source_mapper()
+            let resolved = global_get_source_mapper()
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .resolve(&msg);
@@ -310,7 +296,7 @@ fn native_load_bundle(ruby: &Ruby, bundle_id: String, bundle_path: String) -> Re
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("(unknown)");
-        get_source_mapper()
+        global_get_source_mapper()
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .register(script_name, &map_path);
@@ -406,11 +392,11 @@ fn native_render_chunks(
 
 /// Opaque Ruby-side handle to a dev worker. Cannot be forged from Ruby
 /// (constructible only by Rust via `native_dev_worker_new`). Holds an
-/// `Arc<DevIsolateHandle>` so multiple Ruby refs to the same worker stay
+/// `Arc<DevModeIsolateHandle>` so multiple Ruby refs to the same worker stay
 /// alive until the last Ruby ref is GCed.
 #[cfg(feature = "dev-mode")]
 #[magnus::wrap(class = "SSR::Deno::DevWorkerHandle", free_immediately, size)]
-pub struct DevWorkerHandle(pub Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>);
+pub struct DevWorkerHandle(pub Arc<deno_runtime_wrapper::dev_handle::DevModeIsolateHandle>);
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_worker_new(
@@ -424,7 +410,7 @@ fn native_dev_worker_new(
             format!("{msg} (max: {})", usize::MAX / 1024 / 1024),
         ));
     }
-    let handle = deno_runtime_wrapper::dev_handle::DevIsolateHandle::spawn(
+    let handle = deno_runtime_wrapper::dev_handle::DevModeIsolateHandle::spawn(
         max_heap_size_mb,
         PathBuf::from(project_root),
     )
@@ -460,7 +446,7 @@ fn native_dev_load_entry(
 
 #[cfg(feature = "dev-mode")]
 struct DevRenderArgs {
-    handle: Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
+    handle: Arc<deno_runtime_wrapper::dev_handle::DevModeIsolateHandle>,
     bundle_id: String,
     args_json: String,
     render_timeout_ms: u64,

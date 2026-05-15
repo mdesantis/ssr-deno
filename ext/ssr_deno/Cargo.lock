@@ -6948,6 +6948,32 @@ checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
 name = "ssr_deno"
 version = "0.1.0-alpha.6"
 dependencies = [
+ "deno_core",
+ "deno_error",
+ "deno_runtime",
+ "deno_semver",
+ "magnus",
+ "node_resolver",
+ "serde",
+ "serde_json",
+ "ssr_deno_core",
+ "ssr_deno_dev_mode",
+ "ssr_deno_sys",
+ "sys_traits",
+ "tokio",
+]
+
+[[package]]
+name = "ssr_deno_core"
+version = "0.1.0-alpha.6"
+dependencies = [
+ "sourcemap",
+]
+
+[[package]]
+name = "ssr_deno_dev_mode"
+version = "0.1.0-alpha.6"
+dependencies = [
  "deno_ast",
  "deno_core",
  "deno_error",
@@ -6959,15 +6985,15 @@ dependencies = [
  "serde",
  "serde_json",
  "ssr_deno_core",
- "sys_traits",
+ "ssr_deno_sys",
  "tokio",
 ]
 
 [[package]]
-name = "ssr_deno_core"
+name = "ssr_deno_sys"
 version = "0.1.0-alpha.6"
 dependencies = [
- "sourcemap",
+ "sys_traits",
 ]
 
 [[package]]

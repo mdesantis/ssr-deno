@@ -7,9 +7,9 @@ use tokio::sync::oneshot;
 
 use super::types::ChunkedRenderResult;
 use super::SSRDenoError;
-use crate::dev_module_loader::DevMtimeCache;
+use ssr_deno_dev_mode::DevModeMtimeCache;
 
-pub(crate) enum DevWorkerMsg {
+pub(crate) enum DevModeWorkerMsg {
     LoadEntry {
         entry_path: String,
         resolve_alias: HashMap<String, String>,
@@ -37,16 +37,16 @@ pub(crate) enum DevWorkerMsg {
 /// from `SSR::Deno::Config` on every render and passed through the FFI, so
 /// Rails apps that set `config.ssr_deno.render_timeout_ms` after the handle
 /// is created still get the new value applied.
-pub struct DevIsolateHandle {
-    tx: tokio::sync::mpsc::Sender<DevWorkerMsg>,
-    cache: Arc<DevMtimeCache>,
+pub struct DevModeIsolateHandle {
+    tx: tokio::sync::mpsc::Sender<DevModeWorkerMsg>,
+    cache: Arc<DevModeMtimeCache>,
 }
 
-impl DevIsolateHandle {
+impl DevModeIsolateHandle {
     pub fn spawn(max_heap_size_mb: usize, project_root: PathBuf) -> Result<Self, SSRDenoError> {
-        let cache = Arc::new(DevMtimeCache::new());
+        let cache = Arc::new(DevModeMtimeCache::new());
         let cache_for_worker = cache.clone();
-        let (tx, rx) = tokio::sync::mpsc::channel::<DevWorkerMsg>(1);
+        let (tx, rx) = tokio::sync::mpsc::channel::<DevModeWorkerMsg>(1);
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         // Per-thread index so `top -H`, `gdb info threads`, profilers can
@@ -90,7 +90,7 @@ impl DevIsolateHandle {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<String, SSRDenoError>>();
 
         self.tx
-            .blocking_send(DevWorkerMsg::Render {
+            .blocking_send(DevModeWorkerMsg::Render {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
                 render_timeout_ms,
@@ -113,7 +113,7 @@ impl DevIsolateHandle {
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
 
         self.tx
-            .blocking_send(DevWorkerMsg::RenderChunked {
+            .blocking_send(DevModeWorkerMsg::RenderChunked {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
                 render_timeout_ms,
@@ -140,7 +140,7 @@ impl DevIsolateHandle {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<(), SSRDenoError>>();
 
         self.tx
-            .blocking_send(DevWorkerMsg::LoadEntry {
+            .blocking_send(DevModeWorkerMsg::LoadEntry {
                 entry_path: entry_path.to_string(),
                 resolve_alias,
                 reply: reply_tx,

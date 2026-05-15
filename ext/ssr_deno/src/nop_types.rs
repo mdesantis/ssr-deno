@@ -28,7 +28,7 @@ use deno_runtime::deno_permissions::SysDescriptor;
 use deno_runtime::deno_permissions::SysDescriptorParseError;
 use deno_runtime::deno_permissions::WriteDescriptor;
 
-use crate::sys::Sys;
+use ssr_deno_sys::Sys;
 
 // ---------------------------------------------------------------------------
 // NopInNpmPackageChecker

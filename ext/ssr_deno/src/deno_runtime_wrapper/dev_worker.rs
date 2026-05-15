@@ -6,18 +6,18 @@ use deno_runtime::deno_core::url::Url;
 use tokio::runtime;
 use tokio::task::LocalSet;
 
-use super::dev_builder::build_dev_worker;
-use super::dev_handle::DevWorkerMsg;
+use ssr_deno_dev_mode::{build_dev_mode_worker, DevModeMtimeCache, SharedAliasMap, SharedCjsPaths};
+
+use super::dev_handle::DevModeWorkerMsg;
 use super::render;
 use super::render_chunked;
-use crate::dev_module_loader::{DevMtimeCache, SharedCjsPaths};
 
 pub fn dev_worker_thread_main(
-    mut rx: tokio::sync::mpsc::Receiver<DevWorkerMsg>,
+    mut rx: tokio::sync::mpsc::Receiver<DevModeWorkerMsg>,
     init_tx: mpsc::SyncSender<Result<(), String>>,
     max_heap_size_mb: usize,
     project_root: PathBuf,
-    mtime_cache: Arc<DevMtimeCache>,
+    mtime_cache: Arc<DevModeMtimeCache>,
 ) {
     let rt = match runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
@@ -37,10 +37,10 @@ pub fn dev_worker_thread_main(
         };
 
         let oom_triggered = Arc::new(AtomicBool::new(false));
-        let alias_map: crate::dev_module_loader::SharedAliasMap = Arc::new(Mutex::new(Vec::new()));
+        let alias_map: SharedAliasMap = Arc::new(Mutex::new(Vec::new()));
         let cjs_paths: SharedCjsPaths = Arc::new(Mutex::new(Vec::new()));
 
-        let mut worker = match build_dev_worker(
+        let mut worker = match build_dev_mode_worker(
             &main_module_url,
             max_heap_size_mb,
             alias_map.clone(),
@@ -65,7 +65,7 @@ pub fn dev_worker_thread_main(
 
         while let Some(msg) = rx.recv().await {
             match msg {
-                DevWorkerMsg::LoadEntry {
+                DevModeWorkerMsg::LoadEntry {
                     entry_path,
                     resolve_alias,
                     reply,
@@ -80,7 +80,7 @@ pub fn dev_worker_thread_main(
                     .await;
                     let _ = reply.send(result);
                 }
-                DevWorkerMsg::Render {
+                DevModeWorkerMsg::Render {
                     bundle_id,
                     args_json,
                     render_timeout_ms,
@@ -96,7 +96,7 @@ pub fn dev_worker_thread_main(
                     .await;
                     let _ = reply.send(result);
                 }
-                DevWorkerMsg::RenderChunked {
+                DevModeWorkerMsg::RenderChunked {
                     bundle_id,
                     args_json,
                     render_timeout_ms,
