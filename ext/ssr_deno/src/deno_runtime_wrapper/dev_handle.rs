@@ -32,18 +32,18 @@ pub(crate) enum DevWorkerMsg {
 
 /// Owns the channel to a dedicated dev worker thread that runs a single
 /// Deno `MainWorker` with `DevModuleLoader` (source-level module loading).
+///
+/// `render_timeout_ms` is **not** cached on the handle — it is read by Ruby
+/// from `SSR::Deno::Config` on every render and passed through the FFI, so
+/// Rails apps that set `config.ssr_deno.render_timeout_ms` after the handle
+/// is created still get the new value applied.
 pub struct DevIsolateHandle {
     tx: tokio::sync::mpsc::Sender<DevWorkerMsg>,
-    render_timeout_ms: u64,
     cache: Arc<DevMtimeCache>,
 }
 
 impl DevIsolateHandle {
-    pub fn spawn(
-        max_heap_size_mb: usize,
-        render_timeout_ms: u64,
-        project_root: PathBuf,
-    ) -> Result<Self, SSRDenoError> {
+    pub fn spawn(max_heap_size_mb: usize, project_root: PathBuf) -> Result<Self, SSRDenoError> {
         let cache = Arc::new(DevMtimeCache::new());
         let cache_for_worker = cache.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<DevWorkerMsg>(1);
@@ -78,17 +78,14 @@ impl DevIsolateHandle {
             })?
             .map_err(SSRDenoError::WorkerInit)?;
 
-        Ok(Self {
-            tx,
-            render_timeout_ms,
-            cache,
-        })
+        Ok(Self { tx, cache })
     }
 
     pub fn block_on_render(
         &self,
         bundle_id: &str,
         args_json: &str,
+        render_timeout_ms: u64,
     ) -> Result<String, SSRDenoError> {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<String, SSRDenoError>>();
 
@@ -96,7 +93,7 @@ impl DevIsolateHandle {
             .blocking_send(DevWorkerMsg::Render {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
-                render_timeout_ms: self.render_timeout_ms,
+                render_timeout_ms,
                 reply: reply_tx,
             })
             .map_err(|_| SSRDenoError::WorkerDied("Deno dev worker thread has exited".into()))?;
@@ -110,6 +107,7 @@ impl DevIsolateHandle {
         &self,
         bundle_id: &str,
         args_json: &str,
+        render_timeout_ms: u64,
     ) -> Result<ChunkedRenderResult, SSRDenoError> {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<(), SSRDenoError>>();
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<String>(64);
@@ -118,7 +116,7 @@ impl DevIsolateHandle {
             .blocking_send(DevWorkerMsg::RenderChunked {
                 bundle_id: bundle_id.to_string(),
                 args_json: args_json.to_string(),
-                render_timeout_ms: self.render_timeout_ms,
+                render_timeout_ms,
                 chunk_tx,
                 reply: reply_tx,
             })

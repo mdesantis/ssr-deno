@@ -417,7 +417,6 @@ fn native_dev_worker_new(
     ruby: &Ruby,
     project_root: String,
     max_heap_size_mb: usize,
-    render_timeout_ms: u64,
 ) -> Result<DevWorkerHandle, Error> {
     if let Err(msg) = max_heap_size_mb_checked(max_heap_size_mb) {
         return Err(Error::new(
@@ -425,12 +424,8 @@ fn native_dev_worker_new(
             format!("{msg} (max: {})", usize::MAX / 1024 / 1024),
         ));
     }
-    if let Err(msg) = validate_render_timeout_ms(render_timeout_ms) {
-        return Err(Error::new(ruby.exception_arg_error(), msg));
-    }
     let handle = deno_runtime_wrapper::dev_handle::DevIsolateHandle::spawn(
         max_heap_size_mb,
-        render_timeout_ms,
         PathBuf::from(project_root),
     )
     .map_err(|e| map_render_error(ruby, e))?;
@@ -468,6 +463,7 @@ struct DevRenderArgs {
     handle: Arc<deno_runtime_wrapper::dev_handle::DevIsolateHandle>,
     bundle_id: String,
     args_json: String,
+    render_timeout_ms: u64,
 }
 
 // SAFETY: `data` is a `Box<DevRenderArgs>` leaked by `Box::into_raw`.
@@ -475,9 +471,9 @@ struct DevRenderArgs {
 #[cfg(feature = "dev-mode")]
 unsafe extern "C" fn dev_render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
     let args = Box::from_raw(data as *mut DevRenderArgs);
-    let result = args
-        .handle
-        .block_on_render(&args.bundle_id, &args.args_json);
+    let result =
+        args.handle
+            .block_on_render(&args.bundle_id, &args.args_json, args.render_timeout_ms);
     Box::into_raw(Box::new(RawRenderResult { result })) as *mut std::ffi::c_void
 }
 
@@ -487,11 +483,16 @@ fn native_dev_render(
     handle: &DevWorkerHandle,
     bundle_id: String,
     args_json: String,
+    render_timeout_ms: u64,
 ) -> Result<String, Error> {
+    if let Err(msg) = validate_render_timeout_ms(render_timeout_ms) {
+        return Err(Error::new(ruby.exception_arg_error(), msg));
+    }
     let args = Box::new(DevRenderArgs {
         handle: handle.0.clone(),
         bundle_id,
         args_json,
+        render_timeout_ms,
     });
 
     let result_ptr = unsafe {
@@ -510,7 +511,11 @@ fn native_dev_render_chunks(
     handle_val: Value,
     bundle_id: String,
     args_json: String,
+    render_timeout_ms: u64,
 ) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+    if let Err(msg) = validate_render_timeout_ms(render_timeout_ms) {
+        return Err(Error::new(ruby.exception_arg_error(), msg));
+    }
     if !ruby.block_given() {
         // Rack-3 compatible — block-less call returns an Enumerator usable
         // directly as a streaming response body. Matches prod's
@@ -519,14 +524,14 @@ fn native_dev_render_chunks(
         // typed-data wrapper when resumed.
         return Ok(Yield::Enumerator(rb_self.enumeratorize(
             "native_dev_render_chunks",
-            (handle_val, bundle_id, args_json),
+            (handle_val, bundle_id, args_json, render_timeout_ms),
         )));
     }
 
     let handle: &DevWorkerHandle = magnus::TryConvert::try_convert(handle_val)?;
     let (mut chunk_rx, reply_rx) = handle
         .0
-        .start_render_chunked(&bundle_id, &args_json)
+        .start_render_chunked(&bundle_id, &args_json, render_timeout_ms)
         .map_err(|e| map_render_error(ruby, e))?;
 
     while let Some(chunk) = chunk_rx.blocking_recv() {
@@ -627,7 +632,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
 
         deno_module.define_singleton_method(
             "native_dev_worker_new",
-            function!(native_dev_worker_new, 3),
+            function!(native_dev_worker_new, 2),
         )?;
         deno_module.define_singleton_method(
             "native_dev_check_stale",
@@ -638,10 +643,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
             function!(native_dev_load_entry, 3),
         )?;
         deno_module
-            .define_singleton_method("native_dev_render", function!(native_dev_render, 3))?;
+            .define_singleton_method("native_dev_render", function!(native_dev_render, 4))?;
         deno_module.define_singleton_method(
             "native_dev_render_chunks",
-            method!(native_dev_render_chunks, 3),
+            method!(native_dev_render_chunks, 4),
         )?;
     }
     Ok(())

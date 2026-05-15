@@ -123,13 +123,20 @@ pub struct DevModuleLoader {
 }
 
 fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
+    // Always canonicalize the resolution. Two import paths to the same file
+    // (eg `pkg/sub/../impl.mjs` vs `pkg/impl.mjs`) become the same URL,
+    // V8's module cache keys collapse, and React context identity is
+    // preserved. Without this, MUI's `LocalizationProvider` ran
+    // `React.createContext` twice when the same file was reached through a
+    // `..` path and a flat path, breaking `useContext` lookups.
+    let pick = |candidate: PathBuf| candidate.canonicalize().ok();
     if base.is_file() {
-        return Some(base.to_path_buf());
+        return pick(base.to_path_buf());
     }
     for ext in &["ts", "tsx", "js", "jsx"] {
         let candidate = base.with_extension(ext);
         if candidate.is_file() {
-            return Some(candidate);
+            return pick(candidate);
         }
     }
     // Directory import — resolve to dir/index.{ts,tsx,js,jsx}
@@ -137,7 +144,7 @@ fn resolve_with_ext_fallback(base: &Path) -> Option<PathBuf> {
         for ext in &["ts", "tsx", "js", "jsx"] {
             let candidate = base.join("index").with_extension(ext);
             if candidate.is_file() {
-                return Some(candidate);
+                return pick(candidate);
             }
         }
     }
