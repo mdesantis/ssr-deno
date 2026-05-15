@@ -3,6 +3,9 @@ mod node_builtin_loader;
 mod nop_types;
 mod require_loader;
 
+#[cfg(all(test, feature = "dev-mode"))]
+mod cjs_interop_repro_test;
+
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
