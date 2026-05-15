@@ -15,7 +15,7 @@ Rake::ExtensionTask.new('ssr_deno') do |ext|
 end
 
 # Task files in rakelib/:
-#   cargo.rake   — cargo:test, cargo:clippy, cargo:fmt
+#   cargo.rake   — cargo:test, cargo:clippy, cargo:fmt, cargo:coverage
 #   perf.rake    — perf:check, perf:baseline:update
 #   samples.rake — samples:build, samples:build:<name>
 #   test.rake    — test:main, test:config, test:node_builtins, test:async, test:env_config, test:puma
@@ -27,5 +27,5 @@ RuboCop::RakeTask.new('rubocop:rails') do |task|
   task.options = ['--config', '.rubocop-rails.yml']
 end
 
-task default: %i[compile cargo:test cargo:clippy cargo:fmt samples:build test] +
-              %i[coverage:check perf:check rubocop rubocop:rails rbs]
+task default: %i[compile cargo:clippy cargo:test cargo:coverage cargo:fmt] +
+              %i[samples:build test coverage:check perf:check rubocop rubocop:rails rbs]
