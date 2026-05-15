@@ -19,7 +19,7 @@ use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
 
 use crate::dev_module_loader::{DevModuleLoader, DevMtimeCache, SharedAliasMap, SharedCjsPaths};
-use crate::real_npm_types::build_dev_npm_resolver;
+use crate::dev_npm_resolver::build_dev_npm_resolver;
 use crate::require_loader::DevNodeRequireLoader;
 use crate::sys::Sys;
 

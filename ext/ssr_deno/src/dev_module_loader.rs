@@ -18,7 +18,7 @@ use node_resolver::{
     NodeResolutionKind, NodeResolver, NodeResolverOptions, PackageJsonResolverRc, ResolutionMode,
 };
 
-use crate::real_npm_types::build_dev_npm_resolver;
+use crate::dev_npm_resolver::build_dev_npm_resolver;
 use crate::sys::Sys;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;

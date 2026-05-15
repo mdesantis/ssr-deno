@@ -68,18 +68,17 @@ Tradeoff: tuple grows to 4-arity. Could switch to a named struct `DevNpmResolver
 
 ## ❌ OBSOLETE — `build_dev_npm_module_loader` unused param + comment gap
 
-`NpmModuleLoader` was reverted (V8 re-entrancy workaround). `real_npm_types.rs` is now just `build_dev_npm_resolver`. The `build_dev_npm_module_loader` function no longer exists.
+`NpmModuleLoader` was reverted (V8 re-entrancy workaround). `dev_npm_resolver.rs` is now just `build_dev_npm_resolver`. The `build_dev_npm_module_loader` function no longer exists.
 
-## Rename — `real_npm_types.rs` → `dev_npm_resolver.rs`
+## ✅ DONE — Rename `real_npm_types.rs` → `dev_npm_resolver.rs`
 
-[`real_npm_types.rs`](../ext/ssr_deno/src/real_npm_types.rs) — name dates back to the plan's pre-spike phase when we expected to implement a walker. Now it's just a Byonm builder. `dev_npm_resolver.rs` is more descriptive.
+[`dev_npm_resolver.rs`](../ext/ssr_deno/src/dev_npm_resolver.rs) — name dated back to the plan's pre-spike phase when we expected to implement a walker. Now it's just a Byonm builder. Renamed 2026-05-14.
 
-Risk-free rename:
-- File rename
+Done:
+- File renamed via `git mv`
 - `mod real_npm_types;` → `mod dev_npm_resolver;` in `lib.rs`
-- Two `use crate::real_npm_types::build_dev_npm_resolver` → `use crate::dev_npm_resolver::build_dev_npm_resolver`
-
-Defer — cosmetic.
+- Two `use crate::real_npm_types::build_dev_npm_resolver` → `use crate::dev_npm_resolver::build_dev_npm_resolver` (dev_module_loader.rs, dev_builder.rs)
+- Plan docs updated
 
 ## Future — `block_on_load_entry` GVL release
 

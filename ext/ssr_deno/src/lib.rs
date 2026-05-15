@@ -7,7 +7,7 @@ mod sys;
 #[cfg(feature = "dev-mode")]
 mod dev_module_loader;
 #[cfg(feature = "dev-mode")]
-mod real_npm_types;
+mod dev_npm_resolver;
 
 #[cfg(all(test, feature = "dev-mode"))]
 mod cjs_interop_repro_test;
