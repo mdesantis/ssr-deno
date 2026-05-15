@@ -226,7 +226,16 @@ ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }
 
 ### 12. Run `bundle exec rake` (default features = dev-mode on)
 
-### 13. Run `cargo check --no-default-features` (prod-only, no dev deps compiled)
+### 13. ✅ Run `cargo check --no-default-features` (prod-only, no dev deps compiled)
+
+Passed after copying gn-generated V8 binding:
+```
+cp ext/ssr_deno/target/debug/gn_out/src_binding.rs \
+   vendor/rusty_v8/gen/src_binding_simdutf_release_x86_64-unknown-linux-gnu.rs
+```
+The vendored V8 build script expects the binding at `vendor/rusty_v8/gen/` but the
+gn build from source puts it in the cargo `target/` dir. Pre-existing mismatch,
+not caused by crate extraction.
 
 ### 14. Update `plans/dev-mode-followups.md` — remove this item
 
