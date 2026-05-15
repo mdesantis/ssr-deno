@@ -1,5 +1,7 @@
 # Extract Dev-Mode to `ssr_deno_dev_mode` Crate
 
+**Status (2026-05-14)**: ✅ COMPLETED. Commit `3c32c46`.
+
 ## Goal
 
 Move dev-mode code (module loader, npm resolver, require loader, worker builder, setup_require) into a separate `ssr_deno_dev_mode` crate under `ext/ssr_deno/crates/`. Prod-only builds skip compiling `deno_ast`, `deno_resolver`, `node_resolver` → faster compile, smaller binary. The `dev-mode` Cargo feature becomes a simple dependency gate: `ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }`.
