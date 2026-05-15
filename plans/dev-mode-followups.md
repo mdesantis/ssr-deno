@@ -1,6 +1,6 @@
 # Dev-Mode Follow-ups
 
-Deferred cleanups + future enhancements identified during the post-step-9 holistic Rust review. None block step 10+; revisit after the side-project end-to-end test (step 12) reveals real-world hotspots.
+Deferred cleanups + future enhancements identified during the post-step-9 holistic Rust review. Step 14 (side-project MUI validation) completed 2026-05-14 — all items survive. The **extract-dev-crate** refactor moved to its own plan: [`extract-dev-crate.md`](extract-dev-crate.md).
 
 ## Verification — V8 stack-frame format vs `register_inline` key
 
