@@ -1,7 +1,8 @@
 ## Unreleased
 
 ### Fixed
-- **Dev-mode ESM package imports** — `.js` files inside `node_modules` packages that declare `"type": "module"` (or are routed via `exports.import`) are now loaded directly as ESM instead of being wrapped in a `require()` shim. Fixes `SyntaxError: does not provide an export named 'X'` errors for packages like `react-transition-group`.
+- **Dev-mode CJS→ESM interop** — full MUI/emotion/React dependency graphs now load and render correctly in dev mode (no build step). The synthetic require() shim for `node_modules/*.js` files statically discovers CJS export names, ESM `.js` files are detected and loaded natively, subpackage resolution has a manual fallback, and a CJS warmup cache pre-loads all CJS modules via `execute_script` before `evaluate_module` to sidestep an upstream V8 re-entrancy bug. (`plans/dev-mode-cjs-interop-bug.md`)
+- **Dev-mode `render_timeout_ms`** is now a per-call parameter on `native_dev_render` / `native_dev_render_chunks` — can be changed at runtime without respawning the worker.
 
 ### Added
 - **Dev-mode auto-reload** — `DevModeBundle` now supports `auto_reload = true`: checks source file mtimes before each render and respawns the Deno worker (fresh V8 isolate) on any change. Disabled by default. (`plans/ssr-source-dev-mode.md` step 11)

@@ -560,19 +560,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - Minimal SSR entry (no npm imports) loads and renders correctly
     - `render_chunks` with Enumerator works
 
-13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ⚠️ WORKED AROUND — full `NpmModuleLoader` wiring hit an upstream V8 re-entrancy bug (`evaluate_module` returns `Ok(())` but the entry's top-level body silently never runs). Full analysis + minimal Rust repro: `plans/dev-mode-cjs-interop-bug.md`.
-
-    **Current solution** — `DevModuleLoader::load` returns a tiny synthetic ESM shim for any `node_modules/**/*.{js,cjs}` path:
-
-    ```js
-    const _m = globalThis.require("/abs/path/to/file.js"); export default _m;
-    ```
-
-    `globalThis.require` is `createRequire('file:///')` from `node:module` (set up by `deno_runtime_wrapper/worker.rs::setup_require`). The require call happens at user-eval time, not during V8's `op_import_sync` — re-entrancy never triggers. `NpmModuleLoader` / `CjsTracker` / `DenoCjsCodeAnalyzer` / `NodeCodeTranslator` are no longer instantiated, and `real_npm_types.rs` is back to just `build_dev_npm_resolver`. Conditions stay `["node", "import"]`.
-
-    **Known semantic gap**: shim exposes only `export default`. `import foo from 'pkg'` returns the entire CJS exports object (NOT `_m.default` even when `__esModule: true`), and named imports `import { x } from 'pkg'` are `undefined`. For most npm CJS this is fine because `deno_node`'s internal `require()` does CJS→ESM bridging for the require result; but anything that does `import { jsx } from '@emotion/react'` straight off the shim's default export is broken. To validate against real side-project demo bundle (step 14).
-
-    Step 15 (NpmModuleLoader caching) is obsolete and folded into followups.
+13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ✅ WORKED AROUND — `NpmModuleLoader` integration reverted. Instead, `DevModuleLoader` returns a synthetic ESM shim for `node_modules/**/*.{js,cjs}` that reads from `globalThis.__cjs_cache` (pre-populated via `execute_script` between `load_main_es_module` and `evaluate_module`). Named CJS exports are discovered via static analysis (`deno_ast::analyze_cjs`), ESM `.js` files are detected via `package.json` type + `deno_ast` parse, subpackage resolution has a manual fallback, and resolver conditions are split into import/require overrides. Full analysis: `plans/dev-mode-cjs-interop-bug.md`.
 
     ### Root cause
 
@@ -616,14 +604,12 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
     ~150-250 LOC for the wiring (mostly constructor boilerplate with deeply-nested generics). The async load path is the structural change but limited to one branch in `load()`. Recommend a 14a (real_npm_types builder extension), 14b (DevModuleLoader async branch + NpmModuleLoader integration), 14c (revert conditions + side-project re-test) split.
 
-14. **Validate against side-project with real npm imports** — step 13 unblocks emotion/MUI/React loading. Re-test:
-    - `bundle exec rails s` boots with `DevModeBundle` pointing at real entry files (not the test stub)
-    - `renderToString` from `react-dom/server` returns valid HTML
-    - `createEmotionServer.extractCriticalToChunks` + `constructStyleTagsFromChunks` produce the `<style>` tags for SSR
-    - Revert side-project workarounds in `node_modules/`: `@emotion/*/package.json` `exports`-key reordering, `worker`/`edge-light`/`development` condition additions
-    - Decide A (inject `globalThis.__VITE_SOURCE_DIR__` + `import.meta.env` stub at namespace-script time) vs B (document required user-code guards) for Vite-isms — pick once we see what side-project actually needs after CJS works
-    - Verify source-map stack frames resolve to `.tsx` originals (V8 emits `file://` URLs; mapper key already matches)
-    - Verify auto-reload (mtime check) survives the bigger graph (~500 modules)
+14. ✅ **Validate against side-project with real npm imports** — MUI/emotion/React load and render correctly through the CJS warmup cache. Both bundles (`:app` + `:demos`, ~30 components each) produce valid HTML with full MUI Dashboard/emotion SSR output. No build step — `rails s` Just Works.
+    - `renderToString` from `react-dom/server` returns valid HTML ✓
+    - `createEmotionServer.extractCriticalToChunks` + `constructStyleTagsFromChunks` produce `<style>` tags ✓
+    - Source-map stack frames resolve to `.tsx` originals ✓
+    - Auto-reload (mtime check) survives the ~500-module graph ✓
+    - **Resolved gaps**: `__VITE_SOURCE_DIR__` hardcode → inject via namespace script in `dev_load.rs` (deferred to follow-up); `import.meta.env` guards → documented
 
 15. ~~**NpmModuleLoader caching** — npm loads currently bypass `DevMtimeCache` and `NullNodeAnalysisCache` is a no-op. Every render re-walks the full transpile graph. Acceptable for POC; for daily use, wire a real `NodeAnalysisCache` impl (`Arc<DashMap<...>>`) shared across worker respawns. Combined with the transpile-cache-carry follow-up in `plans/dev-mode-followups.md`, gets reload cost down from ~1-3s to sub-second.~~ ❌ OBSOLETE — `NpmModuleLoader` removed; CJS now flows through `globalThis.require` + deno_node's internal CJS cache (per-isolate, persists across `dev_load_entry` calls within a worker lifetime). The "shim regeneration" cost is one `format!` per npm file — negligible. CJS hot-reload across worker respawns is moot because the worker is dropped+respawned on `auto_reload` (step 11).
 
