@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'logger'
 require 'test_helper'
 require 'socket'
 require 'timeout'
@@ -120,6 +121,7 @@ module SSR
         c.app app
         c.quiet
         c.log_requests false
+        c.custom_logger Logger.new(File::NULL)
         c.threads 1, 1
         c.workers 0
       end
