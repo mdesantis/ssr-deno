@@ -47,7 +47,7 @@ Defer — `Mutex` on uncontended single-thread access is ~10ns. Negligible vs tr
 
 ## Refactor — Hoist `NodeResolutionSys::new(Sys, None)`
 
-[`dev_module_loader.rs:391`](../ext/ssr_deno/src/dev_module_loader.rs) and [`dev_builder.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) each construct their own `NodeResolutionSys<Sys>` — cheap wrapper but redundant.
+[`dev_module_loader.rs:391`](../ext/ssr_deno/src/dev_module_loader.rs) and [`dev_builder.rs`](../ext/ssr_deno/src/engine/dev_builder.rs) each construct their own `NodeResolutionSys<Sys>` — cheap wrapper but redundant.
 
 Extend `build_dev_npm_resolver` return tuple to include `NodeResolutionSys<Sys>`:
 
@@ -126,7 +126,7 @@ For typical dev sessions the leak is bounded by total distinct module URLs visit
 
 ## Future — Lazy `setup_require`
 
-[`dev_worker.rs:59`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_worker.rs) calls `setup_require` unconditionally during worker init (~10ms cost). If the user's entry uses pure ESM, `globalThis.require` is never consulted — the setup is wasted.
+[`dev_worker.rs:59`](../ext/ssr_deno/src/engine/dev_worker.rs) calls `setup_require` unconditionally during worker init (~10ms cost). If the user's entry uses pure ESM, `globalThis.require` is never consulted — the setup is wasted.
 
 Could lazy-init on first CJS-requiring import. But detection requires hooking into `node_resolver`'s decision path. Disproportionate complexity for a 10ms saving.
 
@@ -172,7 +172,7 @@ Acceptable but inelegant. Future: `IsolateHandle` thread-safe-handle gives us `t
 
 ## Future — `DevWorkerMsg` channel capacity
 
-[`dev_handle.rs:49`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevModeBundle serialize at the channel.
+[`dev_handle.rs:49`](../ext/ssr_deno/src/engine/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevModeBundle serialize at the channel.
 
 For dev: serialization is correct (single isolate). For prod-pool: round-robin distributes load. Dev's 1-isolate constraint makes capacity-1 the natural choice.
 
@@ -201,6 +201,6 @@ Defer — dev workflows don't usually need this.
 
 ## Future — Optional `Arc<dyn CodeCache>` for `v8_code_cache`
 
-[`dev_builder.rs:134`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) sets `v8_code_cache: None`. Wiring a real `Arc<dyn CodeCache>` (disk-backed) would amortize first-load transpile cost across `rails s` restarts.
+[`dev_builder.rs:134`](../ext/ssr_deno/src/engine/dev_builder.rs) sets `v8_code_cache: None`. Wiring a real `Arc<dyn CodeCache>` (disk-backed) would amortize first-load transpile cost across `rails s` restarts.
 
 Out of scope for v1. Listed in the main plan's [Future](ssr-source-dev-mode.md#future) section.

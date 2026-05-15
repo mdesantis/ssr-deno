@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::deno_runtime_wrapper::intern_script_name;
+use super::intern_script_name;
 use ssr_deno_core::next_index;
 use ssr_deno_core::validate_pool_size;
 

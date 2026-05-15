@@ -169,7 +169,7 @@ If codegen needed:
 
 `build_dev_worker()` is a separate function, separate file:
 
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs`
+**File:** `ext/ssr_deno/src/engine/dev_builder.rs`
 
 ```rust
 pub fn build_dev_worker(
@@ -192,9 +192,9 @@ Concrete npm-resolver impls already shipped by `deno_resolver 0.78.0` (transitiv
 | Crate / type | Status |
 |--------------|--------|
 | `node_resolver = "=0.85.0"` | Direct dep, [Cargo.toml:28](ext/ssr_deno/Cargo.toml#L28) |
-| `NodeResolver` (in `deno_node`) | Already used in [builder.rs:42](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L42) |
-| `PackageJsonResolver` | Already used in [builder.rs:41](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L41) |
-| `DenoIsBuiltInNodeModuleChecker` | Already used in [builder.rs:45](ext/ssr_deno/src/deno_runtime_wrapper/builder.rs#L45) |
+| `NodeResolver` (in `deno_node`) | Already used in [builder.rs:42](ext/ssr_deno/src/engine/builder.rs#L42) |
+| `PackageJsonResolver` | Already used in [builder.rs:41](ext/ssr_deno/src/engine/builder.rs#L41) |
+| `DenoIsBuiltInNodeModuleChecker` | Already used in [builder.rs:45](ext/ssr_deno/src/engine/builder.rs#L45) |
 | `deno_resolver::npm::ByonmNpmResolver<Sys>` | **New direct dep needed.** Implements `NpmPackageFolderResolver` for host-managed `node_modules/` (`byonm.rs:71`, `NpmPackageFolderResolver` impl at line 327 of `npm/mod.rs` covers all `NpmResolver` variants — Byonm is the right variant for our use case). |
 | `deno_resolver::npm::ByonmInNpmPackageChecker` | **New direct dep needed.** Concrete `InNpmPackageChecker` for BYONM (`byonm.rs:501-503`). |
 
@@ -222,13 +222,13 @@ Uses Deno's native `deno_ast` for transpilation (TS strip + JSX → JS). `deno_a
 
 ## New Rust module: `dev_builder`
 
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs`
+**File:** `ext/ssr_deno/src/engine/dev_builder.rs`
 
 Separate `build_dev_worker()` function, no `if dev` branching in the production `build_worker()`. Accepts project root for permissions and alias map for the module loader.
 
 ## New Rust module: `dev_load`
 
-**File:** `ext/ssr_deno/src/deno_runtime_wrapper/dev_load.rs`
+**File:** `ext/ssr_deno/src/engine/dev_load.rs`
 
 ```rust
 pub fn dev_load_entry(
@@ -376,10 +376,10 @@ Ruby: DevModeBundle.new(entry.tsx)
 |-----------|--------|
 | `ext/ssr_deno/Cargo.toml` | Add `[features]` with optional `dev-mode` flag |
 | `ext/ssr_deno/src/dev_module_loader.rs` | **New** — ModuleLoader impl for dev (alias resolution, npm resolution, node:* delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache) |
-| `ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs` | **New** — `build_dev_worker()` separate from prod builder; includes near-heap-limit cb + web-worker panic guard parity |
-| `ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs` | **New** — `DevIsolateHandle` (single-isolate variant of `IsolateHandle`, owns a `Sender<WorkerMsg>`) |
-| `ext/ssr_deno/src/deno_runtime_wrapper/dev_worker.rs` | **New** — dev worker thread main (mirrors `worker::worker_thread_main`, calls `build_dev_worker`) |
-| `ext/ssr_deno/src/deno_runtime_wrapper/dev_load.rs` | **New** — ES module evaluation of entry → `globalThis.__ssr_bundles[id]` |
+| `ext/ssr_deno/src/engine/dev_builder.rs` | **New** — `build_dev_worker()` separate from prod builder; includes near-heap-limit cb + web-worker panic guard parity |
+| `ext/ssr_deno/src/engine/dev_handle.rs` | **New** — `DevIsolateHandle` (single-isolate variant of `IsolateHandle`, owns a `Sender<WorkerMsg>`) |
+| `ext/ssr_deno/src/engine/dev_worker.rs` | **New** — dev worker thread main (mirrors `worker::worker_thread_main`, calls `build_dev_worker`) |
+| `ext/ssr_deno/src/engine/dev_load.rs` | **New** — ES module evaluation of entry → `globalThis.__ssr_bundles[id]` |
 | `ext/ssr_deno/src/lib.rs` | Add `#[magnus::function]` entries: `native_dev_worker_new`, `native_dev_load_entry`, `native_dev_render`, `native_dev_render_chunks` |
 | `ext/ssr_deno/Cargo.toml` | Add direct dep `deno_resolver = "=0.78.0"` |
 | `ext/ssr_deno/src/dev_npm_resolver.rs` | **New, thin** — re-export `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver::npm::*`, plus a constructor `build_dev_npm_resolver(project_root) -> (ByonmInNpmPackageChecker, MaybeArc<ByonmNpmResolver<Sys>>)`. ~30 LOC, not a walker. |

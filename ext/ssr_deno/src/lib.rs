@@ -1,4 +1,4 @@
-mod deno_runtime_wrapper;
+mod engine;
 mod node_builtin_loader;
 mod nop_types;
 mod require_loader;
@@ -16,7 +16,7 @@ use std::path::PathBuf;
 #[cfg(feature = "dev-mode")]
 use std::sync::Arc;
 
-use deno_runtime_wrapper::{IsolatePool, SSRDenoError};
+use engine::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
 use ssr_deno_core::source_mapper::global_get_source_mapper;
@@ -399,7 +399,7 @@ fn native_render_chunks(
 /// alive until the last Ruby ref is GCed.
 #[cfg(feature = "dev-mode")]
 #[magnus::wrap(class = "SSR::Deno::DevWorkerHandle", free_immediately, size)]
-pub struct DevWorkerHandle(pub Arc<deno_runtime_wrapper::dev_handle::DevModeIsolateHandle>);
+pub struct DevWorkerHandle(pub Arc<engine::dev_handle::DevModeIsolateHandle>);
 
 #[cfg(feature = "dev-mode")]
 fn native_dev_worker_new(
@@ -413,7 +413,7 @@ fn native_dev_worker_new(
             format!("{msg} (max: {})", usize::MAX / 1024 / 1024),
         ));
     }
-    let handle = deno_runtime_wrapper::dev_handle::DevModeIsolateHandle::spawn(
+    let handle = engine::dev_handle::DevModeIsolateHandle::spawn(
         max_heap_size_mb,
         PathBuf::from(project_root),
     )
@@ -449,7 +449,7 @@ fn native_dev_load_entry(
 
 #[cfg(feature = "dev-mode")]
 struct DevRenderArgs {
-    handle: Arc<deno_runtime_wrapper::dev_handle::DevModeIsolateHandle>,
+    handle: Arc<engine::dev_handle::DevModeIsolateHandle>,
     bundle_id: String,
     args_json: String,
     render_timeout_ms: u64,

@@ -8,7 +8,7 @@ Move dev-mode code (module loader, npm resolver, require loader, worker builder,
 
 ## Naming normalization
 
-All dev-mode types use the `DevMode` prefix consistently. Files that move into the dev crate get `dev_mode_` prefix. Root-crate dev-specific files keep `dev_` (short, already under `deno_runtime_wrapper/`).
+All dev-mode types use the `DevMode` prefix consistently. Files that move into the dev crate get `dev_mode_` prefix. Root-crate dev-specific files keep `dev_` (short, already under `engine/`).
 
 Types:
 - `DevModuleLoader` → `DevModeModuleLoader`
@@ -25,9 +25,9 @@ Dev-crate files:
 - `dev_builder.rs` → `dev_mode_builder.rs`
 
 Root files (keep):
-- `deno_runtime_wrapper/dev_handle.rs` (uses `DevModeIsolateHandle`)
-- `deno_runtime_wrapper/dev_load.rs` (uses `DevModeModuleLoader`)
-- `deno_runtime_wrapper/dev_worker.rs` (uses `DevModeIsolateHandle`)
+- `engine/dev_handle.rs` (uses `DevModeIsolateHandle`)
+- `engine/dev_load.rs` (uses `DevModeModuleLoader`)
+- `engine/dev_worker.rs` (uses `DevModeIsolateHandle`)
 
 Constants:
 - Cargo feature `dev-mode` stays (Cargo convention uses hyphens)
@@ -54,7 +54,7 @@ ext/ssr_deno/
     ├── lib.rs                  # magnus init calls register_dev_mode_ffi() if dev-mode
     ├── sys.rs                  # Sys impl (stays; used by both via ssr_deno_sys crate — see Sys crate section)
     ├── require_loader.rs       # SSRDenoNodeRequireLoader stays (prod)
-    └── deno_runtime_wrapper/
+    └── engine/
         ├── mod.rs
         ├── worker.rs           # worker_thread_main (prod), setup_require removed
         ├── builder.rs          # build_worker (prod)
@@ -134,8 +134,8 @@ ssr_deno (root) ──depends──▶ ssr_deno_dev_mode (optional, via dev-mode
 | `src/dev_module_loader.rs` | `crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs` |
 | `src/dev_npm_resolver.rs` | `crates/ssr_deno_dev_mode/src/dev_mode_npm_resolver.rs` |
 | `src/require_loader.rs` (`DevModeNodeRequireLoader` only) | `crates/ssr_deno_dev_mode/src/require_loader.rs` |
-| `deno_runtime_wrapper/dev_builder.rs` | `crates/ssr_deno_dev_mode/src/dev_mode_builder.rs` |
-| `deno_runtime_wrapper/worker.rs` (`setup_require` only) | `crates/ssr_deno_dev_mode/src/setup_require.rs` |
+| `engine/dev_builder.rs` | `crates/ssr_deno_dev_mode/src/dev_mode_builder.rs` |
+| `engine/worker.rs` (`setup_require` only) | `crates/ssr_deno_dev_mode/src/setup_require.rs` |
 | `src/cjs_interop_repro_test.rs` (tests, adapt `build_dev_mode_worker`) | `crates/ssr_deno_dev_mode/tests/cjs_interop_repro.rs` |
 
 ## What stays (root)
@@ -144,9 +144,9 @@ ssr_deno (root) ──depends──▶ ssr_deno_dev_mode (optional, via dev-mode
 |------|-----|
 | `src/sys.rs` | Extracted to `crates/ssr_deno_sys/` (step 0.5). Both root and dev depend on `ssr_deno_sys`. |
 | `src/require_loader.rs` (`SSRDenoNodeRequireLoader`) | Prod-only, no dev deps. |
-| `deno_runtime_wrapper/{worker,builder}.rs` (prod parts) | Prod worker + builder. |
-| `deno_runtime_wrapper/{render,render_chunked}.rs` | Shared engine. |
-| `deno_runtime_wrapper/{isolate_pool,dev_handle,dev_load,dev_worker}.rs` | Use `use ssr_deno_dev_mode::*` for moved types. |
+| `engine/{worker,builder}.rs` (prod parts) | Prod worker + builder. |
+| `engine/{render,render_chunked}.rs` | Shared engine. |
+| `engine/{isolate_pool,dev_handle,dev_load,dev_worker}.rs` | Use `use ssr_deno_dev_mode::*` for moved types. |
 | `src/lib.rs` | Magnuss entry point. Imports `ssr_deno_dev_mode::register_dev_mode_ffi`. |
 
 ## Steps
@@ -189,7 +189,7 @@ ssr_deno (root) ──depends──▶ ssr_deno_dev_mode (optional, via dev-mode
 - Rename function to `build_dev_mode_worker`
 
 ### 6. Extract `setup_require`
-- Copy from `deno_runtime_wrapper/worker.rs` (the `pub(crate) fn setup_require(...)`) to `crates/ssr_deno_dev_mode/src/setup_require.rs`
+- Copy from `engine/worker.rs` (the `pub(crate) fn setup_require(...)`) to `crates/ssr_deno_dev_mode/src/setup_require.rs`
 - Remove from root's `worker.rs`; add `use ssr_deno_dev_mode::setup_require` in root's `dev_mode_worker.rs`
 
 ### 7. Move test file
@@ -214,7 +214,7 @@ ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }
 ### 10. Wire root `lib.rs`
 - Remove `#[cfg(feature = "dev-mode")]` gated blocks (most moved to dev crate)
 - Keep FFI registration via `ssr_deno_dev_mode::register_dev_mode_ffi()`
-- Root `deno_runtime_wrapper/` files that used `crate::dev_module_loader::*` → `use ssr_deno_dev_mode::*`
+- Root `engine/` files that used `crate::dev_module_loader::*` → `use ssr_deno_dev_mode::*`
 
 ### 11. Update root files that reference moved items
 - `dev_handle.rs`: `use crate::dev_module_loader::DevModeMtimeCache` → `use ssr_deno_dev_mode::DevModeMtimeCache`

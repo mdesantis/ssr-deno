@@ -23,8 +23,8 @@ mod tests {
     use deno_runtime::deno_core::url::Url;
     use deno_runtime::worker::MainWorker;
 
-    use crate::deno_runtime_wrapper::dev_load::warm_cjs_cache;
-    use crate::deno_runtime_wrapper::worker::setup_require;
+    use crate::engine::dev_load::warm_cjs_cache;
+    use crate::engine::worker::setup_require;
     use ssr_deno_dev_mode::{build_dev_mode_worker, DevModeMtimeCache, SharedCjsPaths};
 
     static DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
