@@ -51,7 +51,8 @@ module SSR
         @auto_reload = false
         @_bundle_mutex = Mutex.new
 
-        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_path, path: @bundle_path do
+        instrument 'bundle_load.ssr_deno',
+                   bundle_name: @bundle_path, path: @bundle_path, identifier: @bundle_path do
           load
         end
       end
@@ -73,7 +74,8 @@ module SSR
           @mtime = File.mtime(@bundle_path)
         end
 
-        instrument 'bundle_load.ssr_deno', bundle_name: @bundle_path, path: @bundle_path do
+        instrument 'bundle_load.ssr_deno',
+                   bundle_name: @bundle_path, path: @bundle_path, identifier: @bundle_path do
           load
         end
       end
@@ -101,7 +103,7 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path do |payload|
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do |payload|
           result = SSR::Deno.native_render(@bundle_path, json_input)
 
           raw_output ? result : JSON.parse(result)
@@ -135,7 +137,7 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path do
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do
           SSR::Deno.native_render_chunks(@bundle_path, json_input, &)
         end
       end

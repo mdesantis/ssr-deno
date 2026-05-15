@@ -65,7 +65,7 @@ module SSR
 
         json = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path do |payload|
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do |payload|
           result = SSR::Deno.native_dev_render(
             @handle, @bundle_path, json, SSR::Deno::Config.render_timeout_ms
           )
@@ -87,7 +87,7 @@ module SSR
 
         json = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path do
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do
           SSR::Deno.native_dev_render_chunks(
             @handle, @bundle_path, json, SSR::Deno::Config.render_timeout_ms, &
           )

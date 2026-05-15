@@ -89,6 +89,20 @@ module SSR
     class Railtie
     end
 
+    # Rails-only class — loaded via require: 'ssr/deno/rails'.
+    # Superclass ActiveSupport::LogSubscriber is not available in standalone RBS validation.
+    class LogSubscriber
+      def render: (untyped event) -> void
+      def bundle_load: (untyped event) -> void
+      def ssr_render: (untyped event) -> void
+      def bundle_miss: (untyped event) -> void
+      def heap_stats: (untyped event) -> void
+
+      private
+
+      def identifier: (untyped event) -> untyped
+    end
+
     class RactorPool
       RACTOR_RESULT_METHOD: untyped
 

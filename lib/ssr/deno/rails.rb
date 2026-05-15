@@ -10,4 +10,5 @@ end
 require_relative '../deno'
 require_relative 'rails/railtie'
 require_relative 'rails/helper'
+require_relative 'rails/log_subscriber'
 require_relative 'rails/generators/ssr/deno/install_generator' if defined?(Rails::Generators)

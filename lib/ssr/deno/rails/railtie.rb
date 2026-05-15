@@ -30,6 +30,7 @@ module SSR
         SSR::Deno::Config.max_heap_size_mb = config.ssr_deno.max_heap_size_mb if config.ssr_deno.max_heap_size_mb
         SSR::Deno::Config.isolate_pool_size = config.ssr_deno.isolate_pool_size if config.ssr_deno.isolate_pool_size
         SSR::Deno::Config.render_timeout_ms = config.ssr_deno.render_timeout_ms if config.ssr_deno.render_timeout_ms
+
         unless config.ssr_deno.node_builtins_enabled.nil?
           SSR::Deno::Config.node_builtins_enabled = config.ssr_deno.node_builtins_enabled
         end
@@ -79,19 +80,6 @@ module SSR
           ActiveSupport::Notifications.instrument('heap_stats.ssr_deno', stats)
         rescue SSR::Deno::Error, JSON::ParserError => error
           Rails.logger.warn "[ssr-deno] Failed to collect heap stats: #{error.message}"
-        end
-      end
-
-      # Subscribe to ssr-deno instrumentation events for logging.
-      initializer 'ssr_deno.subscribe_events' do |_app|
-        ActiveSupport::Notifications.subscribe(/\.ssr_deno$/) do |name, start, finish, _id, payload|
-          duration = ((finish - start) * 1000).round(2)
-
-          if payload[:error]
-            Rails.logger.warn "[ssr-deno] #{name} failed: #{payload[:error]} (#{duration}ms)"
-          else
-            Rails.logger.debug "[ssr-deno] #{name} completed (#{duration}ms)"
-          end
         end
       end
     end

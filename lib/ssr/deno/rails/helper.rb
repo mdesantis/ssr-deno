@@ -24,7 +24,7 @@ module SSR
 
         assert_known_ssr_render_options!(options)
 
-        instrument 'ssr_render.ssr_deno', bundle_name: bundle_name do |payload|
+        instrument 'ssr_render.ssr_deno', bundle_name: bundle_name, identifier: bundle_name do |payload|
           bundle = find_bundle!(bundle_name)
 
           bundle.render(data, **options)
@@ -61,7 +61,7 @@ module SSR
         bundle = SSR::Deno::Bundle.registry[bundle_name]
 
         unless bundle
-          instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name
+          instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name, identifier: bundle_name
 
           raise SSR::Deno::BundleNotFoundError,
                 "SSR bundle #{bundle_name.inspect} not registered"
