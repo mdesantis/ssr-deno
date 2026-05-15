@@ -22,4 +22,10 @@ end
 
 RuboCop::RakeTask.new
 
-task default: %i[compile cargo:test cargo:clippy cargo:fmt samples:build test coverage:check perf:check rubocop rbs]
+RuboCop::RakeTask.new('rubocop:rails') do |task|
+  task.patterns = ['lib/ssr/deno/rails/', 'lib/ssr/deno/rails.rb']
+  task.options = ['--config', '.rubocop-rails.yml']
+end
+
+task default: %i[compile cargo:test cargo:clippy cargo:fmt samples:build test] +
+              %i[coverage:check perf:check rubocop rubocop:rails rbs]

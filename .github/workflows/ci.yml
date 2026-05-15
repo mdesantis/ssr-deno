@@ -106,5 +106,7 @@ jobs:
         run: bundle exec rake cargo:fmt
       - name: Run RuboCop
         run: bundle exec rake rubocop
+      - name: Run RuboCop (Rails)
+        run: bundle exec rake rubocop:rails
       - name: Validate RBS signatures
         run: bundle exec rake rbs

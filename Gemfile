@@ -19,6 +19,7 @@ gem 'rbs', require: false
 gem 'rubocop', '~> 1.21', require: false
 gem 'rubocop-minitest', '~> 0.39', require: false
 gem 'rubocop-performance', '~> 1.26', require: false
+gem 'rubocop-rails', '~> 2.31', require: false
 gem 'rubocop-rake', '~> 0.7', require: false
 gem 'rubocop-thread_safety', '~> 0.7', require: false
 gem 'simplecov', require: false
