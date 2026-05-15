@@ -4,15 +4,9 @@ Deferred cleanups + future enhancements identified during the post-step-9 holist
 
 ## Verification — V8 stack-frame format vs `register_inline` key
 
-[`dev_module_loader.rs:register_source_map`](../ext/ssr_deno/src/dev_module_loader.rs) keys the global `SsrSourceMapper` under `specifier.as_str()` (e.g. `file:///abs/path/foo.tsx`). `SsrSourceMapper::resolve_line` does exact-string lookup against whatever V8 emits in stack frames.
+[`dev_module_loader.rs:815 (register_source_map)`](../ext/ssr_deno/src/dev_module_loader.rs) keys the global `SsrSourceMapper` under `specifier.as_str()` (e.g. `file:///abs/path/foo.tsx`). `SsrSourceMapper::resolve_line` does exact-string lookup against whatever V8 emits in stack frames.
 
-**Untested**: V8's actual format for ES module frames hasn't been observed in this codebase. Likely matches (`at file:///abs/path/foo.tsx:N:N`) but worth confirming the first time step 12 runs.
-
-If V8 emits a stripped path (`/abs/path/foo.tsx` without `file://`), stack frames won't resolve. Fixes:
-- A: register under both URL and path keys
-- B: normalize at lookup time in `resolve_line` (strip `file://`)
-
-Test by deliberately throwing inside a `.tsx` and inspecting `BundleLoad` / `Render` error message format.
+**Verified (step 14)**: V8 emits `file://` URLs in ES module stack frames. Source maps resolve to `.tsx` originals correctly. No fix needed.
 
 ## Performance — read-lock-first in `register_source_map`
 
@@ -53,7 +47,7 @@ Defer — `Mutex` on uncontended single-thread access is ~10ns. Negligible vs tr
 
 ## Refactor — Hoist `NodeResolutionSys::new(Sys, None)`
 
-[`dev_builder.rs:46`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) and [`dev_module_loader.rs:87`](../ext/ssr_deno/src/dev_module_loader.rs) each construct their own `NodeResolutionSys<Sys>` — cheap wrapper but redundant.
+[`dev_module_loader.rs:391`](../ext/ssr_deno/src/dev_module_loader.rs) and [`dev_builder.rs`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) each construct their own `NodeResolutionSys<Sys>` — cheap wrapper but redundant.
 
 Extend `build_dev_npm_resolver` return tuple to include `NodeResolutionSys<Sys>`:
 
@@ -72,11 +66,9 @@ Callers `.clone()` the `NodeResolutionSys` if both need owned values (it's `Clon
 
 Tradeoff: tuple grows to 4-arity. Could switch to a named struct `DevNpmResolverParts { ... }`. Defer.
 
-## Cleanup — `build_dev_npm_module_loader` unused param + comment gap
+## ❌ OBSOLETE — `build_dev_npm_module_loader` unused param + comment gap
 
-[`real_npm_types.rs:62`](../ext/ssr_deno/src/real_npm_types.rs) `build_dev_npm_module_loader(_project_root: &Path, ...)` takes the project root but never uses it — the `ByonmNpmResolver` arg already has it baked in. Drop the param or use it (eg pass to a future `ParsedSourceCache` keyed on file paths).
-
-Same file, line 66: `DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker)` wraps the raw checker in the enum variant. The wrap is required because `NpmModuleLoader`'s generic param is `DenoInNpmPackageChecker` (enum) but `build_dev_node_services` in `dev_builder.rs` uses raw `ByonmInNpmPackageChecker`. The two checker types thread through the type system with different generics — easy to confuse on read. Add a one-line comment explaining the wrap vs raw choice at each construction site.
+`NpmModuleLoader` was reverted (V8 re-entrancy workaround). `real_npm_types.rs` is now just `build_dev_npm_resolver`. The `build_dev_npm_module_loader` function no longer exists.
 
 ## Rename — `real_npm_types.rs` → `dev_npm_resolver.rs`
 
@@ -135,7 +127,7 @@ For typical dev sessions the leak is bounded by total distinct module URLs visit
 
 ## Future — Lazy `setup_require`
 
-[`dev_worker.rs:55-62`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_worker.rs) calls `setup_require` unconditionally during worker init (~10ms cost). If the user's entry uses pure ESM, `globalThis.require` is never consulted — the setup is wasted.
+[`dev_worker.rs:59`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_worker.rs) calls `setup_require` unconditionally during worker init (~10ms cost). If the user's entry uses pure ESM, `globalThis.require` is never consulted — the setup is wasted.
 
 Could lazy-init on first CJS-requiring import. But detection requires hooking into `node_resolver`'s decision path. Disproportionate complexity for a 10ms saving.
 
@@ -181,7 +173,7 @@ Acceptable but inelegant. Future: `IsolateHandle` thread-safe-handle gives us `t
 
 ## Future — `DevWorkerMsg` channel capacity
 
-[`dev_handle.rs:44`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevModeBundle serialize at the channel.
+[`dev_handle.rs:49`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_handle.rs) sets `tokio::sync::mpsc::channel::<DevWorkerMsg>(1)`. Capacity 1 means concurrent Ruby threads contending for the same DevModeBundle serialize at the channel.
 
 For dev: serialization is correct (single isolate). For prod-pool: round-robin distributes load. Dev's 1-isolate constraint makes capacity-1 the natural choice.
 
@@ -189,11 +181,16 @@ If we ever expose a config knob `dev_isolate_count > 1`, revisit. Defer.
 
 ## Future — `import.meta.glob` codegen helper
 
-Plan §"Codegen lifecycle" deferred this. If the user's entry uses Vite's `import.meta.glob(...)`, dev mode either:
-- Errors at parse time (`deno_ast` doesn't know `import.meta.glob` semantics — actually it does parse it but returns it as a runtime call)
-- Returns `undefined` at runtime, breaks at first use
+Plan §"Codegen lifecycle" deferred this. The side-project has a `__ssr_imports__.ts` generated by an external build script (`scripts/build-ssr-imports.ts`); the entry imports it with a plain `import { __ssrComponentsApp } from './__ssr_imports__'`. The dev-mode loader resolves this as a normal relative import — no `import.meta.glob` runtime. If the user's entry used `import.meta.glob(...)` directly at the entry level, the workaround would be a Ruby-side preprocessor that regex-strips it and replaces with explicit static imports built from `Dir.glob`. Only implement if a future entry needs it.
 
-A Ruby-side preprocessor that regex-strips `import.meta.glob(...)` and replaces with explicit static imports built from `Dir.glob` is the documented mitigation. Implement only if the side-project test (step 12) needs it.
+## Future — Inject `__VITE_SOURCE_DIR__` + `import.meta.env` stubs
+
+Step 14 validation revealed the side-project entry hardcodes `/app/frontend` as the source directory and uses a `try/catch` guard for `import.meta.env`. These are Vite-only compile-time defines. Options:
+
+- **A**: inject `globalThis.__VITE_SOURCE_DIR__` in the namespace script (`dev_load.rs`). `import.meta.env` is per-module and can't be injected from outside — needs a module-loader-level transform or a documented stub-import shim.
+- **B**: document that user code must guard/define these globals.
+
+Defer — the side-project already has manual workarounds; not blocking.
 
 ## Future — Concurrent dev renders via thread-local module loaders
 
@@ -205,6 +202,6 @@ Defer — dev workflows don't usually need this.
 
 ## Future — Optional `Arc<dyn CodeCache>` for `v8_code_cache`
 
-[`dev_builder.rs:113`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) sets `v8_code_cache: None`. Wiring a real `Arc<dyn CodeCache>` (disk-backed) would amortize first-load transpile cost across `rails s` restarts.
+[`dev_builder.rs:134`](../ext/ssr_deno/src/deno_runtime_wrapper/dev_builder.rs) sets `v8_code_cache: None`. Wiring a real `Arc<dyn CodeCache>` (disk-backed) would amortize first-load transpile cost across `rails s` restarts.
 
 Out of scope for v1. Listed in the main plan's [Future](ssr-source-dev-mode.md#future) section.
