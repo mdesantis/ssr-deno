@@ -28,7 +28,7 @@ pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
 /// to pre-populate `globalThis.__cjs_cache` *before* `evaluate_module` runs,
 /// so the shim bodies never call `globalThis.require()` from inside V8's
 /// module evaluator (the upstream re-entrancy trigger — see
-/// `plans/dev-mode-cjs-interop-bug.md`).
+/// `plans/archived/dev-mode-cjs-interop-bug.md`).
 pub type SharedCjsPaths = Arc<Mutex<Vec<PathBuf>>>;
 
 /// Drains the collector, returning every CJS path the shim has wrapped so
@@ -118,7 +118,7 @@ pub struct DevModuleLoader {
     /// `dev_load_entry` drains this between `load_main_es_module` and
     /// `evaluate_module` to pre-populate `globalThis.__cjs_cache`, so the
     /// shim bodies never call `globalThis.require()` from inside V8's
-    /// module evaluator. See `plans/dev-mode-cjs-interop-bug.md`.
+    /// module evaluator. See `plans/archived/dev-mode-cjs-interop-bug.md`.
     cjs_paths: SharedCjsPaths,
 }
 
@@ -711,7 +711,7 @@ impl ModuleLoader for DevModuleLoader {
         // shim body itself never calls `globalThis.require()`, so the
         // upstream V8 re-entrancy on deep CJS graphs (emotion/MUI/…) can't
         // fire from inside the module-evaluation post-order walk. See
-        // `plans/dev-mode-cjs-interop-bug.md`.
+        // `plans/archived/dev-mode-cjs-interop-bug.md`.
         //
         // The shim statically re-exports each CJS export name detected by
         // `analyze_cjs_exports` so ESM consumers can `import { X } from 'pkg'`.

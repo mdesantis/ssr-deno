@@ -12,7 +12,7 @@
 //! - Replace `crate::sys::Sys` with a local type delegating to `std::fs`.
 //! - Replace `build_dev_worker` with inline `MainWorker::bootstrap_from_options`
 //!   (see [`dev_builder.rs`](../deno_runtime_wrapper/dev_builder.rs)).
-//! - See [`plans/dev-mode-cjs-interop-bug.md`](../../plans/dev-mode-cjs-interop-bug.md).
+//! - See [`plans/archived/dev-mode-cjs-interop-bug.md`](../../plans/archived/dev-mode-cjs-interop-bug.md).
 
 #[cfg(test)]
 mod tests {

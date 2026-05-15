@@ -12,7 +12,7 @@ use super::SSRDenoError;
 /// path the shim has wrapped so far. Call between `load_main_es_module` and
 /// `evaluate_module`: the `execute_script` boundary keeps `require()` calls
 /// outside V8's module-evaluation post-order walk, so the upstream
-/// re-entrancy bug (see `plans/dev-mode-cjs-interop-bug.md`) cannot fire.
+/// re-entrancy bug (see `plans/archived/dev-mode-cjs-interop-bug.md`) cannot fire.
 pub fn warm_cjs_cache(
     worker: &mut MainWorker,
     cjs_paths: &SharedCjsPaths,
@@ -131,7 +131,7 @@ pub async fn dev_load_entry(
                 throw new Error(
                     'Entry did not assign a function to globalThis.render. ' +
                     'This is the upstream V8 silent body-skip bug ' +
-                    '(see plans/dev-mode-cjs-interop-bug.md).' + progress
+                    '(see plans/archived/dev-mode-cjs-interop-bug.md).' + progress
                 );
             }}
             globalThis.__ssr_bundles[id] = {{ render: globalThis.render }};
