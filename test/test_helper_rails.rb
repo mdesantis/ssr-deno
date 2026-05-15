@@ -19,6 +19,8 @@ unless ENV['SSR_DENO_SKIP_COVERAGE']
       ]
     )
   end
+
+  SimpleCov.at_exit { SimpleCov.result } if ENV['SSR_DENO_SUPPRESS_COVERAGE_REPORT']
 end
 
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)

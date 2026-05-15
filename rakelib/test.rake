@@ -161,7 +161,12 @@ task 'test:rails' do
 end
 
 desc 'Run all test suites'
-task test: %w[test:main test:config test:node_builtins test:async test:env_config test:ractor test:puma test:rails]
+task :test do
+  ENV['SSR_DENO_SUPPRESS_COVERAGE_REPORT'] = 'true'
+  %w[test:main test:config test:node_builtins test:async test:env_config test:ractor test:puma test:rails].each do |t|
+    Rake::Task[t].invoke
+  end
+end
 
 desc 'Check merged coverage (runs after test suites)'
 task 'coverage:check' do
