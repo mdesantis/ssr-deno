@@ -47,8 +47,10 @@ require 'support/temp_bundle_helper'
 # ---------------------------------------------------------------------------
 
 require 'minitest'
-Minitest.load :profile
+unless %w[false no 0].include?(ENV['MINITEST_PROFILE']&.downcase)
+  Minitest.load :profile
+  ARGV << '--profile'
+end
 Warning[:experimental] = false
-ARGV << '--profile'
 require 'minitest/autorun'
 require 'minitest/pride' if %w[true yes 1].include?(ENV['MINITEST_PRIDE']&.downcase)
