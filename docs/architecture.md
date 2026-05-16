@@ -246,9 +246,11 @@ test/
 └── ssr/test_integration_node_builtins.rb             # node_builtins integration test
 
 rakelib/
-├── cargo.rake                                        # cargo:test
+├── cargo.rake                                        # cargo:test, cargo:clippy, cargo:fmt, cargo:coverage
+├── perf.rake                                         # perf:check, perf:baseline:update
+├── rbs.rake                                          # rbs:validate, rbs:up_to_date
 ├── samples.rake                                      # samples:build
-└── test.rake                                         # test:main, test:node_builtins
+└── test.rake                                         # test:main, test:config, test:node_builtins, test:async, test:env_config, test:ractor, test:puma, test:rails
 
 samples/
 ├── barebone-ssr-app/                                 # Plain JS, zero deps
