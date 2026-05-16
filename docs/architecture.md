@@ -31,12 +31,15 @@ flowchart TB
 
 | File | Purpose |
 |------|---------|
-| `lib/ssr/deno.rb` | Module `SSR::Deno` — config setters/getters (`max_heap_size_mb`, `isolate_pool_size`, `render_timeout_ms`, `node_builtins_enabled?`, `source_maps_enabled?`), env var defaults (`SSR_DENO_*` prefix), and `heap_stats` / `heap_stats!` |
-| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator` |
-| `lib/ssr/deno/bundle/registry.rb` | Thread-safe `Registry` for named bundles, used by Rails integration |
-| `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`) |
-| `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev |
-| `lib/ssr/deno/rails/helper.rb` | View helper `ssr_render(data)` |
+| `lib/ssr/deno.rb` | Entry point — `require`s the native extension and all `SSR::Deno::*` Ruby modules. |
+| `lib/ssr/deno/config.rb` | `SSR::Deno::Config` — config setters (`max_heap_size_mb=`, `isolate_pool_size=`, `render_timeout_ms=`, `node_builtins_enabled=`, `source_maps_enabled=`, `dev_resolve_alias=`). Env var defaults (`SSR_DENO_*` prefix) applied at load time. |
+| `lib/ssr/deno/heap_stats.rb` | `SSR::Deno::HeapStats.fetch` / `fetch!` — V8 heap statistics. |
+| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator`. Class-level `@@registry` (built via `Bundle.bootstrap(config)`) backs named-bundle lookup. |
+| `lib/ssr/deno/dev_mode_bundle.rb` | `SSR::Deno::DevModeBundle` — dev-mode equivalent of `Bundle` (per-request module reload, no Vite build). |
+| `lib/ssr/deno/ractor_pool.rb` | `SSR::Deno::RactorPool` — opt-in Ractor-based isolate pool. |
+| `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`). |
+| `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev. |
+| `lib/ssr/deno/rails/helper.rb` | View helper `ssr_render(data)`. |
 
 Config setters write to a Rust `Mutex<Config>` and must be called **before** the first `Bundle.new` (which triggers pool init).
 
@@ -45,16 +48,24 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | magnus entrypoint — registers methods on `SSR::Deno`, owns `POOL: OnceLock<IsolatePool>` and `CONFIG: Mutex<Config>` with double-checked locking |
-| `src/deno_runtime_wrapper/mod.rs` | `SSRDenoError` enum, `IsolateHandle` (channel to worker thread), `IsolatePool` (round-robin dispatcher), `build_worker`, `load_bundle_in_worker`, `setup_require` |
-| `src/deno_runtime_wrapper/render.rs` | `render` — event-loop render (buffered final result), `poll_render_state`, `RenderState` enum |
-| `src/deno_runtime_wrapper/render_chunked.rs` | `render_chunked` — event-loop render (poll-based, yields chunks via `mpsc`), `drain_chunks` |
-| `src/deno_runtime_wrapper/heap_stats.rs` | `collect_heap_stats` — V8 heap statistics serialization |
-| `src/sys.rs` | `Sys` type implementing `BaseFsCanonicalize`, `BaseFsMetadata`, `BaseFsRead`, `FsOpen`, `EnvCurrentDir`, etc. for `ExtNodeSys` and `WhichSys` |
+| `src/engine/mod.rs` | Module root for the production isolate pool (`pool`, `handle`, `builder`, `worker`, `watchdog`, `render`, `render_chunked`, `heap_stats`, `types`, plus dev-mode siblings) |
+| `src/engine/pool.rs` | `IsolatePool` — round-robin dispatcher over N `IsolateHandle`s |
+| `src/engine/handle.rs` | `IsolateHandle` — owns the mpsc sender to a dedicated worker thread |
+| `src/engine/worker.rs` | `worker_thread_main` — message loop processing `LoadBundle` / `Render` / `RenderChunked` / `HeapStats` |
+| `src/engine/builder.rs` | `build_worker` — constructs the `MainWorker` (permissions, module loader, Node ext init services) |
+| `src/engine/watchdog.rs` | `Watchdog` — separate thread that calls `terminate_execution()` on render timeout |
+| `src/engine/render.rs` | `render` — event-loop render (buffered final result), `poll_render_state`, `RenderState` enum |
+| `src/engine/render_chunked.rs` | `render_chunked` — event-loop render (poll-based, yields chunks via `mpsc`), `drain_chunks` |
+| `src/engine/heap_stats.rs` | `collect_heap_stats` — V8 heap statistics serialization |
+| `src/engine/types.rs` | Wire protocol between the Ruby thread and worker threads (request/response enums, chunk plumbing) |
+| `src/engine/dev_handle.rs`, `dev_worker.rs`, `dev_load.rs` | Dev-mode counterparts to `handle.rs` / `worker.rs` plus the CJS-cache warm-up helper. |
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
 | `src/require_loader.rs` | Minimal `NodeRequireLoader` — rejects file loading, passes built-in module resolution to Deno |
 | `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `DenoError`, validators (`validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
 | `crates/ssr_deno_core/src/source_mapper.rs` | `SsrSourceMapper` — self-managed source map registry. Parses `.js.map` sidecars, resolves V8 stack frame positions to original `.tsx`/`.ts` sources with IIFE offset correction. Used in render error formatting. |
+| `crates/ssr_deno_sys/src/lib.rs` | `Sys` type satisfying `ExtNodeSys` and `WhichSys` trait bounds (`FsCanonicalize`, `FsMetadata`, `FsRead`, `FsReadDir`, `FsOpen`, `EnvCurrentDir`, …) |
+| `crates/ssr_deno_dev_mode/src/` | Dev-mode crate: `dev_mode_builder`, `dev_mode_module_loader`, `dev_mode_npm_resolver`, `require_loader`. Builds the dev `MainWorker` with on-demand transpile + Byonm npm resolver. |
 
 ### Isolate Pool
 
@@ -214,28 +225,40 @@ sequenceDiagram
 ```
 ext/ssr_deno/                                         # Rust native extension
 ├── Cargo.toml                                        # deno_runtime, magnus dependencies
-├── crates/ssr_deno_core/                             # Pure-Rust types (no V8 dep)
-│   └── src/lib.rs                                    # Config, DenoError, validators
+├── crates/
+│   ├── ssr_deno_core/                                # Pure-Rust types (no V8 dep)
+│   │   └── src/                                      # Config, DenoError, validators, source_mapper
+│   ├── ssr_deno_sys/                                 # `Sys` type for ExtNodeSys / WhichSys
+│   └── ssr_deno_dev_mode/                            # Dev-mode worker builder + module loader + Byonm resolver
 └── src/
     ├── lib.rs                                        # magnus init, CONFIG, POOL
-    ├── deno_runtime_wrapper/
-    │   ├── mod.rs                                    # IsolatePool, IsolateHandle, build_worker
-    │   ├── heap_stats.rs                             # collect_heap_stats, HeapStats struct
+    ├── engine/
+    │   ├── mod.rs                                    # Module root
+    │   ├── pool.rs                                   # IsolatePool (round-robin)
+    │   ├── handle.rs                                 # IsolateHandle (mpsc sender)
+    │   ├── worker.rs                                 # worker_thread_main message loop
+    │   ├── builder.rs                                # build_worker (MainWorker construction)
+    │   ├── watchdog.rs                               # Watchdog (terminate_execution on timeout)
     │   ├── render.rs                                 # Buffered render, poll_render_state
-    │   └── render_chunked.rs                         # Chunked streaming, drain_chunks
-    ├── sys.rs                                        # Sys type for Deno traits
-    ├── nop_types.rs                                  # NOP implementations
+    │   ├── render_chunked.rs                         # Chunked streaming, drain_chunks
+    │   ├── heap_stats.rs                             # collect_heap_stats, HeapStats struct
+    │   ├── types.rs                                  # Wire protocol enums
+    │   └── dev_{handle,worker,load}.rs               # Dev-mode worker + CJS cache warm-up
+    ├── nop_types.rs                                  # NOP impls (InNpmPackageChecker, …)
     ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme
     └── require_loader.rs                             # NodeRequireLoader for builtins
 
 lib/ssr/deno/                                         # Ruby module
-├── deno.rb                                           # Core entry point, config setters
 ├── version.rb                                        # VERSION
-├── bundle.rb                                         # Bundle class
-├── bundle/registry.rb                                # Thread-safe bundle storage
+├── config.rb                                         # SSR::Deno::Config (setters, env defaults)
+├── heap_stats.rb                                     # SSR::Deno::HeapStats.fetch / fetch!
+├── bundle.rb                                         # Bundle class + named-bundle registry
+├── dev_mode_bundle.rb                                # DevModeBundle (no-build dev mode)
+├── ractor_pool.rb                                    # Opt-in Ractor pool
 ├── instrumenter.rb                                   # Notifications wrapper
 ├── rails.rb                                          # Rails integration entry point
 └── rails/                                            # Railtie, helper, generator
+                                                      # (deno.rb at lib/ssr/ is the require entry point)
 
 sig/ssr/deno.rbs                                      # RBS type signatures
 
@@ -248,9 +271,9 @@ test/
 rakelib/
 ├── cargo.rake                                        # cargo:test, cargo:clippy, cargo:fmt, cargo:coverage
 ├── perf.rake                                         # perf:check, perf:baseline:update
-├── rbs.rake                                          # rbs:validate, rbs:up_to_date
+├── rbs.rake                                          # rbs:validate, rbs:up_to_date, rbs:diff
 ├── samples.rake                                      # samples:build
-└── test.rake                                         # test:main, test:config, test:node_builtins, test:async, test:env_config, test:ractor, test:puma, test:rails
+└── test.rake                                         # test:main, test:config, test:node_builtins, test:async, test:env_config, test:ractor, test:puma, test:rails, test:perf, coverage:check
 
 samples/
 ├── barebone-ssr-app/                                 # Plain JS, zero deps
