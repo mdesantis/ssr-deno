@@ -12,6 +12,11 @@ module SSR
     # resolves it transparently (same `#render` / `#render_chunks` interface
     # as {Bundle}).
     #
+    # @note **Experimental — not for production.** The transpile pipeline,
+    #   CJS→ESM interop shim, error formatting, and auto-reload heuristics
+    #   may change without a deprecation cycle. Report issues at
+    #   https://github.com/mdesantis/ssr-deno/issues. See
+    #   {file:docs/dev-mode.md} for caveats and limitations.
     # @note Compiled into the gem by default (the `dev-mode` Cargo feature is
     #   on by default). Build with `--no-default-features` to strip dev-mode
     #   from a production gem; calling +DevModeBundle.new+ on such a build

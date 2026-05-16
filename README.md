@@ -235,24 +235,60 @@ export default defineConfig({
 
 Check the next section for examples and framework-specific setup.
 
-## Ractor pool (parallel SSR)
+## Experimental features
 
-For concurrent SSR under Ractors (Ruby 3.3+) without the GVL bottleneck:
+The gem ships two experimental features behind their own APIs. Both
+work and are tested, but their interfaces and error semantics may
+change without a deprecation cycle. **Not recommended for production.**
+Please report bugs and rough edges at
+<https://github.com/mdesantis/ssr-deno/issues> — feedback is what
+unblocks the path to stable.
+
+### Ractor pool (parallel SSR) — experimental
+
+Parallel SSR via Ruby Ractors (Ruby 3.3+), bypassing the GVL bottleneck:
 
 ```ruby
 SSR::Deno::Config.isolate_pool_size = 4
 SSR::Deno::Config.node_builtins_enabled = true
 pool = SSR::Deno::RactorPool.new(bundle_path: 'dist/server/ssr.js')
 html = pool.render({ name: 'World' })
-```
 
-Each Ractor runs a V8 isolate — renders execute in parallel. Not compatible with `SSR::Deno::Bundle`; use one or the other.
-
-```ruby
 pool.render_chunks({ page: 'home' }) { |chunk| response.stream.write(chunk) }
 pool.reload
 pool.shutdown
 ```
+
+Each Ractor pins a V8 isolate — renders execute in parallel. Bypasses
+`ActiveSupport::Notifications` and the bundle registry; not compatible
+with `SSR::Deno::Bundle` on the same isolate pool.
+
+Full docs, requirements, limitations: [`docs/ractor-pool.md`](docs/ractor-pool.md).
+
+### Dev mode (no-build SSR) — experimental
+
+Load `.tsx` / `.ts` / `.js` source files directly — no Vite (or any)
+bundler — with on-demand transpile and optional source-file auto-reload:
+
+```ruby
+SSR::Deno::Config.node_builtins_enabled = true
+SSR::Deno::Config.source_maps_enabled  = true
+
+bundle = SSR::Deno::DevModeBundle.new(
+  'app/frontend/entry-server.tsx',
+  name: :app,
+  resolve_alias: { '@' => 'app/frontend' },
+  project_root: Rails.root.to_s,
+)
+bundle.auto_reload = true
+
+html = bundle.render({ page: 'home' })
+```
+
+Same `#render` / `#render_chunks` interface as `Bundle`; registers in
+`Bundle.registry` so the Rails helper resolves it transparently.
+
+Full docs, CJS interop notes, caveats: [`docs/dev-mode.md`](docs/dev-mode.md).
 
 ## Samples
 

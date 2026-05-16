@@ -17,6 +17,12 @@ module SSR
     # Compatible with Ruby 3.3+ (includes both 3.x take-based Ractor API
     # and 4.0 value-based API).
     #
+    # @note **Experimental — not for production.** Relies on Ruby's
+    #   experimental Ractor API; this class's interface, error semantics,
+    #   and instrumentation hooks may change without a deprecation cycle.
+    #   Report issues at https://github.com/mdesantis/ssr-deno/issues.
+    #   See {file:docs/ractor-pool.md} for caveats and limitations.
+    #
     # Usage:
     #   SSR::Deno::Config.isolate_pool_size = 4
     #   SSR::Deno::Config.node_builtins_enabled = true
