@@ -14,12 +14,13 @@ use deno_core::{
 use deno_error::JsErrorBox;
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
-    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolution,
-    NodeResolutionKind, NodeResolver, NodeResolverOptions, PackageJsonResolverRc, ResolutionMode,
+    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeResolution, NodeResolutionKind,
+    NodeResolver, PackageJsonResolverRc, ResolutionMode,
 };
 
-use crate::dev_mode_npm_resolver::build_dev_mode_npm_resolver;
 use ssr_deno_sys::Sys;
+
+use crate::dev_mode_npm_resolver::dev_node_resolver_options;
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
 
@@ -388,35 +389,17 @@ impl DevModeModuleLoader {
         resolve_alias: SharedAliasMap,
         cache: Arc<DevModeMtimeCache>,
         cjs_paths: SharedCjsPaths,
+        npm_checker: ByonmInNpmPackageChecker,
+        npm_resolver: ByonmNpmResolver<Sys>,
+        pkg_json_resolver: PackageJsonResolverRc<Sys>,
     ) -> Self {
-        let (npm_checker, npm_resolver, pkg_json_resolver) =
-            build_dev_mode_npm_resolver(&project_root);
-
         let node_resolver = NodeResolver::new(
             npm_checker,
             DenoIsBuiltInNodeModuleChecker,
             npm_resolver.clone(),
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
-            NodeResolverOptions {
-                // Match Node defaults: ESM imports get `import`, CJS
-                // requires get `require`. See dev_builder.rs for why this
-                // matters (emotion's `.cjs.mjs` shim cycles otherwise).
-                conditions: NodeConditionOptions {
-                    conditions: vec![std::borrow::Cow::Borrowed("node")],
-                    import_conditions_override: Some(vec![
-                        std::borrow::Cow::Borrowed("node"),
-                        std::borrow::Cow::Borrowed("import"),
-                    ]),
-                    require_conditions_override: Some(vec![
-                        std::borrow::Cow::Borrowed("node"),
-                        std::borrow::Cow::Borrowed("require"),
-                    ]),
-                },
-                is_browser_platform: false,
-                bundle_mode: true,
-                typescript_version: None,
-            },
+            dev_node_resolver_options(),
         );
 
         let node_modules_dir = project_root.join("node_modules");

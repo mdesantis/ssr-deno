@@ -16,12 +16,12 @@ use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::{DenoIsBuiltInNodeModuleChecker, NodeConditionOptions, NodeResolverOptions};
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::dev_mode_module_loader::{
     DevModeModuleLoader, DevModeMtimeCache, SharedAliasMap, SharedCjsPaths,
 };
-use crate::dev_mode_npm_resolver::build_dev_mode_npm_resolver;
+use crate::dev_mode_npm_resolver::{build_dev_mode_npm_resolver, dev_node_resolver_options};
 use crate::require_loader::DevModeNodeRequireLoader;
 use ssr_deno_sys::Sys;
 
@@ -41,31 +41,7 @@ fn build_dev_node_services(
             npm_resolver,
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(Sys, None),
-            NodeResolverOptions {
-                // Base conditions used when no context is overridden.
-                // Context-specific overrides below match Node's defaults:
-                // `import` for ESM, `require` for CJS. Without the
-                // `require_conditions_override`, deno_node's `createRequire`
-                // would resolve npm packages under `["node","import"]`,
-                // which picks the `.cjs.mjs` ESM-wrapper for emotion/MUI
-                // packages. Node then refuses `require()` of ESM in a
-                // cycle. Splitting the overrides routes `require()` calls
-                // to the `.cjs.js` files directly.
-                conditions: NodeConditionOptions {
-                    conditions: vec![Cow::Borrowed("node")],
-                    import_conditions_override: Some(vec![
-                        Cow::Borrowed("node"),
-                        Cow::Borrowed("import"),
-                    ]),
-                    require_conditions_override: Some(vec![
-                        Cow::Borrowed("node"),
-                        Cow::Borrowed("require"),
-                    ]),
-                },
-                is_browser_platform: false,
-                bundle_mode: true,
-                typescript_version: None,
-            },
+            dev_node_resolver_options(),
         );
         MaybeArc::new(r)
     };
@@ -89,7 +65,11 @@ pub fn build_dev_mode_worker(
 ) -> Result<MainWorker, String> {
     let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_mode_npm_resolver(project_root);
 
-    let node_services = build_dev_node_services(npm_checker, npm_resolver, pkg_json_resolver);
+    let node_services = build_dev_node_services(
+        npm_checker.clone(),
+        npm_resolver.clone(),
+        pkg_json_resolver.clone(),
+    );
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
         let loader = DevModeModuleLoader::new(
@@ -97,6 +77,9 @@ pub fn build_dev_mode_worker(
             resolve_aliases,
             mtime_cache,
             cjs_paths,
+            npm_checker,
+            npm_resolver,
+            pkg_json_resolver,
         );
         Rc::new(loader)
     };
