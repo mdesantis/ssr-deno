@@ -118,6 +118,7 @@ module SSR
         @_bundle_mutex.synchronize do
           next unless @reload_pending || SSR::Deno.native_dev_check_stale(@handle)
 
+          close_handle
           create_worker
           load_entry
           @reload_pending = false
@@ -132,6 +133,10 @@ module SSR
           @project_root,
           SSR::Deno::Config.max_heap_size_mb
         )
+      end
+
+      def close_handle
+        @handle = nil
       end
 
       def load_entry

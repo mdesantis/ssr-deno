@@ -15,7 +15,6 @@ use deno_runtime::deno_permissions::{
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
-use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::dev_mode_module_loader::{
@@ -28,19 +27,17 @@ use ssr_deno_sys::Sys;
 type DevNodeServices = NodeExtInitServices<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>;
 
 fn build_dev_node_services(
-    npm_checker: ByonmInNpmPackageChecker,
-    npm_resolver: ByonmNpmResolver<Sys>,
-    pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys>,
+    parts: &crate::dev_mode_npm_resolver::DevModeNpmResolverParts,
 ) -> Option<DevNodeServices> {
     let loader: NodeRequireLoaderRc = Rc::new(DevModeNodeRequireLoader);
 
     let resolver: MaybeArc<NodeResolver<ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, Sys>> = {
         let r = NodeResolver::new(
-            npm_checker,
+            parts.npm_checker.clone(),
             DenoIsBuiltInNodeModuleChecker,
-            npm_resolver,
-            pkg_json_resolver.clone(),
-            NodeResolutionSys::new(Sys, None),
+            parts.npm_resolver.clone(),
+            parts.pkg_json_resolver.clone(),
+            parts.node_resolution_sys.clone(),
             dev_node_resolver_options(),
         );
         MaybeArc::new(r)
@@ -49,7 +46,7 @@ fn build_dev_node_services(
     Some(DevNodeServices {
         node_require_loader: loader,
         node_resolver: resolver,
-        pkg_json_resolver,
+        pkg_json_resolver: parts.pkg_json_resolver.clone(),
         sys: Sys,
     })
 }
@@ -63,13 +60,9 @@ pub fn build_dev_mode_worker(
     mtime_cache: Arc<DevModeMtimeCache>,
     cjs_paths: SharedCjsPaths,
 ) -> Result<MainWorker, String> {
-    let (npm_checker, npm_resolver, pkg_json_resolver) = build_dev_mode_npm_resolver(project_root);
+    let resolver_parts = build_dev_mode_npm_resolver(project_root);
 
-    let node_services = build_dev_node_services(
-        npm_checker.clone(),
-        npm_resolver.clone(),
-        pkg_json_resolver.clone(),
-    );
+    let node_services = build_dev_node_services(&resolver_parts);
 
     let module_loader: Rc<dyn deno_runtime::deno_core::ModuleLoader> = {
         let loader = DevModeModuleLoader::new(
@@ -77,9 +70,7 @@ pub fn build_dev_mode_worker(
             resolve_aliases,
             mtime_cache,
             cjs_paths,
-            npm_checker,
-            npm_resolver,
-            pkg_json_resolver,
+            resolver_parts,
         );
         Rc::new(loader)
     };

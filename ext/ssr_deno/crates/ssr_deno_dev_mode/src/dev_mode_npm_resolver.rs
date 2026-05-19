@@ -36,14 +36,20 @@ pub(crate) fn dev_node_resolver_options() -> NodeResolverOptions {
     }
 }
 
-/// Builds a BYONM ("Bring Your Own node_modules") resolver trio for dev mode.
-pub fn build_dev_mode_npm_resolver(
-    project_root: &Path,
-) -> (
-    ByonmInNpmPackageChecker,
-    ByonmNpmResolver<Sys>,
-    PackageJsonResolverRc<Sys>,
-) {
+/// Complete set of npm-resolution primitives built from a project root.
+/// Returned by [`build_dev_mode_npm_resolver`] and shared between the
+/// node-services builder (`build_dev_node_services`) and the module loader
+/// (`DevModeModuleLoader`), so each caller doesn't re-construct its own
+/// `NodeResolutionSys` and other parts.
+pub struct DevModeNpmResolverParts {
+    pub npm_checker: ByonmInNpmPackageChecker,
+    pub npm_resolver: ByonmNpmResolver<Sys>,
+    pub pkg_json_resolver: PackageJsonResolverRc<Sys>,
+    pub node_resolution_sys: NodeResolutionSys<Sys>,
+}
+
+/// Builds a BYONM ("Bring Your Own node_modules") resolver set for dev mode.
+pub fn build_dev_mode_npm_resolver(project_root: &Path) -> DevModeNpmResolverParts {
     let root_node_modules_dir = Some(project_root.join("node_modules"));
     let pkg_json_resolver: PackageJsonResolverRc<Sys> =
         PackageJsonResolverRc::new(PackageJsonResolver::new(Sys, None));
@@ -54,5 +60,10 @@ pub fn build_dev_mode_npm_resolver(
         pkg_json_resolver: pkg_json_resolver.clone(),
     });
 
-    (ByonmInNpmPackageChecker, resolver, pkg_json_resolver)
+    DevModeNpmResolverParts {
+        npm_checker: ByonmInNpmPackageChecker,
+        npm_resolver: resolver,
+        pkg_json_resolver,
+        node_resolution_sys: NodeResolutionSys::new(Sys, None),
+    }
 }

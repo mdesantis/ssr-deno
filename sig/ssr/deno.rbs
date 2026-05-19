@@ -187,7 +187,7 @@ module SSR
       @resolve_alias: Hash[String, String]
       @project_root: String
       @name: String | Symbol
-      @handle: DevWorkerHandle
+      @handle: DevWorkerHandle?
       @auto_reload: bool
       @_bundle_mutex: Thread::Mutex
 
@@ -210,6 +210,8 @@ module SSR
       def reload_if_changed: () -> void
 
       def create_worker: () -> void
+
+      def close_handle: () -> void
 
       def load_entry: () -> void
     end

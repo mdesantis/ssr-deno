@@ -12,15 +12,16 @@ use deno_core::{
     ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
 };
 use deno_error::JsErrorBox;
-use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
 use node_resolver::{
-    cache::NodeResolutionSys, DenoIsBuiltInNodeModuleChecker, NodeResolution, NodeResolutionKind,
-    NodeResolver, PackageJsonResolverRc, ResolutionMode,
+    DenoIsBuiltInNodeModuleChecker, NodeResolution, NodeResolutionKind, NodeResolver,
+    PackageJsonResolverRc, ResolutionMode,
 };
 
 use ssr_deno_sys::Sys;
 
-use crate::dev_mode_npm_resolver::dev_node_resolver_options;
+use crate::dev_mode_npm_resolver::{
+    dev_node_resolver_options, ByonmInNpmPackageChecker, ByonmNpmResolver, DevModeNpmResolverParts,
+};
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
 
@@ -389,16 +390,14 @@ impl DevModeModuleLoader {
         resolve_alias: SharedAliasMap,
         cache: Arc<DevModeMtimeCache>,
         cjs_paths: SharedCjsPaths,
-        npm_checker: ByonmInNpmPackageChecker,
-        npm_resolver: ByonmNpmResolver<Sys>,
-        pkg_json_resolver: PackageJsonResolverRc<Sys>,
+        parts: DevModeNpmResolverParts,
     ) -> Self {
         let node_resolver = NodeResolver::new(
-            npm_checker,
+            parts.npm_checker,
             DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            pkg_json_resolver.clone(),
-            NodeResolutionSys::new(Sys, None),
+            parts.npm_resolver,
+            parts.pkg_json_resolver.clone(),
+            parts.node_resolution_sys,
             dev_node_resolver_options(),
         );
 
@@ -408,7 +407,7 @@ impl DevModeModuleLoader {
             node_modules_dir,
             resolve_alias,
             node_resolver,
-            pkg_json_resolver,
+            pkg_json_resolver: parts.pkg_json_resolver,
             cache,
             cjs_paths,
         }

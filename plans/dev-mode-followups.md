@@ -45,24 +45,9 @@ Caveat: changing the field type cascades into `check_cache` / `update_cache` bor
 
 Defer — `Mutex` on uncontended single-thread access is ~10ns. Negligible vs transpile.
 
-## Refactor — Hoist `NodeResolutionSys::new(Sys, None)`
+## ✅ DONE — Hoist `NodeResolutionSys::new(Sys, None)` (2026-05-20)
 
-[`dev_mode_module_loader.rs:401`](../ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs) and [`dev_mode_builder.rs:43`](../ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_builder.rs) each construct their own `NodeResolutionSys<Sys>` for `NodeResolver` — cheap wrapper but redundant. (`dev_mode_npm_resolver.rs` also constructs one internally for `ByonmNpmResolverCreateOptions.sys`, but that's a separate role and not a candidate for hoisting.)
-
-Extend `build_dev_mode_npm_resolver` return to include `NodeResolutionSys<Sys>`. A named struct avoids tuple growth:
-
-```rust
-pub struct DevModeNpmResolverParts {
-    pub npm_checker: ByonmInNpmPackageChecker,
-    pub npm_resolver: ByonmNpmResolver<Sys>,
-    pub pkg_json_resolver: PackageJsonResolverRc<Sys>,
-    pub node_resolution_sys: NodeResolutionSys<Sys>,
-}
-```
-
-Callers `.clone()` `node_resolution_sys` where both need owned values (it's `Clone`).
-
-Tradeoff: breaks the existing destructuring call sites; mechanical but touches builder + loader. Defer.
+`build_dev_mode_npm_resolver` now returns a named struct `DevModeNpmResolverParts` including `NodeResolutionSys<Sys>`. Both `build_dev_node_services` and `DevModeModuleLoader::new` consume from it instead of constructing their own. (`dev_mode_npm_resolver.rs` still constructs one internally for `ByonmNpmResolverCreateOptions.sys` — separate role, not hoisted.)
 
 ## ✅ DONE — Rename `real_npm_types.rs` → `dev_npm_resolver.rs` → `dev_mode_npm_resolver.rs`
 
@@ -72,15 +57,9 @@ Renamed twice: first `real_npm_types.rs → dev_npm_resolver.rs` (2026-05-14, st
 
 `dev_mode_builder.rs` and `dev_mode_module_loader.rs` each hardcoded identical `NodeResolverOptions` blocks (import/require condition split for emotion/MUI CJS cycle fix). Extracted to [`dev_mode_npm_resolver.rs:dev_node_resolver_options()`](../ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_npm_resolver.rs) (`pub(crate)`). Both callers now call `dev_node_resolver_options()`.
 
-## Future — `block_on_load_entry` GVL release
+## ✅ DONE — `block_on_load_entry` GVL release (2026-05-20)
 
-[`lib.rs:native_dev_load_entry`](../ext/ssr_deno/src/lib.rs) blocks the Ruby GVL for the duration of `block_on_load_entry`, which awaits load + transpile of the full module graph (~1-3s on a deep MUI tree). Other Ruby threads stall.
-
-Acceptable in dev because:
-- Load happens once per worker lifetime (or on auto-reload respawn).
-- Puma in dev is typically single-threaded.
-
-Future: wrap in `rb_thread_call_without_gvl` like [`native_dev_render`](../ext/ssr_deno/src/lib.rs). Pattern is identical — box `(handle, entry_path, aliases)`, callback calls `block_on_load_entry`. Defer until multi-thread dev becomes a real use case.
+`native_dev_load_entry` now wraps `block_on_load_entry` in `rb_thread_call_without_gvl`, same pattern as `native_dev_render`. Other Ruby threads no longer stall during the ~1-3s module graph load.
 
 ## Future — `native_dev_check_stale` GVL release
 
@@ -136,20 +115,9 @@ Fixes:
 - **A**: explicit `close` method on `DevModeBundle` — call before reassigning `@handle`. Old Arc dropped synchronously; worker thread observes channel close immediately.
 - **B**: store `IsolateHandle::thread_safe_handle()` in `DevWorkerHandle`; Drop impl triggers `terminate_execution()` to force worker thread to fast-exit even before the channel closes.
 
-A is the Ruby-friendly path. Reload flow becomes:
-```ruby
-def reload_if_changed
-  ...
-  @_bundle_mutex.synchronize do
-    ...
-    close_handle(@handle)  # explicit drain before reassign
-    create_worker
-    load_entry
-  end
-end
-```
+## ✅ DONE — Explicit close on reload (2026-05-20)
 
-Cleaner GC-independent lifecycle. Defer until rapid-reload RSS spikes show up in practice.
+A-path implemented: `DevModeBundle#close_handle` (private, sets `@handle = nil`) called before `create_worker` in `reload_if_changed`. Old `Arc<DevModeIsolateHandle>` dropped synchronously on handle reassign; worker thread observes channel close on next `rx.recv()`. In-flight renders keep the old worker alive via their captured `Arc` — no premature termination.
 
 ## Future — Better `Drop` story for in-flight render on handle drop
 

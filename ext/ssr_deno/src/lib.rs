@@ -426,6 +426,32 @@ fn native_dev_check_stale(handle: &DevWorkerHandle) -> bool {
     handle.0.check_stale()
 }
 
+// -- GVL-release helpers for dev load entry -------------------------------
+
+#[cfg(feature = "dev-mode")]
+struct DevLoadEntryArgs {
+    handle: Arc<engine::dev_handle::DevModeIsolateHandle>,
+    entry_path: String,
+    aliases: HashMap<String, String>,
+}
+
+#[cfg(feature = "dev-mode")]
+struct RawLoadEntryResult {
+    result: Result<(), SSRDenoError>,
+}
+
+// SAFETY: `data` is a `Box<DevLoadEntryArgs>` leaked by `Box::into_raw` in
+// `native_dev_load_entry`. Ownership reclaimed via `Box::from_raw`. No Ruby
+// objects touched — the callback is safe to run without the GVL.
+#[cfg(feature = "dev-mode")]
+unsafe extern "C" fn dev_load_entry_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+    let args = Box::from_raw(data as *mut DevLoadEntryArgs);
+    let result = args
+        .handle
+        .block_on_load_entry(&args.entry_path, args.aliases);
+    Box::into_raw(Box::new(RawLoadEntryResult { result })) as *mut std::ffi::c_void
+}
+
 #[cfg(feature = "dev-mode")]
 fn native_dev_load_entry(
     ruby: &Ruby,
@@ -439,10 +465,20 @@ fn native_dev_load_entry(
             format!("Invalid alias map JSON: {e}"),
         )
     })?;
-    handle
-        .0
-        .block_on_load_entry(&entry_path, aliases)
-        .map_err(|e| map_render_error(ruby, e))
+
+    let args = Box::new(DevLoadEntryArgs {
+        handle: handle.0.clone(),
+        entry_path,
+        aliases,
+    });
+
+    let result_ptr = unsafe {
+        let ptr = Box::into_raw(args) as *mut std::ffi::c_void;
+        rb_thread_call_without_gvl(dev_load_entry_worker, ptr, None, std::ptr::null_mut())
+    };
+
+    let raw = unsafe { Box::from_raw(result_ptr as *mut RawLoadEntryResult) };
+    raw.result.map_err(|e| map_render_error(ruby, e))
 }
 
 // -- GVL-release helpers for dev render ------------------------------------
