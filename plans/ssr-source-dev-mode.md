@@ -36,10 +36,10 @@ source .tsx entry → [Ruby: optional codegen of __ssr_imports__.ts (only if imp
 The render engine **functions** (`render::render()` / `render_chunked::render_chunked()`, both accept `&mut MainWorker`) are reused. The V8 isolate pool is **not** shared — dev mode uses dedicated single-isolate workers outside the pool. Pool stays `'static` + private behind `OnceLock`; dev workers are owned by Ruby `DevModeBundle` instances via opaque handle.
 
 **Render dispatch:** `native_render` → `IsolatePool::dispatch_render` → `self.handles[idx]`. Pool handles vec private + static (`POOL: OnceLock<IsolatePool>`). Dev worker unreachable through existing FFI. **Mandatory new FFI surface**:
-- `native_dev_render(handle, bundle_id, args_json)`
-- `native_dev_render_chunks(handle, bundle_id, args_json, &block)`
+- `native_dev_render(handle, bundle_id, args_json, render_timeout_ms)`
+- `native_dev_render_chunks(handle, bundle_id, args_json, render_timeout_ms, &block)`
 - `native_dev_load_entry(handle, entry_path, alias_map_json)`
-- `native_dev_worker_new(project_root, max_heap_size_mb, render_timeout_ms) -> handle`
+- `native_dev_worker_new(project_root, max_heap_size_mb) -> handle`
 
 DevModeBundle holds a `SSR::Deno::DevWorkerHandle` object (magnus `#[wrap]` TypedData around `Arc<DevIsolateHandle>`). Ruby cannot forge handles — only `native_dev_worker_new` can return one. GC drops the Rust struct when last Ruby ref dies. Bundle lookup itself is JS-side per isolate (`globalThis.__ssr_bundles[id]`) — each dev worker has independent globals.
 
@@ -51,9 +51,9 @@ DevModeBundle holds a `SSR::Deno::DevWorkerHandle` object (magnus `#[wrap]` Type
 | **Concurrency** | Multi-isolate (default 1, configurable) | Single-isolate per DevModeBundle |
 | **Permissions** | `Permissions::none_without_prompt()` | Read-only for project root |
 | **Worker count** | `Config::isolate_pool_size` | 1 per `DevModeBundle` instance |
-| **Builder** | `build_worker()` | `build_dev_worker()` — separate function, same `MainWorker::bootstrap_from_options` |
+| **Builder** | `build_worker()` | `build_dev_mode_worker()` — separate function, same `MainWorker::bootstrap_from_options` |
 
-`build_dev_worker()` mirrors `build_worker()` but:
+`build_dev_mode_worker()` mirrors `build_worker()` but:
 - Passes `DevModuleLoader` instead of `NoopModuleLoader` / `NodeBuiltinOnlyModuleLoader`
 - Grants `--allow-read` for the project directory (`PermissionsOptions { allow_read: Some(vec![project_root.into_owned()]), .. }`)
 - Keeps all other restrictions (no net, no env, no run, no write, no ffi, no sys)
@@ -167,12 +167,12 @@ If codegen needed:
 
 ### Worker builder
 
-`build_dev_worker()` is a separate function, separate file:
+`build_dev_mode_worker()` is a separate function, separate file:
 
-**File:** `ext/ssr_deno/src/engine/dev_builder.rs`
+**File:** `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_builder.rs`
 
 ```rust
-pub fn build_dev_worker(
+pub fn build_dev_mode_worker(
     main_module: &Url,
     max_heap_size_mb: usize,
     resolve_aliases: HashMap<String, String>,
@@ -202,9 +202,9 @@ Concrete npm-resolver impls already shipped by `deno_resolver 0.78.0` (transitiv
 
 Production suppresses npm resolution via `NopInNpmPackageChecker` + `NopNpmPackageFolderResolver`. Dev mode swaps in `ByonmInNpmPackageChecker` + `ByonmNpmResolver<Sys>`. `Sys` already satisfies `ByonmNpmResolverSys` via existing `FsRead + FsMetadata` impls in [sys.rs](ext/ssr_deno/src/sys.rs).
 
-## New Rust module: `dev_module_loader`
+## New Rust module: `dev_mode_module_loader`
 
-**File:** `ext/ssr_deno/src/dev_module_loader.rs`
+**File:** `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs`
 
 Implements `deno_core::ModuleLoader`:
 
@@ -220,11 +220,11 @@ Implements `deno_core::ModuleLoader`:
 
 Uses Deno's native `deno_ast` for transpilation (TS strip + JSX → JS). `deno_ast` is already compiled in — `deno_runtime/hmr` (always on) pulls in `deno_runtime/transpile` which pulls in `deno_ast 0.53.1` with `transpiling` feature (emit + proposal + react + transforms + typescript). No new dependency cost. The `#[cfg(feature = "dev-mode")]` flag gates the Rust code paths only.
 
-## New Rust module: `dev_builder`
+## New Rust module: `dev_mode_builder`
 
-**File:** `ext/ssr_deno/src/engine/dev_builder.rs`
+**File:** `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_builder.rs`
 
-Separate `build_dev_worker()` function, no `if dev` branching in the production `build_worker()`. Accepts project root for permissions and alias map for the module loader.
+Separate `build_dev_mode_worker()` function, no `if dev` branching in the production `build_worker()`. Accepts project root for permissions and alias map for the module loader.
 
 ## New Rust module: `dev_load`
 
@@ -342,8 +342,8 @@ SSR::Deno::DevModeBundle.new(
 ```
 Ruby: DevModeBundle.new(entry.tsx)
   → Ruby: (optional) strip import.meta.glob, write __ssr_imports__.ts
-  → Rust: native_dev_worker_new(project_root, heap_mb, timeout_ms) -> handle
-    → spawns dev worker thread, calls build_dev_worker (DevModuleLoader + relaxed perms)
+  → Rust: native_dev_worker_new(project_root, heap_mb) -> handle
+    → spawns dev worker thread, calls build_dev_mode_worker (DevModuleLoader + relaxed perms)
   → Rust: native_dev_load_entry(handle, entry_path, alias_map)
     → DevModuleLoader resolves graph (@/, ./, bare, node:*, .css→noop)
     → deno_ast transpiles each .ts/.tsx, registers inline sourcemap in SsrSourceMapper
@@ -375,18 +375,18 @@ Ruby: DevModeBundle.new(entry.tsx)
 | Component | Change |
 |-----------|--------|
 | `ext/ssr_deno/Cargo.toml` | Add `[features]` with optional `dev-mode` flag |
-| `ext/ssr_deno/src/dev_module_loader.rs` | **New** — ModuleLoader impl for dev (alias resolution, npm resolution, node:* delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache) |
-| `ext/ssr_deno/src/engine/dev_builder.rs` | **New** — `build_dev_worker()` separate from prod builder; includes near-heap-limit cb + web-worker panic guard parity |
+| `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs` | **New** — ModuleLoader impl for dev (alias resolution, npm resolution, node:* delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache) |
+| `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_builder.rs` | **New** — `build_dev_mode_worker()` separate from prod builder; includes near-heap-limit cb + web-worker panic guard parity |
 | `ext/ssr_deno/src/engine/dev_handle.rs` | **New** — `DevIsolateHandle` (single-isolate variant of `IsolateHandle`, owns a `Sender<WorkerMsg>`) |
-| `ext/ssr_deno/src/engine/dev_worker.rs` | **New** — dev worker thread main (mirrors `worker::worker_thread_main`, calls `build_dev_worker`) |
+| `ext/ssr_deno/src/engine/dev_worker.rs` | **New** — dev worker thread main (mirrors `worker::worker_thread_main`, calls `build_dev_mode_worker`) |
 | `ext/ssr_deno/src/engine/dev_load.rs` | **New** — ES module evaluation of entry → `globalThis.__ssr_bundles[id]` |
 | `ext/ssr_deno/src/lib.rs` | Add `#[magnus::function]` entries: `native_dev_worker_new`, `native_dev_load_entry`, `native_dev_render`, `native_dev_render_chunks` |
 | `ext/ssr_deno/Cargo.toml` | Add direct dep `deno_resolver = "=0.78.0"` |
-| `ext/ssr_deno/src/dev_npm_resolver.rs` | **New, thin** — re-export `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver::npm::*`, plus a constructor `build_dev_npm_resolver(project_root) -> (ByonmInNpmPackageChecker, MaybeArc<ByonmNpmResolver<Sys>>)`. ~30 LOC, not a walker. |
+| `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_npm_resolver.rs` | **New, thin** — re-export `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver::npm::*`, plus a constructor `build_dev_mode_npm_resolver(project_root) -> (ByonmInNpmPackageChecker, ByonmNpmResolver<Sys>, PackageJsonResolverRc<Sys>)`. ~30 LOC, not a walker. |
 | `ext/ssr_deno/crates/ssr_deno_core/src/source_mapper.rs` | Add `register_inline(path, sourcemap_bytes, mtime)` |
 | `lib/ssr/deno.rb` | Expose `DevModeBundle` class |
 | `lib/ssr/deno/dev_mode_bundle.rb` | **New** — Ruby DevModeBundle class (holds dev-worker handle; registers in `Bundle.registry` for `find_bundle!` parity) |
-| `lib/ssr/deno/dev_mode_bundle/codegen.rb` | **New, optional** — Ruby-side `import.meta.glob` regex stripper. Skip if entry doesn't use it. |
+| `lib/ssr/deno/dev_mode_bundle/codegen.rb` | **Optional, deferred** — Ruby-side `import.meta.glob` regex stripper. Not implemented (no entries in the test matrix use `import.meta.glob`). |
 | `sig/ssr/deno.rbs` | Add `DevModeBundle` signatures |
 
 ## Compile time risk
@@ -424,7 +424,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 1. ~~Add `dev-mode` feature flag to `Cargo.toml`~~ ✅ DONE — compiles clean
 2. ~~Render-routing FFI stubs in `lib.rs`~~ ✅ DONE — 4 stub functions, cfg-gated, compiles clean
 3. ~~`dev_handle.rs` + `dev_worker.rs`~~ ✅ DONE — single-isolate worker with LoadEntry/Render/RenderChunked messages; + stub dev_builder.rs & dev_load.rs for compilation; compiles clean under `--features dev-mode`. Post-review hardening: (a) `setup_require` failure bubbles to `init_tx` instead of being swallowed (matches prod); (b) FFI handle switched from `usize` to magnus-wrapped `SSR::Deno::DevWorkerHandle` (`Arc<DevIsolateHandle>` inside, `free_immediately, size`); FFI fns now take `&DevWorkerHandle`. Dev-mode FFI methods only registered on the module when feature is enabled — no `not(dev-mode)` stub variants needed.
-4. ~~`dev_builder.rs` — `build_dev_worker()`~~ ✅ DONE — full builder with dev permissions (`PermissionsOptions` w/ `allow_read=[project_root]`), always-on deno_node services (Nop types as placeholders for step 5), NoopModuleLoader placeholder (step 6), heap-limit cb, web-worker panic guard. `oom_triggered` shared with worker thread via parameter (same pattern as prod). Compiles clean under both default and dev-mode features.
+4. ~~`dev_builder.rs` — `build_dev_mode_worker()`~~ ✅ DONE — full builder with dev permissions (`PermissionsOptions` w/ `allow_read=[project_root]`), always-on deno_node services (Nop types as placeholders for step 5), NoopModuleLoader placeholder (step 6), heap-limit cb, web-worker panic guard. `oom_triggered` shared with worker thread via parameter (same pattern as prod). Compiles clean under both default and dev-mode features.
 5. ~~`dev_npm_resolver.rs` — re-export + tiny constructor wiring~~ ✅ DONE — `build_dev_npm_resolver()` creates `ByonmNpmResolver<Sys>` + `ByonmInNpmPackageChecker` from `deno_resolver = "=0.78.0"`. `PackageJsonResolverRc` via `node_resolver`. Compiles clean under both default and dev-mode features (unused warning until wired in step 9).
 6. ~~`dev_module_loader.rs` — alias resolution, npm/`node:` delegation, CSS/asset no-ops, transpile + inline source map, per-file mtime cache~~ ✅ DONE — Full `ModuleLoader` impl. Resolves `@/` aliases (with `.ts/.tsx/.js/.jsx` fallback), bare specifiers via `NodeResolver<ByonmInNpmPackageChecker, DenoIsBuiltInNodeModuleChecker, ByonmNpmResolver<Sys>, Sys>`, `node:` via extension, assets as empty JS. Transpile via `deno_ast` with `SourceMapOption::Separate`. Per-file mtime cache with auto-invalidation. Compiles clean under both default and dev-mode features.
 7. ~~`source_mapper.rs` — `register_inline()` API; wire dev module loads through it~~ ✅ DONE — Added `register_inline(path, sourcemap_json, mtime)` to `SsrSourceMapper`. Changed internal cache value from `(SourceMap, SystemTime)` to `(SourceMap, SystemTime, u32)` where the `u32` is a per-entry line offset (2 for IIFE prod, 1 for ESM dev). `resolve_line` uses the stored offset instead of hardcoded `2`. 3 new tests for `register_inline` (store, zero-offset, bad JSON). All 44 tests pass. Compiles clean under both default and dev-mode.
@@ -446,7 +446,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     ```
     DevIsolateHandle::spawn()
       ├─ creates Arc<DevMtimeCache>
-      ├─ passes clone → build_dev_worker() → DevModuleLoader::new()
+      ├─ passes clone → build_dev_mode_worker() → DevModuleLoader::new()
       └─ keeps clone in DevIsolateHandle.cache
 
     native_dev_check_stale(handle) → handle.cache.any_stale()
@@ -504,8 +504,8 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     |------|---------|
     | `dev_module_loader.rs` | New `DevMtimeCache` struct wrapping `Mutex<HashMap<PathBuf, CacheEntry>>`. `any_stale() -> bool` (snapshot-then-stat, see code above). `DevModuleLoader::new` takes `Arc<DevMtimeCache>`. |
     | `dev_handle.rs` | New `cache: Arc<DevMtimeCache>` field on `DevIsolateHandle`. `DevIsolateHandle::spawn` creates the `Arc<DevMtimeCache>`, stores one clone, passes the other to `dev_worker_thread_main`. New `check_stale(&self) -> bool` method that delegates to `self.cache.any_stale()`. |
-    | `dev_worker.rs` | `dev_worker_thread_main` accepts `Arc<DevMtimeCache>` parameter and forwards it to `build_dev_worker`. |
-    | `dev_builder.rs` | `build_dev_worker` accepts `Arc<DevMtimeCache>` and forwards to `DevModuleLoader::new`. |
+    | `dev_worker.rs` | `dev_worker_thread_main` accepts `Arc<DevMtimeCache>` parameter and forwards it to `build_dev_mode_worker`. |
+    | `dev_builder.rs` | `build_dev_mode_worker` accepts `Arc<DevMtimeCache>` and forwards to `DevModuleLoader::new`. |
     | `lib.rs` | New FFI `native_dev_check_stale(&DevWorkerHandle) -> bool` returning `handle.0.check_stale()`. |
     | `dev_mode_bundle.rb` | `reload_if_changed` private method guarded by `@auto_reload`, wrapped in `@_bundle_mutex.synchronize`. On `check_stale` true: `create_worker` + `load_entry`. Called at the top of `render` and `render_chunks` (after argument prep). |
     | `test_dev_mode_bundle.rb` | Temp-file test: write entry v1 → render → modify file (use `File.utime` with future timestamp to avoid second-granularity mtime collisions on hot writes) → render v2 → verify new output. Also: auto-reload disabled → no reload triggered even on file change. |
@@ -531,7 +531,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     | `app/frontend/entrypoints/ssr-app.tsx` | Same |
     | `app/frontend/entrypoints/ssr-demos.tsx` | Same |
     | `app/frontend/lib/utils.ts` | `isBrowser()` wrapped in try/catch — `import.meta.env` undefined in Deno (see "Side-project ergonomics") |
-    | `ext/ssr_deno/src/dev_module_loader.rs` | `resolve_with_ext_fallback` rejects directories (was matching any `exists()` path including dirs) and handles `dir/index.{ts,tsx,js,jsx}` — **two real bugs, keep in the gem** |
+    | `ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs` | `resolve_with_ext_fallback` rejects directories (was matching any `exists()` path including dirs) and handles `dir/index.{ts,tsx,js,jsx}` — **two real bugs, keep in the gem** |
 
     ### Side-project ergonomics — defer to follow-up
 
@@ -560,49 +560,7 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
     - Minimal SSR entry (no npm imports) loads and renders correctly
     - `render_chunks` with Enumerator works
 
-13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser. Blocks MUI/emotion SSR; step 12 is otherwise green.~~ ✅ WORKED AROUND — `NpmModuleLoader` integration reverted. Instead, `DevModuleLoader` returns a synthetic ESM shim for `node_modules/**/*.{js,cjs}` that reads from `globalThis.__cjs_cache` (pre-populated via `execute_script` between `load_main_es_module` and `evaluate_module`). Named CJS exports are discovered via static analysis (`deno_ast::analyze_cjs`), ESM `.js` files are detected via `package.json` type + `deno_ast` parse, subpackage resolution has a manual fallback, and resolver conditions are split into import/require overrides. Full analysis: `plans/archived/dev-mode-cjs-interop-bug.md`.
-
-    ### Root cause
-
-    `DevModuleLoader::load` reads files with `std::fs::read_to_string` and returns them as `ModuleType::JavaScript` source. V8 parses as ESM. CJS files (eg `@emotion/cache/dist/emotion-cache.cjs.js`) contain `'use strict'; Object.defineProperty(exports, '__esModule', ...);` and `require(...)` — V8 ESM parser fails on `exports`/`require` as undefined.
-
-    NodeResolver picks the `cjs.mjs` shim under `import` condition; the shim re-exports from CJS files which then crash V8. Tuning conditions (`worker`, `edge-light`, `development`) only steers around individual cases; not a general fix.
-
-    ### Solution
-
-    `deno_resolver 0.78.0` ships the full translator stack (already in our binary as transitive dep):
-
-    | Component | Location |
-    |-----------|----------|
-    | `CjsTracker<...>` | `deno_resolver-0.78.0/cjs/mod.rs` — decides "is this file CJS?" |
-    | `DenoCjsCodeAnalyzer<Sys>` | `deno_resolver-0.78.0/cjs/analyzer/mod.rs:138` — static analysis of `module.exports` |
-    | `NodeCodeTranslator<...>` | `node_resolver-0.85.0/analyze.rs:542` — synthesizes ESM source from CJS |
-    | `NpmModuleLoader<...>` | `deno_resolver-0.78.0/loader/npm.rs:110` — high-level: detect CJS, translate, return ESM |
-
-    Entry point: `NodeCodeTranslator::translate_cjs_to_esm(specifier, source).await -> Cow<str>`. Output is ESM that V8 happily parses — synthesizes shims for `module`, `exports`, `require`, `__filename`, `__dirname`, then emits `export const X = ...` for each statically-analyzed name and `export default module_exports` for the default.
-
-    ### Wiring
-
-    `DevModuleLoader::load` currently returns `ModuleLoadResponse::Sync`. Switch to async for the npm path because `translate_cjs_to_esm` is async (recursively analyzes re-exports).
-
-    | File | Change |
-    |------|--------|
-    | `dev_npm_resolver.rs` | Extend builder to return `(checker, npm_resolver_rc, pkg_json_resolver_rc, npm_module_loader_rc)`. Construct `CjsTracker`, `DenoCjsCodeAnalyzer`, `NodeCodeTranslator`, `NpmModuleLoader` from the shared trio. Use shared `NodeAnalysisCache` (persistent across reloads — CJS analysis is mtime-keyed). |
-    | `dev_module_loader.rs` | New `Arc<NpmModuleLoader<...>>` field. In `load()`, detect `path` is inside `project_root/node_modules/`; for those, return `ModuleLoadResponse::Async(Box::pin(async move { npm_loader.load(...).await }))`. Project source path stays sync. |
-    | `dev_builder.rs` | Plumb the new `Arc<NpmModuleLoader<...>>` from `build_dev_npm_resolver` through `build_dev_worker` → `DevModuleLoader::new`. |
-    | `dev_builder.rs` (revert) | Conditions back to `["node", "import"]`. The `worker`/`edge-light`/`development` workarounds become unnecessary once CJS files load correctly through the real `import` path. |
-    | Tests | Side-project entry with `import { renderToString } from 'react-dom/server'` + `import createCache from '@emotion/cache'` — verify both load + execute. Capture critical CSS via `createEmotionServer` to round-trip the full emotion SSR API. |
-
-    ### Open questions to resolve during impl
-
-    - **`NodeAnalysisCache` lifetime**: shared across worker respawns or per-worker? CJS analysis is deterministic (input source → output ESM) — could persist globally like `SsrSourceMapper`. Saves re-analysis on auto-reload.
-    - **`is_maybe_cjs` heuristic accuracy**: based on `package.json` `type` field + `.cjs` extension + parse-time `is_script` detection. Confirm it correctly identifies `*.cjs.js` files inside ESM-typed packages.
-    - **Sync-vs-Async loader split**: cleanest is "if inside `node_modules/`, async via NpmModuleLoader; else sync via existing path". Edge case: project source that does `import './foo.cjs'` (CJS in user code). Rare; defer.
-    - **Source-map registration for translated modules**: translator output preserves `//# sourceMappingURL=` if the input had one. Most CJS bundles don't have sourcemaps. Stack frames in translated code will point at the synthesized ESM lines. Acceptable v1.
-
-    ### Estimated effort
-
-    ~150-250 LOC for the wiring (mostly constructor boilerplate with deeply-nested generics). The async load path is the structural change but limited to one branch in `load()`. Recommend a 14a (real_npm_types builder extension), 14b (DevModuleLoader async branch + NpmModuleLoader integration), 14c (revert conditions + side-project re-test) split.
+13. ~~**CJS→ESM interop** — wire `deno_resolver::loader::NpmModuleLoader` so packages shipping CJS-first (React, `@emotion/*`, `@mui/*`, `stylis`, ~most of npm) load through `NodeCodeTranslator::translate_cjs_to_esm` instead of being fed raw to V8's ESM parser.~~ ✅ WORKED AROUND — `NpmModuleLoader` integration reverted due to an upstream V8 re-entrancy bug (see `plans/archived/dev-mode-cjs-interop-bug.md` for full analysis). Instead, `DevModuleLoader` returns a synthetic ESM shim for `node_modules/**/*.{js,cjs}` that reads from `globalThis.__cjs_cache` (pre-populated via `execute_script` between `load_main_es_module` and `evaluate_module`). Named CJS exports are discovered via static analysis (`deno_ast::analyze_cjs`), ESM `.js` files are detected via `package.json` type + `deno_ast` parse, subpackage resolution has a manual fallback, and resolver conditions are split into import/require overrides.
 
 14. ✅ **Validate against side-project with real npm imports** — MUI/emotion/React load and render correctly through the CJS warmup cache. Both bundles (`:app` + `:demos`, ~30 components each) produce valid HTML with full MUI Dashboard/emotion SSR output. No build step — `rails s` Just Works.
     - `renderToString` from `react-dom/server` returns valid HTML ✓
@@ -613,9 +571,9 @@ These are decided behaviors that need a one-line callout in user-facing docs (RE
 
 15. ~~**NpmModuleLoader caching** — npm loads currently bypass `DevMtimeCache` and `NullNodeAnalysisCache` is a no-op. Every render re-walks the full transpile graph. Acceptable for POC; for daily use, wire a real `NodeAnalysisCache` impl (`Arc<DashMap<...>>`) shared across worker respawns. Combined with the transpile-cache-carry follow-up in `plans/dev-mode-followups.md`, gets reload cost down from ~1-3s to sub-second.~~ ❌ OBSOLETE — `NpmModuleLoader` removed; CJS now flows through `globalThis.require` + deno_node's internal CJS cache (per-isolate, persists across `dev_load_entry` calls within a worker lifetime). The "shim regeneration" cost is one `format!` per npm file — negligible. CJS hot-reload across worker respawns is moot because the worker is dropped+respawned on `auto_reload` (step 11).
 
-16. **Resolver dedup** — two `NodeResolver` instances per worker (`DevModuleLoader` and `build_dev_node_services`). `build_dev_npm_module_loader` is gone (step 13 workaround). Memory cost ~KB but conceptually wasteful. Refactor `build_dev_npm_resolver` to return a fully-built `Arc<NodeResolver<Byonm...>>` consumed by both. `DevModuleLoader::new`'s second `build_dev_npm_resolver` call also goes away — pass the trio from `build_dev_worker`. Mechanical refactor, no behavior change.
+16. ✅ **Resolver dedup** — `build_dev_mode_npm_resolver` called once per worker; the resolver trio (`ByonmInNpmPackageChecker`, `ByonmNpmResolver<Sys>`, `PackageJsonResolverRc<Sys>`) is shared between `build_dev_node_services` and `DevModeModuleLoader`. Duplicated `NodeResolverOptions` extracted into `dev_node_resolver_options()` in `dev_mode_npm_resolver.rs`. Commits: `b8c7338`.
 
-17. Update `plans/` index, ONBOARDING/README dev-mode section
+17. ✅ **Dev-mode docs** — `docs/dev-mode.md` (full reference), README section with usage example, `docs/architecture.md` file table updated. No `ONBOARDING.md` or `plans/index` exist in this project — skipping.
 
 ## Future
 
