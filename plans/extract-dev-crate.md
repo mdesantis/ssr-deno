@@ -1,6 +1,6 @@
 # Extract Dev-Mode to `ssr_deno_dev_mode` Crate
 
-**Status (2026-05-14)**: ✅ COMPLETED. Commit `3c32c46`.
+**Status (2026-05-14)**: ✅ COMPLETED. Commit `3c32c46`. Two steps deviated post-completion: (6) `setup_require` stayed in root crate, (7) test file restored to root crate. See individual steps for details.
 
 ## Goal
 
@@ -47,9 +47,8 @@ ext/ssr_deno/
 │           ├── lib.rs                  # register_dev_mode_ffi(), public re-exports
 │           ├── dev_mode_module_loader.rs
 │           ├── dev_mode_npm_resolver.rs
-│           ├── require_loader.rs       # DevModeNodeRequireLoader (dev-only)
-│           ├── dev_mode_builder.rs
-│           └── setup_require.rs
+        │           ├── require_loader.rs       # DevModeNodeRequireLoader (dev-only)
+        │           └── dev_mode_builder.rs
 └── src/
     ├── lib.rs                  # magnus init calls register_dev_mode_ffi() if dev-mode
     ├── sys.rs                  # Sys impl (stays; used by both via ssr_deno_sys crate — see Sys crate section)
@@ -101,9 +100,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
 `ssr_deno_dev_mode/src/lib.rs`:
 ```rust
 pub fn register_dev_mode_ffi(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
-    module.define_singleton_method("native_dev_worker_new", function!(..., 2))?;
-    module.define_singleton_method("native_dev_render", function!(..., 4))?;
-    // ... etc
+    // All dev-mode FFI methods (native_dev_*) are registered in the root crate
+    // because they depend on the render engine. This function is a placeholder
+    // for any future dev-mode FFI that doesn't need the render engine.
+    let _ = (ruby, module);
     Ok(())
 }
 
@@ -112,7 +112,6 @@ pub use module_loader::{DevModeModuleLoader, DevModeMtimeCache, SharedAliasMap, 
 pub use npm_resolver::build_dev_mode_npm_resolver;
 pub use require_loader::DevModeNodeRequireLoader;
 pub use builder::build_dev_mode_worker;
-pub use setup_require::setup_require;
 ```
 
 ### Dependency graph
@@ -188,14 +187,11 @@ ssr_deno (root) ──depends──▶ ssr_deno_dev_mode (optional, via dev-mode
 - Replace `use crate::require_loader::DevModeNodeRequireLoader` → `use crate::require_loader::DevModeNodeRequireLoader` (same crate)
 - Rename function to `build_dev_mode_worker`
 
-### 6. Extract `setup_require`
-- Copy from `engine/worker.rs` (the `pub(crate) fn setup_require(...)`) to `crates/ssr_deno_dev_mode/src/setup_require.rs`
-- Remove from root's `worker.rs`; add `use ssr_deno_dev_mode::setup_require` in root's `dev_mode_worker.rs`
+### 6. Extract `setup_require` — ❌ NOT EXTRACTED
+`setup_require` remains in root `engine/worker.rs:173`. `dev_worker.rs` references it via `super::worker::setup_require`. No `setup_require.rs` in dev crate. Acceptable: the function is short and both prod (`node_builtins` path) and dev call it; moving it offers negligible benefit vs breaking the cross-crate reference.
 
-### 7. Move test file
-- `src/cjs_interop_repro_test.rs` → `crates/ssr_deno_dev_mode/tests/cjs_interop_repro.rs`
-- Update imports: `use crate::dev_mode_module_loader::*` → `use ssr_deno_dev_mode::*`
-- Update `build_worker` calls → `build_dev_mode_worker`
+### 7. Move test file — ❌ REVERTED
+Initially moved to `crates/ssr_deno_dev_mode/tests/cjs_interop_repro.rs`, then restored to root `src/cjs_interop_repro_test.rs` in commit `695e93d`. The test references types from both root (`crate::engine::worker::setup_require`, `crate::engine::dev_load::warm_cjs_cache`) and dev crate (`ssr_deno_dev_mode::*`), so root unit test is the correct home.
 
 ### 8. Remove dev modules from root `lib.rs`
 - Delete `mod dev_module_loader;` and `mod dev_npm_resolver;` (moved to dev crate)
