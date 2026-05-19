@@ -199,4 +199,4 @@ Defer — dev workflows don't usually need this.
 
 [`dev_builder.rs:134`](../ext/ssr_deno/src/engine/dev_builder.rs) sets `v8_code_cache: None`. Wiring a real `Arc<dyn CodeCache>` (disk-backed) would amortize first-load transpile cost across `rails s` restarts.
 
-Out of scope for v1. Listed in the main plan's [Future](ssr-source-dev-mode.md#future) section.
+Out of scope for v1. Listed in the main plan's [Future](archived/ssr-source-dev-mode.md#future) section.

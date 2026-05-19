@@ -470,11 +470,11 @@ If `dev_load_entry` raises `"Entry did not assign a function to globalThis.rende
 - [ ] Test against Deno CLI to determine if embedder-specific
 - [ ] File upstream issue at `denoland/deno` with `embedder` label, link to repro
 - [ ] Decide: revert step 13 vs leave wired with docs
-- [ ] Update `plans/ssr-source-dev-mode.md` §step 13 status: blocked → revert or limited
+- [ ] Update `plans/ssr-source-dev-mode.md` §step 13 status: blocked → revert or limited (now archived)
 
 ## Cross-references
 
 - [Main plan](ssr-source-dev-mode.md) step 13 — implementation that hit this wall
-- [Follow-ups](dev-mode-followups.md) — non-blocking cleanups for dev mode
+- [Follow-ups](../dev-mode-followups.md) — non-blocking cleanups for dev mode
 - [Discussion #23468](https://github.com/denoland/deno/discussions/23468) — maintainer-acknowledged CJS embedder unreliability
 - [Issue #28919](https://github.com/denoland/deno/issues/28919) — adjacent `react-dom/server` hang in CLI
