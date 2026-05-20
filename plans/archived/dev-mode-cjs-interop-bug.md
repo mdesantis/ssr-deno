@@ -475,6 +475,6 @@ If `dev_load_entry` raises `"Entry did not assign a function to globalThis.rende
 ## Cross-references
 
 - [Main plan](ssr-source-dev-mode.md) step 13 — implementation that hit this wall
-- [Follow-ups](../dev-mode-followups.md) — non-blocking cleanups for dev mode
+- [Follow-ups](../archived/dev-mode-followups.md) — non-blocking cleanups for dev mode
 - [Discussion #23468](https://github.com/denoland/deno/discussions/23468) — maintainer-acknowledged CJS embedder unreliability
 - [Issue #28919](https://github.com/denoland/deno/issues/28919) — adjacent `react-dom/server` hang in CLI
