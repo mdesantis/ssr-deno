@@ -35,7 +35,7 @@ puts html
 
 ### Runtime settings
 
-Set **before** creating any `Bundle` instance:
+Set **before** creating any `SSR::Deno::Bundle` instance:
 
 ```ruby
 SSR::Deno::Config.max_heap_size_mb = 128   # Per-isolate V8 heap (default: 64 MB)
@@ -285,8 +285,8 @@ bundle.auto_reload = true
 html = bundle.render({ page: 'home' })
 ```
 
-Same `#render` / `#render_chunks` interface as `Bundle`; registers in
-`Bundle.registry` so the Rails helper resolves it transparently.
+Same `#render` / `#render_chunks` interface as `SSR::Deno::Bundle`; registers in
+`SSR::Deno::Bundle.registry` so the Rails helper resolves it transparently.
 
 Full docs, CJS interop notes, caveats: [`docs/dev-mode.md`](docs/dev-mode.md).
 
@@ -355,7 +355,7 @@ Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
 
 ### Basic
 
-`ssr_render` delegates to `Bundle#render` and accepts the same `raw_input:` and `raw_output:` options.
+`ssr_render` delegates to `SSR::Deno::Bundle#render` and accepts the same `raw_input:` and `raw_output:` options.
 
 Rails auto-escapes HTML in views. Call `.html_safe` on the output if your bundle returns trusted HTML:
 
@@ -384,7 +384,6 @@ See [CSP Nonce](#csp-nonce) for standalone usage and JS-side setup.
 - Ruby 3.3+
 - Rust toolchain ([rustup](https://rustup.rs))
 - Deno (for sample builds)
-- Bundler
 
 **Linux**
 
