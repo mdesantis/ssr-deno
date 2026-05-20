@@ -103,21 +103,9 @@ Could lazy-init on first CJS-requiring import. But detection requires hooking in
 
 Defer — accept the constant cost.
 
-## Cleanup — Explicit close for stale workers on auto-reload
-
-`DevModeBundle#reload_if_changed` ([`dev_mode_bundle.rb`](../lib/ssr/deno/dev_mode_bundle.rb)) reassigns `@handle = SSR::Deno.native_dev_worker_new(...)`. The old `DevWorkerHandle` Ruby object becomes GC-eligible, but the Rust `Arc<DevIsolateHandle>` (and the V8 isolate ~64 MB + worker thread) only drops when Ruby GC reclaims the wrapper.
-
-Typical dev (1-2 reloads/min): GC keeps up; no observable buildup.
-
-Rapid-save bursts (user mass-saves 10 files via editor "save all"): several stale workers may co-exist for tens of seconds until GC fires. Each ~64 MB V8 heap. Peak RSS spikes.
-
-Fixes:
-- **A**: explicit `close` method on `DevModeBundle` — call before reassigning `@handle`. Old Arc dropped synchronously; worker thread observes channel close immediately.
-- **B**: store `IsolateHandle::thread_safe_handle()` in `DevWorkerHandle`; Drop impl triggers `terminate_execution()` to force worker thread to fast-exit even before the channel closes.
-
 ## ✅ DONE — Explicit close on reload (2026-05-20)
 
-A-path implemented: `DevModeBundle#close_handle` (private, sets `@handle = nil`) called before `create_worker` in `reload_if_changed`. Old `Arc<DevModeIsolateHandle>` dropped synchronously on handle reassign; worker thread observes channel close on next `rx.recv()`. In-flight renders keep the old worker alive via their captured `Arc` — no premature termination.
+`DevModeBundle#close_handle` (private, sets `@handle = nil`) called before `create_worker` in `reload_if_changed`. Old `Arc<DevModeIsolateHandle>` dropped synchronously on handle reassign; worker thread observes channel close on next `rx.recv()`. In-flight renders keep the old worker alive via their captured `Arc` — no premature termination.
 
 ## Future — Better `Drop` story for in-flight render on handle drop
 
