@@ -31,7 +31,7 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 - **Keep `sig/ssr/deno.rbs` in sync.** Update in same step as any method signature/type/exception change.
 - **Archiving plans: stage both new file and old-path deletion.** Use `git mv` or add deletion explicitly. Update all references to old path.
 - **Release workflow:**
-  - Bump `lib/ssr/deno/version.rb`, `ext/ssr_deno/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml` (all three match).
+  - Bump all `Cargo.toml` files in the workspace: `ext/ssr_deno/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_sys/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_dev_mode/Cargo.toml`; also `lib/ssr/deno/version.rb` (all match).
   - Run `bundle install` → commit `Gemfile.lock`.
   - Move `## Unreleased` to `## [version] - YYYY-MM-DD`, add fresh empty `## Unreleased` on top.
   - Tag commit (e.g. `v0.1.0-alpha.4`).
