@@ -19,23 +19,9 @@ Options:
 
 Defer until profiling shows lock contention. Sticky write-lock acquisition on a single-threaded worker is essentially zero contention in practice.
 
-## Performance — `Arc<str>` in `CacheEntry`
+## ✅ DONE — Performance — `Arc<str>` in `CacheEntry` (2026-05-20)
 
-[`dev_mode_module_loader.rs:45 (CacheEntry)`](../ext/ssr_deno/crates/ssr_deno_dev_mode/src/dev_mode_module_loader.rs) holds `code: String` and `source_map: Option<String>`. `check_cache` clones both on hit. For a 500-module render with ~10-100 KB per module, that's MBs of allocation per render.
-
-```rust
-struct CacheEntry {
-    mtime: SystemTime,
-    code: Arc<str>,
-    source_map: Option<Arc<str>>,
-}
-```
-
-`ModuleSourceCode::String` accepts `FastString` which has `From<Arc<str>>` ([`fast_string.rs:441`](file:///home/maurizio/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deno_core-0.400.0/fast_string.rs)). Clone cost drops to a refcount bump.
-
-Constraint: `register_inline` takes `&str`; would still need `.as_ref()` borrow. ✓ trivial.
-
-Defer — measure first. Dev cold-start latency dominated by transpile, not cache hits.
+`CacheEntry.code` and `CacheEntry.source_map` changed from `String`/`Option<String>` to `Arc<str>`/`Option<Arc<str>>`. `check_cache` clone drops from MBs of allocation per render to a refcount bump. `ModuleSourceCode::String` accepts `FastString` which has `From<Arc<str>>`. Side effect: `code.clone()` at line 769 (cache write + return) also drops to a refcount bump.
 
 ## Refactor — `RefCell` instead of `Mutex` for transpile cache
 

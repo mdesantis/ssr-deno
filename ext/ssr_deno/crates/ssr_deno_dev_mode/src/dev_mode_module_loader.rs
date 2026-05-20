@@ -45,8 +45,8 @@ static EMPTY_JS: &str = "export {};\n";
 
 struct CacheEntry {
     mtime: SystemTime,
-    code: String,
-    source_map: Option<String>,
+    code: Arc<str>,
+    source_map: Option<Arc<str>>,
 }
 
 pub struct DevModeMtimeCache {
@@ -80,7 +80,7 @@ impl DevModeMtimeCache {
         })
     }
 
-    fn check(&self, path: &Path) -> Option<(String, Option<String>)> {
+    fn check(&self, path: &Path) -> Option<(Arc<str>, Option<Arc<str>>)> {
         let current_mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
         let cache = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = cache.get(path)?;
@@ -91,7 +91,7 @@ impl DevModeMtimeCache {
         }
     }
 
-    fn update(&self, path: &Path, code: String, source_map: Option<String>) {
+    fn update(&self, path: &Path, code: Arc<str>, source_map: Option<Arc<str>>) {
         let Ok(mtime) = std::fs::metadata(path).and_then(|m| m.modified()) else {
             return;
         };
@@ -440,11 +440,11 @@ impl DevModeModuleLoader {
         resolve_with_ext_fallback(&candidate)
     }
 
-    fn check_cache(&self, path: &Path) -> Option<(String, Option<String>)> {
+    fn check_cache(&self, path: &Path) -> Option<(Arc<str>, Option<Arc<str>>)> {
         self.cache.check(path)
     }
 
-    fn update_cache(&self, path: &Path, code: String, source_map: Option<String>) {
+    fn update_cache(&self, path: &Path, code: Arc<str>, source_map: Option<Arc<str>>) {
         self.cache.update(path, code, source_map)
     }
 
@@ -465,14 +465,14 @@ impl DevModeModuleLoader {
     fn load_and_transpile_source(
         &self,
         path: &Path,
-    ) -> Result<(String, Option<String>), JsErrorBox> {
+    ) -> Result<(Arc<str>, Option<Arc<str>>), JsErrorBox> {
         let source = std::fs::read_to_string(path)
             .map_err(|e| JsErrorBox::generic(format!("Failed to read {}: {e}", path.display())))?;
 
         let media_type = MediaType::from_path(path);
 
         if !needs_transpile(media_type) {
-            return Ok((source, None));
+            return Ok((source.into(), None));
         }
 
         let specifier = Url::from_file_path(path).map_err(|_| {
@@ -518,7 +518,10 @@ impl DevModeModuleLoader {
             })?
             .into_source();
 
-        Ok((transpiled.text, transpiled.source_map))
+        Ok((
+            transpiled.text.into(),
+            transpiled.source_map.map(Into::into),
+        ))
     }
 
     /// Fallback for subpackage patterns that [`NodeResolver`] can't handle.
