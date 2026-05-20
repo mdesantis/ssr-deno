@@ -47,11 +47,9 @@ Renamed twice: first `real_npm_types.rs → dev_npm_resolver.rs` (2026-05-14, st
 
 `native_dev_load_entry` now wraps `block_on_load_entry` in `rb_thread_call_without_gvl`, same pattern as `native_dev_render`. Other Ruby threads no longer stall during the ~1-3s module graph load.
 
-## Future — `native_dev_check_stale` GVL release
+## ✅ DONE — `native_dev_check_stale` GVL release (2026-05-20)
 
-`native_dev_check_stale` ([`lib.rs`](../ext/ssr_deno/src/lib.rs)) walks the mtime cache and stats every loaded path. On a 500-module graph that's ~500 syscalls per render call (worst case — `auto_reload` enabled). Holds Ruby GVL throughout. Multi-threaded Puma dev workers stall tens of ms per render.
-
-Acceptable for typical dev. Future: same `rb_thread_call_without_gvl` pattern — the body is FFI-only, no Ruby objects touched.
+Same `rb_thread_call_without_gvl` pattern as `native_dev_render` and `native_dev_load_entry`. Multi-threaded Puma no longer stalls during the ~500-syscall mtime walk.
 
 ## Future — Carry transpile cache across auto-reload
 

@@ -422,8 +422,21 @@ fn native_dev_worker_new(
 }
 
 #[cfg(feature = "dev-mode")]
+unsafe extern "C" fn dev_check_stale_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+    let handle = Box::from_raw(data as *mut Arc<engine::dev_handle::DevModeIsolateHandle>);
+    let result = handle.check_stale();
+    Box::into_raw(Box::new(result)) as *mut std::ffi::c_void
+}
+
+#[cfg(feature = "dev-mode")]
 fn native_dev_check_stale(handle: &DevWorkerHandle) -> bool {
-    handle.0.check_stale()
+    let args = Box::new(handle.0.clone());
+    let result_ptr = unsafe {
+        let ptr = Box::into_raw(args) as *mut std::ffi::c_void;
+        rb_thread_call_without_gvl(dev_check_stale_worker, ptr, None, std::ptr::null_mut())
+    };
+    let result = unsafe { Box::from_raw(result_ptr as *mut bool) };
+    *result
 }
 
 // -- GVL-release helpers for dev load entry -------------------------------
