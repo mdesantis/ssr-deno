@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.7] - 2026-05-20
+
 ### Added
 - **RuboCop Rails** — `rubocop-rails` gem added, scoped to `lib/ssr/deno/rails/` via `.rubocop-rails.yml` config and `rubocop:rails` Rake task.
 - **`SSR::Deno::LogSubscriber`** — new `ActiveSupport::LogSubscriber` subclass replaces inline `.ssr_deno` subscription in `railtie.rb`. Follows ActionView pattern: per-method handlers, `subscribe_log_level` for level control, lazy block evaluation. Payloads now include `identifier:` key alongside `bundle_name:`.
