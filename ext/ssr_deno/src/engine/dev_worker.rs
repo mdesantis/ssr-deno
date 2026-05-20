@@ -74,7 +74,7 @@ pub fn dev_worker_thread_main(
                         &mut worker,
                         &entry_path,
                         &alias_map,
-                        &resolve_alias,
+                        resolve_alias,
                         &cjs_paths,
                     )
                     .await;

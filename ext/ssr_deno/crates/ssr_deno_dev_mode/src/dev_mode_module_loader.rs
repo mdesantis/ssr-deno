@@ -736,7 +736,7 @@ impl ModuleLoader for DevModeModuleLoader {
             // before V8 starts evaluating the module graph.
             {
                 let mut guard = self.cjs_paths.lock().unwrap_or_else(|e| e.into_inner());
-                guard.push(canonical.clone());
+                guard.push(canonical);
             }
             let mut shim = format!(
                 "const _m = (globalThis.__cjs_cache || {{}})[{abs_literal}];\n\
@@ -782,11 +782,8 @@ impl ModuleLoader for DevModeModuleLoader {
 /// Sort a `HashMap` of aliases by descending prefix length and store in the
 /// shared map. Longest-prefix wins at resolve time (Vite/webpack semantics).
 /// Called by `dev_load_entry` before each entry load.
-pub fn set_aliases(shared: &SharedAliasMap, aliases: &HashMap<String, String>) {
-    let mut sorted: Vec<(String, String)> = aliases
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+pub fn set_aliases(shared: &SharedAliasMap, aliases: HashMap<String, String>) {
+    let mut sorted: Vec<(String, String)> = aliases.into_iter().collect();
     sorted.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
     let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
     *guard = sorted;

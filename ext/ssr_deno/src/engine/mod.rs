@@ -52,7 +52,8 @@ fn intern_script_name(name: &str) -> &'static str {
         return cached;
     }
 
-    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
-    guard.insert(name.to_owned(), leaked);
+    let owned = name.to_owned();
+    let leaked: &'static str = Box::leak(owned.clone().into_boxed_str());
+    guard.insert(owned, leaked);
     leaked
 }

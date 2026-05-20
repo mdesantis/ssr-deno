@@ -73,7 +73,7 @@ pub async fn dev_load_entry(
     worker: &mut MainWorker,
     entry_path: &str,
     alias_map: &SharedAliasMap,
-    new_aliases: &HashMap<String, String>,
+    new_aliases: HashMap<String, String>,
     cjs_paths: &SharedCjsPaths,
 ) -> Result<(), SSRDenoError> {
     // 1. Update the shared alias map (DevModuleLoader reads it lazily).
