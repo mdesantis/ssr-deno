@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Added
+- **`SSR::Deno::RenderError#js_error_name`** — extracts JS error class name (e.g. `TypeError`, `RangeError`) from the error message. Sync throws and async rejections both supported; returns `nil` for non-standard messages.
+
+### Fixed
+- **Async rejection errors now include full error type** — `err.toString()` replaces `err.message` in JS render promise rejection handlers, so `RenderError#message` includes the error class name (e.g. `TypeError: expected number` instead of just `expected number`).
+
 ## [0.1.0-alpha.7] - 2026-05-20
 
 ### Added

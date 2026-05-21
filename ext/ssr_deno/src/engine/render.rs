@@ -129,7 +129,7 @@ pub async fn render(
         if (__result && typeof __result.then === 'function') {{
             __result.then(
                 (html) => {{ globalThis.__ssr_deno_result = html; }},
-                (err) => {{ globalThis.__ssr_deno_error = (err && err.message) || String(err); }}
+                (err) => {{ globalThis.__ssr_deno_error = (err && err.toString()) || String(err); }}
             );
         }} else {{
             globalThis.__ssr_deno_result = __result;

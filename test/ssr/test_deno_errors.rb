@@ -141,6 +141,76 @@ module SSR
       assert_includes out, 'bundle.js'
     end
 
+    def test_js_error_name_returns_nil_for_plain_message
+      error = SSR::Deno::RenderError.new('something went wrong')
+
+      assert_nil error.js_error_name
+    end
+
+    def test_js_error_name_on_invalid_json
+      error = assert_raises(SSR::Deno::RenderError) do
+        @bundle.render('invalid-json', raw_input: true)
+      end
+
+      assert_equal 'SyntaxError', error.js_error_name
+    end
+
+    def test_js_error_name_extracts_type_from_sync_throw
+      out, _, status = run_subprocess(<<~RUBY)
+        require 'tmpdir'
+
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'bundle.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              throw new TypeError('expected number');
+            };
+          JS
+
+          begin
+            bundle = SSR::Deno::Bundle.new(js_path)
+            bundle.render({})
+          rescue SSR::Deno::RenderError => e
+            puts e.js_error_name
+            exit 0
+          end
+
+          exit 1
+        end
+      RUBY
+
+      assert_predicate status, :success?
+      assert_equal 'TypeError', out.strip
+    end
+
+    def test_js_error_name_extracts_type_from_async_rejection
+      out, _, status = run_subprocess(<<~RUBY)
+        require 'tmpdir'
+
+        Dir.mktmpdir do |dir|
+          js_path = File.join(dir, 'bundle.js')
+          File.write(js_path, <<~JS)
+            globalThis.render = function() {
+              return Promise.reject(new RangeError('out of range'));
+            };
+          JS
+
+          begin
+            bundle = SSR::Deno::Bundle.new(js_path)
+            bundle.render({})
+          rescue SSR::Deno::RenderError => e
+            puts e.js_error_name
+            exit 0
+          end
+
+          exit 1
+        end
+      RUBY
+
+      assert_predicate status, :success?
+      assert_equal 'RangeError', out.strip
+    end
+
     # See `builder.rs` — the `create_web_worker_cb` for why this doesn't crash.
     def test_web_worker_in_ssr_bundle_does_not_crash_process
       assert_subprocess(<<~RUBY, 'Expected JsRuntimeWorkerError from new Worker()')
