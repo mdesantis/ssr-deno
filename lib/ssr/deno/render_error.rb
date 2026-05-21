@@ -9,7 +9,7 @@ module SSR
       # and async rejections (after err.toString()) as "ClassName: message".
       # Returns nil if the message does not contain a recognisable class prefix.
       def js_error_name
-        message.match(/\b(\w+Error):/i) && $1
+        message.match(/\b(\w+Error):/i) && ::Regexp.last_match(1)
       end
     end
   end
