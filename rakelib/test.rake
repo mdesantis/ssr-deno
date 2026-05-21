@@ -227,6 +227,8 @@ task 'coverage:check' do
   puts "Merged line coverage: #{line_pct&.round(2)}%"
   puts "Merged branch coverage: #{branch_pct&.round(2)}%" if branch_pct
 
+  results.format!
+
   abort "Merged line coverage #{line_pct.round(2)}% is below 100%" if line_pct && line_pct < 100.0
   abort "Merged branch coverage #{branch_pct.round(2)}% is below 100%" if branch_pct && branch_pct < 100.0
 end
