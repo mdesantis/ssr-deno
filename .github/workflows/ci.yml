@@ -112,6 +112,7 @@ jobs:
         with:
           name: coverage-${{ matrix.ruby }}
           path: coverage/
+          include-hidden-files: true
           retention-days: 7
       - name: Check Rust formatting
         run: bundle exec rake cargo:fmt
