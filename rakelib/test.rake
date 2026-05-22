@@ -173,6 +173,9 @@ task 'coverage:check' do
   require 'simplecov'
   require 'json'
 
+  line_threshold = ENV.fetch('SSR_DENO_COVERAGE_LINE_THRESHOLD', '100').to_f
+  branch_threshold = ENV.fetch('SSR_DENO_COVERAGE_BRANCH_THRESHOLD', '100').to_f
+
   rs_path = File.join(SimpleCov.coverage_path, '.resultset.json')
 
   abort 'No coverage results — run `rake test` first' unless File.exist?(rs_path)
@@ -229,6 +232,6 @@ task 'coverage:check' do
 
   results.format!
 
-  abort "Merged line coverage #{line_pct.round(2)}% is below 100%" if line_pct && line_pct < 100.0
-  abort "Merged branch coverage #{branch_pct.round(2)}% is below 100%" if branch_pct && branch_pct < 100.0
+  abort "Merged line coverage #{line_pct.round(2)}% is below #{line_threshold}%" if line_pct && line_pct < line_threshold
+  abort "Merged branch coverage #{branch_pct.round(2)}% is below #{branch_threshold}%" if branch_pct && branch_pct < branch_threshold
 end
