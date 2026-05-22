@@ -94,6 +94,8 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Apply rusty_v8 patch
+        run: git -C vendor/rusty_v8/build apply ../../../vendor/rusty_v8.diff
       - name: Compile native extension
         run: bundle exec rake compile
       - name: Run Rust coverage (cargo-llvm-cov)
