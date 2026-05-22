@@ -492,8 +492,7 @@ mod tests {
     #[test]
     fn resolve_nonzero_src_col() {
         // "AAAK" encodes gen_col=0, source=0, orig_line=0, orig_col=5 (VLQ K = +5)
-        let json =
-            br#"{"version":3,"file":"bundle.js","sources":["src.tsx"],"mappings":"AAAK"}"#;
+        let json = br#"{"version":3,"file":"bundle.js","sources":["src.tsx"],"mappings":"AAAK"}"#;
         let map = SourceMap::from_slice(json).expect("valid map");
         let mut mapper = SsrSourceMapper::new();
         mapper.insert_map("bundle.js", map);

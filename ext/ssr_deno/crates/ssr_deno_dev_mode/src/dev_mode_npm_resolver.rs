@@ -67,3 +67,15 @@ pub fn build_dev_mode_npm_resolver(project_root: &Path) -> DevModeNpmResolverPar
         node_resolution_sys: NodeResolutionSys::new(Sys, None),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dev_node_resolver_options_fields() {
+        let opts = dev_node_resolver_options();
+        assert!(!opts.is_browser_platform);
+        assert!(opts.bundle_mode);
+    }
+}

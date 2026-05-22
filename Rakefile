@@ -27,5 +27,5 @@ RuboCop::RakeTask.new('rubocop:rails') do |task|
   task.options = ['--config', '.rubocop-rails.yml']
 end
 
-task default: %i[compile cargo:clippy cargo:test cargo:coverage cargo:fmt] +
+task default: %i[compile cargo:clippy cargo:test cargo:test:ssr_deno_dev_mode cargo:coverage cargo:fmt] +
               %i[samples:build test coverage:check perf:check rubocop rubocop:rails rbs]
