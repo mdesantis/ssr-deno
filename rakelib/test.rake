@@ -232,6 +232,10 @@ task 'coverage:check' do
 
   results.format!
 
-  abort "Merged line coverage #{line_pct.round(2)}% is below #{line_threshold}%" if line_pct && line_pct < line_threshold
-  abort "Merged branch coverage #{branch_pct.round(2)}% is below #{branch_threshold}%" if branch_pct && branch_pct < branch_threshold
+  if line_pct && line_pct < line_threshold
+    abort "Merged line coverage #{line_pct.round(2)}% is below #{line_threshold}%"
+  end
+  if branch_pct && branch_pct < branch_threshold
+    abort "Merged branch coverage #{branch_pct.round(2)}% is below #{branch_threshold}%"
+  end
 end
