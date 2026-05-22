@@ -4,13 +4,13 @@ version = "0.1.0-alpha.7"
 edition = "2021"
 
 [dependencies]
-deno_runtime = { version = "0.255.0", features = ["hmr"] }
-deno_core = "=0.400.0"
+deno_runtime = { version = "0.256.0", features = ["hmr"] }
+deno_core = "=0.401.0"
 deno_error = "=0.7.1"
-deno_resolver = { version = "=0.78.0", features = ["deno_ast"] }
-deno_ast = { version = "=0.53.1", features = ["transpiling"] }
-node_resolver = "=0.85.0"
-deno_semver = "=0.9.1"
+deno_resolver = { version = "=0.79.0", features = ["deno_ast"] }
+deno_ast = { version = "=0.53.2", features = ["transpiling"] }
+node_resolver = "=0.86.0"
+deno_semver = "=0.10.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

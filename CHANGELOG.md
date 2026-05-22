@@ -3,6 +3,9 @@
 ### Added
 - **`SSR::Deno::RenderError#js_error_name`** — extracts JS error class name (e.g. `TypeError`, `RangeError`) from the error message. Sync throws and async rejections both supported; returns `nil` for non-standard messages.
 
+### Changed
+- **Rust deps bumped to Deno 2.8** — `deno_runtime` 0.255→0.256, `deno_core` 0.400→0.401, `deno_semver` 0.9.1→0.10.0, `node_resolver` 0.85→0.86, `sys_traits` 0.1.27→0.1.28, `deno_ast` 0.53.1→0.53.2, `deno_resolver` 0.78→0.79, `sourcemap` 9→9.1.2, `tokio` 1→1.47.1, rusty_v8 v147.4.0→v149.1.0. Adds `residual_lazy_js_sources`/`residual_lazy_esm_sources` fields to `WorkerOptions` in both engine builders.
+
 ### Fixed
 - **Async rejection errors now include full error type** — `err.toString()` replaces `err.message` in JS render promise rejection handlers, so `RenderError#message` includes the error class name (e.g. `TypeError: expected number` instead of just `expected number`).
 

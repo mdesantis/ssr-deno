@@ -128,6 +128,8 @@ pub fn build_dev_mode_worker(
             ..Default::default()
         }],
         startup_snapshot: None,
+        residual_lazy_js_sources: &[],
+        residual_lazy_esm_sources: &[],
         skip_op_registration: false,
         create_params,
         unsafely_ignore_certificate_errors: None,

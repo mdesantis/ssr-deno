@@ -4,7 +4,7 @@ version = "0.1.0-alpha.7"
 edition = "2021"
 
 [dependencies]
-sourcemap = "9"
+sourcemap = "9.1.2"
 
 [lib]
 # No crate-type restriction — this is a pure-Rust library.
