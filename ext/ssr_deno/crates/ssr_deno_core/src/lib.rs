@@ -247,6 +247,13 @@ mod tests {
         assert!(!cfg.source_maps);
     }
 
+    #[test]
+    fn config_is_clone() {
+        let cfg = Config::default();
+        let cfg2 = cfg.clone();
+        assert_eq!(cfg.max_heap_size_mb, cfg2.max_heap_size_mb);
+    }
+
     // -----------------------------------------------------------------------
     // validate_render_timeout_ms
     // -----------------------------------------------------------------------
