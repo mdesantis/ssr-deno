@@ -4,7 +4,9 @@
 #   docker build -t ssr-deno-base --target base .          # reusable base for apps
 #   docker build -t ssr-deno-builder --target builder .    # compile-only
 
-# Stage 1: Build the native extension + Ruby 4.0.3
+ARG RUBY_VERSION=4.0.3
+
+# Stage 1: Build the native extension + Ruby
 FROM ubuntu:26.04 AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -33,9 +35,9 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     sccache \
     && rm -rf /var/lib/apt/lists/*
 
-# Compile Ruby 4.0.3 from source via ruby-build
+# Compile Ruby from source via ruby-build
 RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build \
-    && /tmp/ruby-build/bin/ruby-build 4.0.3 /usr/local \
+    && /tmp/ruby-build/bin/ruby-build $RUBY_VERSION /usr/local \
     && rm -rf /tmp/ruby-build
 
 # Install Rust
@@ -116,7 +118,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     libncurses6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy compiled Ruby 4.0.3 from builder
+# Copy compiled Ruby from builder
 COPY --from=builder /usr/local /usr/local
 RUN ldconfig
 
