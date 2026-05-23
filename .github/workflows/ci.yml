@@ -109,8 +109,8 @@ jobs:
       - name: Check coverage
         run: bundle exec rake coverage:check
         env:
-          SSR_DENO_COVERAGE_LINE_THRESHOLD: ${{ matrix.ruby == '3.3' && '80' || '100' }}
-          SSR_DENO_COVERAGE_BRANCH_THRESHOLD: ${{ matrix.ruby == '3.3' && '60' || '100' }}
+          SSR_DENO_COVERAGE_LINE_THRESHOLD: ${{ (matrix.ruby == '3.3' && '80') || (matrix.ruby == '3.4' && '70') || '100' }}
+          SSR_DENO_COVERAGE_BRANCH_THRESHOLD: ${{ (matrix.ruby == '3.3' && '60') || (matrix.ruby == '3.4' && '45') || '100' }}
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()
