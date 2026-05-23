@@ -6,7 +6,8 @@ on:
       - 'v*'
 
 env:
-  RUBY_VERSION: '4.0.3'
+  RUBY_VERSION: '4.0.5'
+  RUBY_TAG: '4.0'
 
 permissions:
   contents: read
@@ -37,9 +38,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}-ruby${{ env.RUBY_VERSION }}
-            type=semver,pattern={{major}}.{{minor}}-ruby${{ env.RUBY_VERSION }}
-            type=raw,value=latest-ruby${{ env.RUBY_VERSION }}
+            type=semver,pattern={{version}}-ruby${{ env.RUBY_TAG }}
+            type=semver,pattern={{major}}.{{minor}}-ruby${{ env.RUBY_TAG }}
+            type=raw,value=latest-ruby${{ env.RUBY_TAG }}
 
       - name: Build and push
         uses: docker/build-push-action@v7

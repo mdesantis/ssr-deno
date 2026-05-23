@@ -4,7 +4,7 @@
 #   docker build -t ssr-deno-base --target base .          # reusable base for apps
 #   docker build -t ssr-deno-builder --target builder .    # compile-only
 
-ARG RUBY_VERSION=4.0.3
+ARG RUBY_VERSION=4.0.5
 
 # Stage 1: Build the native extension + Ruby
 FROM ubuntu:resolute AS builder
