@@ -825,6 +825,36 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn file_open_with_unix_mode() {
+        let path = tmp("open_with_mode");
+        let mut opts = OpenOptions::new();
+        opts.read = true;
+        opts.write = true;
+        opts.create = true;
+        opts.mode = Some(0o644);
+        let sys = Sys;
+        let f = sys.base_fs_open(&path, &opts).unwrap();
+        drop(f);
+        remove_tmp(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn file_open_with_unix_custom_flags() {
+        let path = tmp("open_with_flags");
+        let mut opts = OpenOptions::new();
+        opts.read = true;
+        opts.write = true;
+        opts.create = true;
+        opts.custom_flags = Some(0);
+        let sys = Sys;
+        let f = sys.base_fs_open(&path, &opts).unwrap();
+        drop(f);
+        remove_tmp(&path);
+    }
+
+    #[test]
     fn file_seek() {
         let path = tmp("file_seek");
         {
@@ -1026,20 +1056,26 @@ mod tests {
     fn env_home_dir_on_unix() {
         #[cfg(unix)]
         {
-            // HOME should be set in a normal test environment
+            // Exercise Some branch (HOME is normally set)
             let sys = Sys;
             let home = sys.env_home_dir();
-            // We can't guarantee HOME is always set, but on a normal Linux box
-            // it will be.
             if let Some(h) = home {
                 assert!(h.is_absolute() || !h.as_os_str().is_empty());
+            }
+            // Exercise None branch by temporarily removing HOME
+            let old_home = std::env::var_os("HOME");
+            std::env::remove_var("HOME");
+            let home2 = sys.env_home_dir();
+            assert!(home2.is_none());
+            if let Some(h) = old_home {
+                std::env::set_var("HOME", h);
             }
         }
         #[cfg(not(unix))]
         {
-            // On Windows, HOME may not be set; just ensure the method doesn't panic
+            // On Windows, HOME is typically not set
             let sys = Sys;
-            let _ = sys.env_home_dir();
+            assert!(sys.env_home_dir().is_none());
         }
     }
 
