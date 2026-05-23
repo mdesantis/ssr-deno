@@ -233,6 +233,14 @@ task 'coverage:check' do
   results.format!
 
   if line_pct && line_pct < line_threshold
+    results.original_result.each do |file_path, file_cov|
+      lines = file_cov.is_a?(Hash) ? file_cov['lines'] : file_cov
+      next unless lines
+
+      lines.each_with_index do |count, idx|
+        puts "  UNCOVERED: #{file_path}:#{idx + 1}" if count.is_a?(Integer) && count.zero?
+      end
+    end
     abort "Merged line coverage #{line_pct.round(2)}% is below #{line_threshold}%"
   end
   if branch_pct && branch_pct < branch_threshold
