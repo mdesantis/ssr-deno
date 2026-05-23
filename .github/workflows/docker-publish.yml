@@ -6,10 +6,6 @@ on:
     tags:
       - 'v*'
 
-env:
-  RUBY_VERSION: '4.0.5'
-  RUBY_TAG: '4.0'
-
 permissions:
   contents: read
   packages: write
@@ -17,6 +13,13 @@ permissions:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby:
+          - { version: '4.0.5', tag: '4.0' }
+          - { version: '3.4.9', tag: '3.4' }
+          - { version: '3.3.11', tag: '3.3' }
     steps:
       - uses: actions/checkout@v6
 
@@ -39,9 +42,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}-ruby${{ env.RUBY_TAG }}
-            type=semver,pattern={{major}}.{{minor}}-ruby${{ env.RUBY_TAG }}
-            type=raw,value=latest-ruby${{ env.RUBY_TAG }}
+            type=semver,pattern={{version}}-ruby${{ matrix.ruby.tag }}
+            type=semver,pattern={{major}}.{{minor}}-ruby${{ matrix.ruby.tag }}
+            type=raw,value=latest-ruby${{ matrix.ruby.tag }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -51,7 +54,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            RUBY_VERSION=${{ env.RUBY_VERSION }}
+            RUBY_VERSION=${{ matrix.ruby.version }}
           target: base
           cache-from: type=gha
           cache-to: type=gha,mode=max
