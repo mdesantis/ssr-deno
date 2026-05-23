@@ -22,6 +22,8 @@ jobs:
           - { version: '3.3.11', tag: '3.3' }
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
