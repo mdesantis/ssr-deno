@@ -7,7 +7,7 @@
 ARG RUBY_VERSION=4.0.3
 
 # Stage 1: Build the native extension + Ruby
-FROM ubuntu:26.04 AS builder
+FROM ubuntu:resolute AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -104,7 +104,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     done
 
 # Stage 2: Base runtime (Ruby + .so + JS deps, no app — for FROM in other projects)
-FROM ubuntu:26.04 AS base
+FROM ubuntu:resolute AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
