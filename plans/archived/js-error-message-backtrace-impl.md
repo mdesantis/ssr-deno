@@ -155,7 +155,7 @@ Unit tests (no subprocess needed):
 
 ## Step 5 — Stale doc audit
 
-- `plans/js-error-message-backtrace.md` — mark implemented; note rejection handler
+- `plans/archived/js-error-message-backtrace.md` — mark implemented; note rejection handler
   change makes async covered; collapse Option A/B distinction
 - `CHANGELOG.md` — add entry under `## Unreleased`:
   `RenderError` gains `js_error_message`, `js_error_backtrace`, and explicit
@@ -194,4 +194,4 @@ inspect `js_error_message` and `js_error_backtrace` on the raised `RenderError`.
 - `lib/ssr/deno/render_error.rb` — add methods
 - `sig/ssr/deno.rbs` — add signatures
 - `test/ssr/test_deno_errors.rb` — add tests
-- `plans/js-error-message-backtrace.md` — update status
+- `plans/archived/js-error-message-backtrace.md` — update status

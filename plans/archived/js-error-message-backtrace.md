@@ -1,6 +1,6 @@
 # JS Error message and backtrace extraction
 
-Status: implemented — see [js-error-message-backtrace-impl.md](js-error-message-backtrace-impl.md) for implementation plan
+Status: implemented — see [js-error-message-backtrace-impl.md](js-error-message-backtrace-impl.md) for implementation plan (also archived)
 
 The rejection handler now uses `err.stack` instead of `err.toString()`, so
 async rejections carry stack frames. Option A (Ruby-only) was chosen with a
