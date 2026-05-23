@@ -21,6 +21,8 @@ module SSR
 
     class RenderError < Error
       def js_error_name: () -> String?
+      def js_error_message: () -> String
+      def js_error_backtrace: () -> Array[String]?
     end
 
     class JsRuntimeOutOfMemoryError < Error

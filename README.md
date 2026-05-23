@@ -210,6 +210,18 @@ Specific subclasses for targeted rescue:
 | `SSR::Deno::JsRuntimeNotInitializedError` | render called before init |
 | `SSR::Deno::HeapStatsSerializationError` | heap stats JSON malformed |
 
+`RenderError` exposes details about the JS failure:
+
+```ruby
+rescue SSR::Deno::RenderError => e
+  e.js_error_name       #=> "TypeError"
+  e.js_error_message    #=> "expected number"
+  e.js_error_backtrace  #=> ["at file.js:10:5", "at other.js:3:1"]
+end
+```
+
+`js_error_backtrace` returns `nil` for timeout and non-Error throws.
+
 ## Using with Vite
 
 The shared SSR build setup for all Vite-based samples:

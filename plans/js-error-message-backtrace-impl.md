@@ -76,7 +76,11 @@ module SSR
       def js_error_message
         # \A\S+ matches Rust error_label ("render", "chunked-render")
         msg = message.sub(/\A\S+ failed to start:\s*/i, '')
+        # Deno wraps non-Error sync throws with "Uncaught \"value\""
+        msg = msg.sub(/\AUncaught\s+/, '')
+        msg = msg.sub(/\A"(.*)"\z/m, '\1')
         msg = msg.sub(/\A\w+Error:\s*/i, '')
+
         msg.sub(/\n\s+at\s.*\z/m, '')
       end
 
@@ -104,7 +108,8 @@ end
 | Sync throw | `"render failed to start: TypeError: msg\n    at ..."` | `"msg"` | `["at file.js:1:2", ...]` |
 | Async rejection | `"TypeError: msg\n    at ..."` | `"msg"` | `["at file.js:1:2", ...]` |
 | Timeout | `"Render timed out"` | `"Render timed out"` | `nil` |
-| Non-Error throw | `"render failed to start: just a string"` | `"just a string"` | `nil` |
+| Non-Error throw (sync) | `"render failed to start: Uncaught \"just a string\""` | `"just a string"` | `nil` |
+| Non-Error throw (async) | `"just a string"` | `"just a string"` | `nil` |
 
 ---
 
