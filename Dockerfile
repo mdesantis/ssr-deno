@@ -66,9 +66,8 @@ COPY ext/ssr_deno/Cargo.toml ext/ssr_deno/Cargo.lock ext/ssr_deno/
 COPY ext/ssr_deno/src/ ext/ssr_deno/src/
 COPY ext/ssr_deno/crates/ ext/ssr_deno/crates/
 COPY vendor/ vendor/
-COPY vendor/rusty_v8.diff /app/rusty_v8.diff
-
-RUN git -C /app/vendor/rusty_v8/build apply /app/rusty_v8.diff
+RUN sed -i '/inputs = rustc_wrapper_inputs/d' \
+    vendor/rusty_v8/build/toolchain/gcc_toolchain.gni
 
 ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-21/lib
