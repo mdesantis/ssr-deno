@@ -69,13 +69,4 @@ pub fn build_dev_mode_npm_resolver(project_root: &Path) -> DevModeNpmResolverPar
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dev_node_resolver_options_fields() {
-        let opts = dev_node_resolver_options();
-        assert!(!opts.is_browser_platform);
-        assert!(opts.bundle_mode);
-    }
-}
+mod tests;
