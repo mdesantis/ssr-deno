@@ -9,6 +9,8 @@ ARG RUBY_VERSION=4.0.3
 # Stage 1: Build the native extension + Ruby
 FROM ubuntu:resolute AS builder
 
+ARG RUBY_VERSION
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Build toolchain for Ruby + V8
