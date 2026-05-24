@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.8] - 2026-05-23
+
 ### Added
 - **`SSR::Deno::RenderError#js_error_message`** — extracts clean JS error message without the Rust prefix and error class name. E.g. `"expected number"` from `"TypeError: expected number\n    at ..."`.
 - **`SSR::Deno::RenderError#js_error_backtrace`** — extracts JS stack frames from the error message. Returns `Array[String]` for sync throws and async rejections, `nil` for timeout and non-Error throws.

@@ -7196,7 +7196,7 @@ checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
 
 [[package]]
 name = "ssr_deno"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -7215,14 +7215,14 @@ dependencies = [
 
 [[package]]
 name = "ssr_deno_core"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "sourcemap",
 ]
 
 [[package]]
 name = "ssr_deno_dev_mode"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "deno_ast",
  "deno_core",
@@ -7241,7 +7241,7 @@ dependencies = [
 
 [[package]]
 name = "ssr_deno_sys"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "sys_traits",
 ]
