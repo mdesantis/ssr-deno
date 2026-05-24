@@ -58,6 +58,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             RUBY_VERSION=${{ matrix.ruby.version }}
+          platforms: linux/amd64,linux/arm64
           target: base
           cache-from: type=gha
           cache-to: type=gha,mode=max
