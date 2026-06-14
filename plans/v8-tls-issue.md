@@ -44,21 +44,19 @@ The submodule is pinned at commit `80e204d` (`v0.44.2-694-g80e204d`), which carr
 
 ## Upstream Fix
 
-The fix is two-part — both PRs are required:
+The fix required two changes:
 
 1. ✅ **[v8 PR #20](https://github.com/denoland/v8/pull/20)** (denoland/v8) — adds `V8_TLS_USED_IN_LIBRARY` define to V8's `internal_config` GN target. This is the define that actually changes the TLS model from `local-exec` to `local-dynamic` in V8's own `.cc` files. **Merged 2026-05-06.**
 
-2. 🔴 **[rusty_v8 PR #1970](https://github.com/denoland/rusty_v8/pull/1970)** (denoland/rusty_v8) — passes `v8_monolithic_for_shared_library=true` GN arg when building V8. This triggers the condition patched by PR #20. **Still open as of 2026-05-08. No activity since 2026-04-26.**
+2. ✅ **[rusty_v8 commit `9e52070`](https://github.com/denoland/rusty_v8/commit/9e52070db3bfe4782e7dba1187429713f9303713)** (PR #2008, denoland/rusty_v8) — passes `v8_monolithic_for_shared_library=true` GN arg when building V8. This triggers the condition patched by PR #20. PR #1970 was closed in favour of this direct fix. **Merged 2026-06-12. Released as [`v149.4.0`](https://github.com/denoland/rusty_v8/releases/tag/v149.4.0).**
 
-**Dependency chain:** PR #1970 was blocked on v8 PR #20. That blocker is resolved. The autoroll ("Rolling to V8 14.7.173.23") is now open in rusty_v8 — once it lands and the v8 submodule pointer is bumped, PR #1970 can merge.
+**Status as of 2026-06-14:** Both fixes are in the published crate. The workaround can be removed. Current project pins `v149.1.0` (yanked) via the `vendor/rusty_v8` path override — upgrade target is `v149.4.0` or later (latest: `v150.0.0`).
 
-**Why the workaround works now:** `V8_FROM_SOURCE=true` applies floated patches from `vendor/rusty_v8/patches/`, which already includes the v8-level TLS patch (the same change as PR #20). This is why `GN_ARGS='v8_monolithic_for_shared_library=true'` works locally despite PR #1970 not being merged upstream yet.
+**Why the workaround worked:** `V8_FROM_SOURCE=true` applied floated patches from `vendor/rusty_v8/patches/`, which included the v8-level TLS patch (equivalent to PR #20). `GN_ARGS='v8_monolithic_for_shared_library=true'` then triggered it, working around the missing upstream crate fix.
 
-**Monitoring:** Watch [rusty_v8 PR #1970](https://github.com/denoland/rusty_v8/pull/1970) and [crates.io `v8` releases](https://crates.io/crates/v8/versions) for a new version that includes the fix. The signal is: PR #1970 merged + crates.io version bumped past current.
+## Cleanup
 
-## Cleanup (once upstream fix ships)
-
-Once both PRs are merged and the published crate includes the fix, remove the workaround across these locations:
+The upstream fix shipped in `v149.4.0` (2026-06-12). Remove the workaround across these locations:
 
 ### 1. `ext/ssr_deno/Cargo.toml`
 Remove the `[patch.crates-io]` block (lines 60–61):
@@ -66,7 +64,7 @@ Remove the `[patch.crates-io]` block (lines 60–61):
 [patch.crates-io]
 v8 = { path = "../../vendor/rusty_v8" }
 ```
-Then bump the `v8` dependency version to the fixed crate release.
+Then bump the `v8` dependency version to `149.4.0` or later (currently `149.1.0`, which is yanked). Run `cargo update -p v8` after removing the patch to let Cargo resolve from crates.io.
 
 ### 2. `.github/workflows/ci.yml`
 Remove the global env vars (lines 18–19):
