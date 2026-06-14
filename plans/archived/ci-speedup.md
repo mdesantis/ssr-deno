@@ -12,7 +12,7 @@ The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) consist
 
 ## Constraint: `V8_FROM_SOURCE=true` is mandatory
 
-From [`.env.example`](.env.example:1-11) and [`plans/v8-tls-issue.md`](plans/v8-tls-issue.md):
+From [`.env.example`](.env.example:1-11) and [`plans/archived/v8-tls-issue.md`](plans/archived/v8-tls-issue.md):
 
 The native extension is a **cdylib** (`.so`), and V8's thread-local storage uses the `local-exec` model by default, which is incompatible with shared libraries. Building V8 from source with `v8_monolithic_for_shared_library=true` changes the TLS model to `local-dynamic`, producing compatible relocations.
 
