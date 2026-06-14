@@ -47,6 +47,10 @@ impl NodeRequireLoader for DevModeNodeRequireLoader {
         // assertion.
         Ok(true)
     }
+
+    fn is_maybe_cjs_from_require(&self, _specifier: &Url) -> Result<bool, PackageJsonLoadError> {
+        Ok(true)
+    }
 }
 
 #[cfg(test)]

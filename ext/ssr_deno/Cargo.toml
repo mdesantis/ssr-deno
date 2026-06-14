@@ -26,12 +26,12 @@ ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }
 magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1.47.1", features = ["full"] }
-deno_runtime = { version = "0.256.0", features = ["hmr"] }
-deno_core = "=0.401.0"
+tokio = { version = "1.52.3", features = ["full"] }
+deno_runtime = { version = "0.259.0", features = ["hmr"] }
+deno_core = "=0.404.0"
 deno_semver = "=0.10.0"
 deno_error = "=0.7.1"
-node_resolver = "=0.86.0"
+node_resolver = "=0.89.0"
 sys_traits = "=0.1.28"
 
 [profile.release]

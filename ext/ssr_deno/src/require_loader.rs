@@ -32,4 +32,8 @@ impl NodeRequireLoader for SSRDenoNodeRequireLoader {
     fn is_maybe_cjs(&self, _specifier: &Url) -> Result<bool, PackageJsonLoadError> {
         Ok(false)
     }
+
+    fn is_maybe_cjs_from_require(&self, _specifier: &Url) -> Result<bool, PackageJsonLoadError> {
+        Ok(false)
+    }
 }
