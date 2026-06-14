@@ -6,7 +6,7 @@
 
 Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess, no HTTP bridge. Vite SSR bundles loaded into V8 isolates.
 
-**Boundary:** `lib/ssr/deno/` (Ruby API) ↔ `ext/ssr_deno/src/` (Rust/magnus) ↔ `vendor/rusty_v8/` (submodule).
+**Boundary:** `lib/ssr/deno/` (Ruby API) ↔ `ext/ssr_deno/src/` (Rust/magnus).
 **Pure-Rust types:** `ext/ssr_deno/crates/ssr_deno_core/` — no V8 dep, fast compile.
 
 ## Conventions
@@ -45,9 +45,8 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 
 ## Setup
 
-- **`.env` required.** `cp .env.example .env`. Defaults: `V8_FROM_SOURCE=true`, `GN_ARGS` (TLS fix), `LIBCLANG_PATH=/usr/lib/llvm-21/lib`, `RB_SYS_CARGO_PROFILE=dev`.
-- **Submodules:** `git submodule update --init --recursive` after clone.
-- **Prerequisites:** Ruby 3.3+, Rust toolchain, LLVM/Clang 21, Bundler, Deno 2.x.
+- **`.env` required.** `cp .env.example .env`. Defaults: `RB_SYS_CARGO_PROFILE=dev`.
+- **Prerequisites:** Ruby 3.3+, Rust toolchain, Bundler, Deno 2.x.
 - **Setup:** `bin/setup`. Console: `bin/console`.
 
 ## Test architecture

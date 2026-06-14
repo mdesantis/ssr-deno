@@ -1,4 +1,0 @@
-[submodule "vendor/rusty_v8"]
-	path = vendor/rusty_v8
-	url = https://github.com/denoland/rusty_v8.git
-	ignore = dirty

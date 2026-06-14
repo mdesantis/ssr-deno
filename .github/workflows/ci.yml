@@ -15,8 +15,6 @@ permissions:
   contents: read
 
 env:
-  V8_FROM_SOURCE: 'true'
-  GN_ARGS: 'v8_monolithic=true v8_monolithic_for_shared_library=true'
   RB_SYS_CARGO_PROFILE: 'release'
   SCCACHE_GHA_ENABLED: 'true'
   RUSTC_WRAPPER: 'sccache'
@@ -40,7 +38,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-          submodules: recursive
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -49,26 +46,13 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
       - uses: mozilla/sccache-action@v0.0.10
-      - name: Install V8 build dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -yq --no-install-suggests --no-install-recommends \
-            ninja-build \
-            python3 \
-            libglib2.0-dev \
             mold \
-            pkg-config
-      - name: Install Clang 19 (required by V8)
-        run: |
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | \
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-19.list
-          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | \
-            sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          sudo apt-get -qq remove 'clang-*' 2>/dev/null || true
-          sudo apt-get install -yq --no-install-suggests --no-install-recommends \
-            lld-19 clang-19 libclang-19-dev
-          echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> $GITHUB_ENV
+            pkg-config \
+            libclang-dev
       - name: Install Rust coverage tools
         run: |
           rustup component add llvm-tools-preview
@@ -94,8 +78,6 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Apply rusty_v8 patch
-        run: git -C vendor/rusty_v8/build apply ../../../vendor/rusty_v8.diff
       - name: Compile native extension
         run: bundle exec rake compile
       - name: Run Rust coverage (cargo-llvm-cov)

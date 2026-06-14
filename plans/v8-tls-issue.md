@@ -1,5 +1,7 @@
 # V8 TLS Relocation Issue
 
+> **Status: RESOLVED** — `rusty_v8 v149.4.0` shipped the fix (2026-06-12). Workaround removed in this repo on 2026-06-14. See [Cleanup](#cleanup) for what was changed.
+
 ## The Problem
 
 When linking `librusty_v8.a` (v147.4.0) into a **cdylib** (`.so`), the linker fails with:
@@ -105,7 +107,9 @@ git submodule deinit vendor/rusty_v8
 Also remove the `[submodule "vendor/rusty_v8"]` entry from `.gitmodules`.
 
 ### 6. Clang/LLVM toolchain dependency
-With `V8_FROM_SOURCE` gone, clang/LLVM is no longer needed to build the crate. Audit CI and Dockerfile — `libclang-*-dev`, `clang-*`, `lld-*` and `LIBCLANG_PATH` can be removed if nothing else depends on them.
+`libclang` is still required — `libsqlite3-sys` uses `bindgen` which needs it regardless of V8. Only the V8-specific packages can go:
+- Dockerfile: remove `ninja-build`, `python3`, `libglib2.0-dev`; keep `clang-*`, `lld-*`, `libclang-*-dev`, `LIBCLANG_PATH`
+- CI: replace the full custom LLVM repo + clang-19 install with `libclang-dev` from the default Ubuntu apt (system clang is sufficient for bindgen)
 
 ## Verification After Cleanup
 

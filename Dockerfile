@@ -13,16 +13,13 @@ ARG RUBY_VERSION
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Build toolchain for Ruby + V8
+# Build toolchain for Ruby + Rust
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     curl \
     git \
     pkg-config \
-    ninja-build \
-    python3 \
-    libglib2.0-dev \
     mold \
     clang-21 \
     lld-21 \
@@ -65,17 +62,12 @@ RUN bundle install
 COPY ext/ssr_deno/Cargo.toml ext/ssr_deno/Cargo.lock ext/ssr_deno/
 COPY ext/ssr_deno/src/ ext/ssr_deno/src/
 COPY ext/ssr_deno/crates/ ext/ssr_deno/crates/
-COPY vendor/ vendor/
-RUN sed -i '/inputs = rustc_wrapper_inputs/d' \
-    vendor/rusty_v8/build/toolchain/gcc_toolchain.gni
 
-ENV GN_ARGS='v8_monolithic=true v8_monolithic_for_shared_library=true'
 ENV LIBCLANG_PATH=/usr/lib/llvm-21/lib
 ENV RUSTFLAGS='-C link-arg=-fuse-ld=mold'
 ENV RUSTC_WRAPPER=sccache
 ENV SCCACHE=/usr/bin/sccache
 ENV SCCACHE_DIR=/root/.cache/sccache
-ENV V8_FROM_SOURCE=true
 ENV CARGO_TARGET_DIR=/app/tmp/cargo-target
 
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \

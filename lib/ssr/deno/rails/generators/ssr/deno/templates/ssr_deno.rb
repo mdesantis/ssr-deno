@@ -31,5 +31,5 @@ Rails.application.config.ssr_deno.bundles = {
 
 # Resolve V8 stack traces to original .tsx source files (default: true in
 # development/test, false in production). Requires .js.map sidecars next to
-# bundles. Best-effort — silently skips missing or corrupt .map files.
+# bundles. Best-effort -- silently skips missing or corrupt .map files.
 # Rails.application.config.ssr_deno.source_maps_enabled = !Rails.env.production?

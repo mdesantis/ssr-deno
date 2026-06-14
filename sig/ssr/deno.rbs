@@ -87,12 +87,12 @@ module SSR
       def fallback_or_raise: (untyped error, untyped bundle_name, untyped config_key) -> String
     end
 
-    # Rails-only class — loaded via require: 'ssr/deno/rails'.
+    # Rails-only class -- loaded via require: 'ssr/deno/rails'.
     # Superclass Rails::Railtie is not available in standalone RBS validation.
     class Railtie
     end
 
-    # Rails-only class — loaded via require: 'ssr/deno/rails'.
+    # Rails-only class -- loaded via require: 'ssr/deno/rails'.
     # Superclass ActiveSupport::LogSubscriber is not available in standalone RBS validation.
     class LogSubscriber
       def render: (untyped event) -> void

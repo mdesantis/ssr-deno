@@ -3,16 +3,5 @@ set -euo pipefail
 IFS=$'\n\t'
 set -vx
 
-git submodule update --init --recursive
-
-if ! git -C vendor/rusty_v8/build apply ../../../vendor/rusty_v8.diff 2>/dev/null; then
-  if git -C vendor/rusty_v8/build apply --reverse --check ../../../vendor/rusty_v8.diff 2>/dev/null; then
-    echo "rusty_v8 patch already applied"
-  else
-    echo "error: rusty_v8 patch failed to apply"
-    exit 1
-  fi
-fi
-
 bundle install
 cp -n .env.example .env

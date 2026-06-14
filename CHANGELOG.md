@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Changed
+- **V8 TLS workaround removed** — upstream fix shipped in `rusty_v8 v149.4.0` (commit `9e52070`, 2026-06-12). No longer building V8 from source: `V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH` env vars removed from CI, Dockerfile, `.env.example`, and `bin/setup`. `vendor/rusty_v8` submodule removed. First compile now downloads prebuilt V8 from crates.io instead of building Chromium's toolchain (~30–60 min saved). (`plans/v8-tls-issue.md`)
+
 ## [0.1.0-alpha.8] - 2026-05-23
 
 ### Added
