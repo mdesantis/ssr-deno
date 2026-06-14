@@ -10,31 +10,33 @@ The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) consist
 4. **No caching** of Rust/V8 build artifacts between runs
 5. GitHub's 6-hour workflow limit is hit for Ruby 3.4 and 4.0 jobs
 
-## Constraint: `V8_FROM_SOURCE=true` is mandatory
+## Status: Partially resolved
 
-From [`.env.example`](.env.example:1-11) and [`plans/archived/v8-tls-issue.md`](plans/archived/v8-tls-issue.md):
+`V8_FROM_SOURCE=true` constraint lifted — upstream fix shipped in rusty_v8 v149.4.0 (2026-06-12). V8 now comes prebuilt from crates.io; CI no longer builds V8 from source. The 3-hour compile time is gone.
 
-The native extension is a **cdylib** (`.so`), and V8's thread-local storage uses the `local-exec` model by default, which is incompatible with shared libraries. Building V8 from source with `v8_monolithic_for_shared_library=true` changes the TLS model to `local-dynamic`, producing compatible relocations.
+**Applied:** options 1 (sccache), 2 (mold), 3 (release profile), 4 (cargo cache) all active in CI.
+- sccache wraps rustc via `RUSTC_WRAPPER=sccache` + `mozilla/sccache-action` (GHA cache backend). Provides ~18% Rust hit rate and catches C/C++ units from Deno crates. Complementary to `actions/cache` — they operate at different granularities (whole target dir vs per-unit content hash), so both are useful on dependency-changing builds.
+- mold active via `RUSTFLAGS`
+- release profile active via `RB_SYS_CARGO_PROFILE`
+- cargo registry + target dir cached via `actions/cache`
 
-The prebuilt `rusty_v8` binary does **not** include this flag, so **option 1 (prebuilt V8) is not viable** until upstream PR [#1970](https://github.com/denoland/rusty_v8/pull/1970) lands.
+Remaining options (5 sequential matrix, 6 larger runner) are low-priority — CI is fast now.
+
+## Original Problem
+
+The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) consistently failed or timed out because:
+
+1. **V8 from source compilation** (`V8_FROM_SOURCE: 'true'`) took ~3+ hours per job
+2. **Debug profile** (`RB_SYS_CARGO_PROFILE: 'dev'`) was slower than release
+3. **3 Ruby versions** (3.3, 3.4, 4.0) ran in parallel, each compiling V8 independently
+4. **No caching** of Rust/V8 build artifacts between runs
+5. GitHub's 6-hour workflow limit was hit for Ruby 3.4 and 4.0 jobs
 
 ## Proposed Solutions (ordered by impact)
 
-### 1. Use `sccache` for V8 C++ compilation caching (highest impact)
+### 1. Use `sccache` for compilation caching (highest impact)
 
-**From [`.env.example`](.env.example:24-26):** `sccache` (S3-compatible compiler cache) caches V8's C++ compilation artifacts. Since V8's C++ build is the bulk of the 3-hour compile time, this provides massive speedup across CI runs.
-
-**Setup:**
-```yaml
-- name: Install sccache
-  run: |
-    cargo install sccache --locked
-    echo "SCCACHE=/home/runner/.cargo/bin/sccache" >> $GITHUB_ENV
-```
-
-`sccache` automatically wraps `cc`/`cxx` when `SCCACHE` is set — no code changes needed. On GitHub Actions, it uses the local filesystem cache by default (or can be configured with S3/GCS for shared caching across runs).
-
-**Trade-off:** First run after enabling is still full-build speed. Subsequent runs with cache hits are dramatically faster.
+**Applied.** `sccache` wraps both `rustc` and C/C++ compilers, caching per compilation unit by content hash. Backed by GitHub Actions cache via `SCCACHE_GHA_ENABLED=true`. Deno crates still compile some C++ even with prebuilt V8, so sccache covers both. Complementary to `actions/cache` on target dir — `actions/cache` is coarse (whole dir, keyed by Cargo.lock hash); sccache is fine-grained (per unit). When `actions/cache` misses, sccache saves the units whose inputs didn't change.
 
 ### 2. Use `mold` linker
 
