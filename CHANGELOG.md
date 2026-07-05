@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.9] - 2026-07-05
+
 ### Changed
 - **V8 TLS workaround removed** — upstream fix shipped in `rusty_v8 v149.4.0` (commit `9e52070`, 2026-06-12). No longer building V8 from source: `V8_FROM_SOURCE`, `GN_ARGS`, `LIBCLANG_PATH` env vars removed from CI, Dockerfile, `.env.example`, and `bin/setup`. `vendor/rusty_v8` submodule removed. First compile now downloads prebuilt V8 from crates.io instead of building Chromium's toolchain (~30–60 min saved). (`plans/archived/v8-tls-issue.md`)
 - **Rust deps bumped** — `deno_runtime` 0.259→0.261, `deno_core` 0.404→0.406, `deno_resolver` 0.82→0.84, `node_resolver` 0.89→0.91, `tokio` 1.47.1→1.52.3, `magnus` 0.8.0→0.8.2, transitive crates to latest compatible. `deno_error`/`deno_semver` stay pinned at 0.7.1/0.10.0 — the newer `deno_core`/`node_resolver` releases hard-pin those exact versions internally, so bumping them further would conflict.
