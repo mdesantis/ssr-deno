@@ -5,8 +5,13 @@ def rbs_prototype_subtract
   require 'tempfile'
   sources = FileList['lib/**/*.rb'].to_a
   Tempfile.create(['prototype', '.rbs']) do |f|
-    system("rbs prototype rb #{sources.join(' ')} > #{f.path}")
-    out, = Open3.capture2('rbs', 'subtract', f.path, 'sig/ssr/deno.rbs')
+    system("rbs prototype rb #{sources.join(' ')} > #{f.path}") ||
+      abort('rbs prototype rb failed — see output above')
+
+    out, status = Open3.capture2('rbs', 'subtract', f.path, 'sig/ssr/deno.rbs')
+
+    abort('rbs subtract failed — see output above') unless status.success?
+
     return out
   end
 end

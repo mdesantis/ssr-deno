@@ -6,6 +6,7 @@
 
 ### Fixed
 - **Dev-mode `require()` setup no longer hangs/fails after the dep bump** — `setup_require` used to drive `import('node:module')` with a bare V8 microtask-checkpoint spin loop, which never polls the tokio runtime; the newer `node_resolver` resolves that import through an async op, so the spin loop always timed out. Now `await`s `MainWorker::run_event_loop` instead. Also fixed `DevModeModuleLoader::resolve`/`load`, which only special-cased `node:` specifiers — the newer `node:module` polyfill transitively imports `ext:core/mod.js`, which fell through to `NodeResolver` and failed; any non-`file:` scheme now passes through to deno_core's extension module registry, matching the existing prod-path loader.
+- **`rake rbs:up_to_date` silently passed when the `rbs` CLI crashed** — neither the `rbs prototype rb` `system` call nor the `rbs subtract` `Open3.capture2` call checked their exit status, so a genuine tool crash (e.g. an encoding error under a non-UTF-8 locale) produced empty output that read as "no drift" instead of failing the check. Both calls now abort loudly on non-zero exit.
 
 ## [0.1.0-alpha.8] - 2026-05-23
 
