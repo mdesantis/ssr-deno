@@ -177,7 +177,7 @@ fn create_fixtures() -> (TempDir, PathBuf) {
     (dir, root)
 }
 
-fn build_worker(project_root: &PathBuf) -> (MainWorker, SharedCjsPaths) {
+async fn build_worker(project_root: &PathBuf) -> (MainWorker, SharedCjsPaths) {
     let cjs_paths: SharedCjsPaths = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut worker = build_dev_mode_worker(
         &Url::parse("https://ssr-deno.local/").unwrap(),
@@ -189,7 +189,7 @@ fn build_worker(project_root: &PathBuf) -> (MainWorker, SharedCjsPaths) {
         cjs_paths.clone(),
     )
     .expect("build_dev_mode_worker");
-    setup_require(&mut worker).expect("setup_require");
+    setup_require(&mut worker).await.expect("setup_require");
     (worker, cjs_paths)
 }
 
@@ -220,7 +220,7 @@ fn js_strict_eq(worker: &mut MainWorker, lhs: &str, rhs: &str) -> Result<(), Str
 #[tokio::test]
 async fn control() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("control.tsx")).unwrap();
     let id = worker.js_runtime.load_main_es_module(&url).await.unwrap();
     warm_cjs_cache(&mut worker, &cjs_paths).expect("warm_cjs_cache");
@@ -234,7 +234,7 @@ async fn control() {
 #[tokio::test]
 async fn native_cjs_handling_works() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry.tsx")).unwrap();
     let id = worker.js_runtime.load_main_es_module(&url).await.unwrap();
     warm_cjs_cache(&mut worker, &cjs_paths).expect("warm_cjs_cache");
@@ -248,7 +248,7 @@ async fn native_cjs_handling_works() {
 #[tokio::test]
 async fn shim_default_import_yields_whole_exports() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry-default.tsx")).unwrap();
     let id = worker
         .js_runtime
@@ -266,7 +266,7 @@ async fn shim_default_import_yields_whole_exports() {
 #[tokio::test]
 async fn shim_named_import_works() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry-named.tsx")).unwrap();
     let id = worker
         .js_runtime
@@ -282,7 +282,7 @@ async fn shim_named_import_works() {
 #[tokio::test]
 async fn shim_named_import_through_reexport_indirection() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry-reexport.tsx")).unwrap();
     let id = worker
         .js_runtime
@@ -298,7 +298,7 @@ async fn shim_named_import_through_reexport_indirection() {
 #[tokio::test]
 async fn esm_as_js_package_loads_natively() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry-esm-as-js.tsx")).unwrap();
     let id = worker
         .js_runtime
@@ -314,7 +314,7 @@ async fn esm_as_js_package_loads_natively() {
 #[tokio::test]
 async fn subpackage_with_parent_path_resolves_via_fallback() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, cjs_paths) = build_worker(&root);
+    let (mut worker, cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry-subpkg.tsx")).unwrap();
     let id = worker
         .js_runtime
@@ -331,7 +331,7 @@ async fn subpackage_with_parent_path_resolves_via_fallback() {
 #[ignore = "upstream V8 re-entrancy bug"]
 async fn bug_entry_body_skipped() {
     let (_dir, root) = create_fixtures();
-    let (mut worker, _cjs_paths) = build_worker(&root);
+    let (mut worker, _cjs_paths) = build_worker(&root).await;
     let url = Url::from_file_path(root.join("entry.tsx")).unwrap();
     let id = worker.js_runtime.load_main_es_module(&url).await.unwrap();
     let eval = worker.evaluate_module(id).await;

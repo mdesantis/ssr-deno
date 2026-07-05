@@ -599,6 +599,17 @@ impl ModuleLoader for DevModeModuleLoader {
             specifier
         };
 
+        // Absolute non-file URLs (e.g. "ext:core/mod.js", pulled in
+        // transitively by Deno's built-in node: polyfills) are served
+        // directly by deno_core's extension module registry — pass them
+        // through unresolved rather than routing them through NodeResolver,
+        // which only knows about npm packages and file paths.
+        if let Ok(url) = ModuleSpecifier::parse(spec) {
+            if url.scheme() != "file" {
+                return Ok(url);
+            }
+        }
+
         // Resolve the referrer to a URL. The referrer may be "." for the
         // main module — fall back to the project root.
         let referrer_url: ModuleSpecifier = match resolve_import(referrer, "file:///dev/null") {
@@ -665,10 +676,11 @@ impl ModuleLoader for DevModeModuleLoader {
         _maybe_referrer: Option<&ModuleLoadReferrer>,
         _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
-        if module_specifier.scheme() == "node" {
-            return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
-                "node: modules handled by extension, not by DevModeModuleLoader",
-            )));
+        if module_specifier.scheme() != "file" {
+            return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(format!(
+                "{}: modules handled by extension, not by DevModeModuleLoader",
+                module_specifier.scheme()
+            ))));
         }
 
         let path = match module_specifier.to_file_path() {

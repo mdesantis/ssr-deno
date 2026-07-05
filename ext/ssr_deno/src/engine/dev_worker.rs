@@ -56,7 +56,7 @@ pub fn dev_worker_thread_main(
             }
         };
 
-        if let Err(e) = super::worker::setup_require(&mut worker) {
+        if let Err(e) = super::worker::setup_require(&mut worker).await {
             let _ = init_tx.send(Err(format!("Failed to set up require: {e}")));
             return;
         }

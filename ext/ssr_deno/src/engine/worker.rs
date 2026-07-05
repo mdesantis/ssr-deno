@@ -1,6 +1,5 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
 
 use deno_runtime::deno_core::url::Url;
 use tokio::runtime;
@@ -76,7 +75,8 @@ pub fn worker_thread_main(
                         bundle_code,
                         script_name,
                         node_builtins,
-                    );
+                    )
+                    .await;
                     let _ = reply.send(result);
                 }
                 WorkerMsg::Render {
@@ -124,7 +124,7 @@ pub fn worker_thread_main(
 
 /// Evaluates the bundle code and moves `globalThis.render` into the bundle
 /// namespace: `globalThis.__ssr_bundles[bundle_id] = { render: globalThis.render }`.
-fn load_bundle_in_worker(
+async fn load_bundle_in_worker(
     worker: &mut deno_runtime::worker::MainWorker,
     bundle_id: &str,
     _bundle_path: &str,
@@ -133,7 +133,7 @@ fn load_bundle_in_worker(
     node_builtins: bool,
 ) -> Result<(), String> {
     if node_builtins {
-        if let Err(e) = setup_require(worker) {
+        if let Err(e) = setup_require(worker).await {
             return Err(format!("Failed to set up require: {e}"));
         }
     }
@@ -170,10 +170,12 @@ fn load_bundle_in_worker(
 
 /// Injects `globalThis.require` into the V8 context by loading
 /// `createRequire` from Deno's built-in `node:module` via async import.
-pub(crate) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Result<(), String> {
-    // Idempotency guard: skip the async import + microtask polling when
+pub(crate) async fn setup_require(
+    worker: &mut deno_runtime::worker::MainWorker,
+) -> Result<(), String> {
+    // Idempotency guard: skip the async import + event loop pump when
     // `globalThis.require` is already set from a prior bundle load into
-    // the same isolate. Saves ~10ms per subsequent bundle load.
+    // the same isolate. Saves time per subsequent bundle load.
     let check_val = worker
         .execute_script(
             "<ssr-deno:require-guard>",
@@ -202,15 +204,14 @@ pub(crate) fn setup_require(worker: &mut deno_runtime::worker::MainWorker) -> Re
         )
         .map_err(|e| format!("Failed to start require import: {e}"))?;
 
-    let isolate = worker.js_runtime.v8_isolate();
-    let deadline = Instant::now() + Duration::from_millis(100);
-    loop {
-        isolate.perform_microtask_checkpoint();
-        if Instant::now() >= deadline {
-            break;
-        }
-        std::thread::sleep(Duration::from_micros(50));
-    }
+    // The dynamic import above may resolve through node_resolver's async
+    // filesystem ops (package.json probing) rather than resolving purely
+    // via V8 microtasks, so the event loop must actually be pumped —
+    // a bare microtask checkpoint spin isn't enough to drive those ops.
+    worker
+        .run_event_loop(false)
+        .await
+        .map_err(|e| format!("Failed to run event loop for require import: {e}"))?;
 
     worker
         .execute_script(
