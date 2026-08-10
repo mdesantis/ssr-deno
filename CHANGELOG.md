@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixed
+- **`coverage:check` no longer crashes on a stale coverage resultset** — `SimpleCov::ResultMerger.merged_result` returns `nil` once every entry in `.resultset.json` is older than SimpleCov's `merge_timeout` (600s), which `coverage:check` didn't handle: it called `.coverage_statistics` on the `nil`, raising `NoMethodError` instead of the intended abort. Hit whenever `coverage:check` ran more than 10 minutes after `rake test`. Now aborts with the resultset's age and the configured timeout, and tells you to re-run `rake test`.
+
 ## [0.1.0-alpha.9] - 2026-07-05
 
 ### Changed
