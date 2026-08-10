@@ -2,6 +2,7 @@
 
 ### Fixed
 - **`coverage:check` no longer crashes on a stale coverage resultset** — `SimpleCov::ResultMerger.merged_result` returns `nil` once every entry in `.resultset.json` is older than SimpleCov's `merge_timeout` (600s), which `coverage:check` didn't handle: it called `.coverage_statistics` on the `nil`, raising `NoMethodError` instead of the intended abort. Hit whenever `coverage:check` ran more than 10 minutes after `rake test`. Now aborts with the resultset's age and the configured timeout, and tells you to re-run `rake test`.
+- **Branch-coverage merge no longer hand-rolled** — `coverage:check` reimplemented SimpleCov's branch merge from raw `.resultset.json` on the assumption that 0.22 dropped branch data when merging. The real cause was that the Rake process never enabled branch coverage, so `coverage_statistics[:branch]` was gated off regardless of the data present. One `SimpleCov.enable_coverage :branch` replaces ~35 lines and yields identical numbers (100.0%, 42/42 branches). A `nil` branch percentage now aborts instead of silently skipping the branch check.
 
 ## [0.1.0-alpha.9] - 2026-07-05
 
