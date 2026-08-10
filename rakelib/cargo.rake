@@ -3,13 +3,6 @@
 require 'English'
 require 'shellwords'
 
-# All crate names (some depend on V8, can't test without full build).
-CRATES = %w[
-  ssr_deno_core
-  ssr_deno_dev_mode
-  ssr_deno_sys
-].freeze
-
 # Crates that compile without V8 (fast, no native build required).
 V8_FREE_CRATES = %w[
   ssr_deno_core
@@ -30,6 +23,7 @@ task 'cargo:test' => V8_FREE_CRATES.map { |c| "cargo:test:#{c}" }
 # Run after `compile` so the archive is already present in target/.
 V8_REQUIRED_CRATES = %w[
   ssr_deno_dev_mode
+  ssr_deno
 ].freeze
 
 V8_REQUIRED_CRATES.each do |crate|

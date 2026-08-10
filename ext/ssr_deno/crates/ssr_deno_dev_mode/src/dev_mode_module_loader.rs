@@ -401,7 +401,15 @@ impl DevModeModuleLoader {
             dev_node_resolver_options(),
         );
 
+        // Canonicalize so the `starts_with` checks below survive a symlinked
+        // path component in `project_root` (eg macOS's `/tmp` -> `/private/tmp`,
+        // `/var` -> `/private/var`). Node resolution canonicalizes resolved
+        // package paths, so an un-canonicalized `node_modules_dir` silently
+        // fails every `starts_with` comparison, misclassifying every CJS
+        // file under `node_modules` as non-CJS. Falls back to the raw path
+        // if `node_modules` doesn't exist yet (project with no npm deps).
         let node_modules_dir = project_root.join("node_modules");
+        let node_modules_dir = node_modules_dir.canonicalize().unwrap_or(node_modules_dir);
         Self {
             project_root,
             node_modules_dir,
