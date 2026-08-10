@@ -83,6 +83,12 @@ jobs:
           deno-version: v2.x
       - name: Compile native extension
         run: bundle exec rake compile
+      - name: Run Rust unit tests (V8-free crates)
+        run: bundle exec rake cargo:test
+      - name: Run Rust unit tests (ssr_deno_dev_mode)
+        run: bundle exec rake cargo:test:ssr_deno_dev_mode
+      - name: Run Rust unit tests (ssr_deno)
+        run: bundle exec rake cargo:test:ssr_deno
       - name: Run Rust coverage (cargo-llvm-cov)
         run: bundle exec rake cargo:coverage
       - name: Run Clippy
@@ -92,7 +98,6 @@ jobs:
       - name: Run tests
         run: bundle exec rake test
       - name: Check coverage
-        if: matrix.ruby == '4.0'
         run: bundle exec rake coverage:check
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
