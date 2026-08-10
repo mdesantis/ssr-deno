@@ -99,9 +99,9 @@ If still too slow, add **option 4** (caching) and consider **option 5** (sequent
 
 ## Verification
 
-After applying changes, trigger a manual workflow run and verify:
-- [ ] All 3 Ruby versions complete within 30-60 minutes
-- [ ] `samples:build` succeeds (Deno is now installed)
-- [ ] Tests pass
-- [ ] RuboCop passes
-- [ ] RBS validation passes
+Verified via `mdesantis/ssr-deno#1` (run `31402340396`, 2026-08-10):
+- [x] All 3 Ruby versions complete within 30-60 minutes — 30m51s-38m42s across all 6 matrix legs (3 Ruby × 2 arch)
+- [x] `samples:build` succeeds (Deno is now installed) — all 6 legs
+- [x] Tests pass — all 6 legs, 0 failures/0 skips
+- [x] RuboCop passes — 4 of 6 legs reached this step; the 2 `ruby: 3.4` legs stopped earlier at `coverage:check`, hit by an unrelated upstream Ruby Coverage/GC race (see `CHANGELOG.md` "Fixed", `ci.yml`'s `coverage:check` comment) — not a CI-speed regression
+- [x] RBS validation passes — same 4-of-6 caveat as RuboCop above

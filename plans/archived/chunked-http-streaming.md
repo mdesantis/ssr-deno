@@ -1,6 +1,6 @@
 # Chunked HTTP Streaming SSR (Approach C — Phase 2)
 
-Status: ◐ (implementation complete, README docs pending)
+Status: ✅ (implementation complete, README docs shipped)
 
 ## Goal
 
@@ -41,7 +41,7 @@ in README.
 - [x] `Enumerator` blocks on channel recv per iteration, yields frozen String chunks
 - [x] Error mid-stream raises `SSR::Deno::RenderError` from within the enumerator
 - [x] End-of-stream sentinel terminates iteration (enumerator returns)
-- [ ] Document Rack 3 and `ActionController::Live` usage patterns in README
+- [x] Document Rack 3 and `ActionController::Live` usage patterns in README — block form (`response.stream.write`, `README.md:170-173`) and Enumerator/Rack-3-body form (`README.md:175-177`)
 
 ### Testing
 
