@@ -462,9 +462,9 @@ count, memory bandwidth, and OS scheduler behavior vary across machines.
   - Root cause: `CartesianSeriesTypes` module-level singleton throws on script
     re-evaluation. Fixed: `bundle_id` is now stable (path-based) so same file
     skips re-evaluation. Namespace script is idempotent (no-op on duplicate).
-- [ ] Chunked render mode (`render_chunks`) performance
-- [ ] Large payload stress test
-- [ ] Long-running stability test (heap leak detection over hours)
-- [ ] GVL release experiment: wrap FFI call in `magnus::blocking` to measure
-  thread throughput improvement
+- Chunked render mode (`render_chunks`) performance — moved to `plans/perf-future-work.md`, still open there
+- Large payload stress test — moved to `plans/perf-future-work.md`, still open there
+- Long-running stability test (heap leak detection over hours) — moved to `plans/perf-future-work.md`, still open there
+- [x] GVL release experiment: wrap FFI call in `magnus::blocking` to measure
+  thread throughput improvement — done, see `plans/archived/gvl-release-experiment.md` (5,118 → 12,182 req/sec)
 - [x] Remove `MAX_ISOLATES` cap (pool now configurable up to `usize::MAX`, memory is the real limit)

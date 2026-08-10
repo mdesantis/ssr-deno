@@ -71,11 +71,11 @@ end
 
 ### Completion checklist for Option A
 
-- [ ] `render_error.rb` — add `js_error_message`, `js_error_backtrace`
-- [ ] `sig/ssr/deno.rbs` — add signatures for both methods
-- [ ] `test_deno_errors.rb` — add tests:
-  - `js_error_message` for sync throw, async rejection, timeout, non-Error throw
-  - `js_error_backtrace` returns frames for sync throw, nil for async rejection
+- [x] `render_error.rb` — add `js_error_message`, `js_error_backtrace` (`render_error.rb:10,21`)
+- [x] `sig/ssr/deno.rbs` — add signatures for both methods (`sig/ssr/deno.rbs:24-25`)
+- [x] `test_deno_errors.rb` — add tests (shipped alpha.8, `CHANGELOG.md`):
+  - `js_error_message` for sync throw, async rejection, timeout, non-Error throw (`test_deno_errors.rb:227,255,283,314`)
+  - `js_error_backtrace` returns frames for sync throw, nil for timeout/non-Error throw (`test_deno_errors.rb:342,372,402,433`)
 
 ## Option B: Rust-backed full backtrace
 
