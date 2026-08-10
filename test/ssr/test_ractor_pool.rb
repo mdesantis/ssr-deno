@@ -5,13 +5,15 @@ require_relative '../test_helper'
 module SSR
   module Deno
     class TestRactorPool < Minitest::Test
+      include SampleBundleGuard
+
       RACTOR_RESULT_METHOD = Ractor.method_defined?(:value) ? :value : :take
 
       BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
 
       def setup
         skip 'Ractor not available' unless defined?(Ractor)
-        skip "#{BUNDLE_PATH} not found — run `bundle exec rake samples:build` first" unless File.exist?(BUNDLE_PATH)
+        require_sample_bundle!(BUNDLE_PATH)
       end
 
       def test_render_basic

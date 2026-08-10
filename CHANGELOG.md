@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Changed
+- **Integration tests fail loudly on a missing sample bundle instead of skipping, in CI** — 14 of 16 `skip 'bundle not built' unless File.exist?(...)` guards across `test_integration_samples.rb`, `test_integration_node_builtins.rb`, `test_integration_hmr.rb`, and `test_ractor_pool.rb` are now `require_sample_bundle!(path)` (new `test/support/sample_bundle_guard.rb`). Locally it still skips with a hint; under `CI` or `SSR_DENO_STRICT_SAMPLES` it `flunk`s. `samples:build` only builds a sample when its `dist/` doesn't already exist, so a stale `dist/` from an older dependency set previously produced a green `rake test` that never exercised the current one — the 2 genuine capability skips (`deno` on `PATH`, `Ractor` availability) are unchanged.
 - **`cargo:clippy` now lints test targets** — added `--all-targets`, so `#[cfg(test)]` modules and `#[tokio::test]` functions are linted like the rest of the crate. Fixed the one warning it surfaced: `cjs_interop_repro_test.rs`'s `build_worker` took `&PathBuf` where `&Path` suffices (`clippy::ptr_arg`).
 - **The `ssr_deno` crate's Rust tests now run** — `cargo:test:ssr_deno` (new) runs after `compile`, alongside `cargo:test:ssr_deno_dev_mode`, and is part of the default `rake` chain. `ext/ssr_deno/src/cjs_interop_repro_test.rs` (7 live CJS-interop regression tests plus 1 `#[ignore]`d upstream-bug repro) had never been compiled — nothing in the Rakefile, `rakelib/`, or CI invoked `cargo test -p ssr_deno`. Also dropped the unused `CRATES` constant in `rakelib/cargo.rake`.
 

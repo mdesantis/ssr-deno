@@ -16,12 +16,14 @@ require 'test_helper'
 
 module SSR
   class TestIntegrationHMR < Minitest::Test
+    include SampleBundleGuard
+
     SAMPLE_DIR = File.expand_path('../../samples/vite-hmr-ssr-app', __dir__)
     SRC_PATH = File.join(SAMPLE_DIR, 'src', 'entry-server.ts')
     BUNDLE_PATH = File.join(SAMPLE_DIR, 'dist', 'server', 'entry-server.js')
 
     def setup
-      skip "#{BUNDLE_PATH} not found — run `bundle exec rake samples:build` first" unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
       skip 'deno not on PATH' unless system('deno', '--version', out: File::NULL, err: File::NULL)
 
       @original_src = File.read(SRC_PATH)

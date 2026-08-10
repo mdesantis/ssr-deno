@@ -42,6 +42,7 @@ require 'ssr/deno'
 # Shared support modules
 # ---------------------------------------------------------------------------
 require 'support/fixture_paths'
+require 'support/sample_bundle_guard'
 require 'support/temp_bundle_helper'
 
 # ---------------------------------------------------------------------------

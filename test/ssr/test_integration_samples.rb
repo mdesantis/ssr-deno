@@ -8,10 +8,12 @@ require 'test_helper'
 # Example: TestIntegrationReactMuiDashboardSSR (vite-react-emotion-mui-dashboard-ssr-app)
 module SSR
   class TestIntegrationReactSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_produces_valid_html
@@ -25,10 +27,12 @@ module SSR
   end
 
   class TestIntegrationVanillaSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Vanilla SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_vanilla_ssr
@@ -42,10 +46,12 @@ module SSR
   end
 
   class TestIntegrationSvelteSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-svelte-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Svelte SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_svelte_ssr
@@ -59,10 +65,12 @@ module SSR
   end
 
   class TestIntegrationReactMuiSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-mui-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React MUI SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_react_mui_ssr
@@ -76,10 +84,12 @@ module SSR
   end
 
   class TestIntegrationVueSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-vue-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Vue SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_vue_ssr
@@ -105,10 +115,12 @@ module SSR
   end
 
   class TestIntegrationWebpackSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/webpack-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Webpack SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_webpack_ssr
@@ -122,10 +134,12 @@ module SSR
   end
 
   class TestIntegrationWebpackReactSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/webpack-react-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Webpack React SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_webpack_react_ssr
@@ -140,10 +154,12 @@ module SSR
   end
 
   class TestIntegrationPreactSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-preact-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Preact SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_preact_ssr
@@ -156,10 +172,12 @@ module SSR
   end
 
   class TestIntegrationNodeSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/node-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'Node SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_node_ssr

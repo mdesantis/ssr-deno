@@ -4,10 +4,12 @@ require 'test_helper'
 
 module SSR
   class TestIntegrationReactMuiEmotionSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-mui-emotion-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React MUI Emotion SSR bundle not built' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_react_mui_emotion_ssr
@@ -23,10 +25,12 @@ module SSR
   end
 
   class TestIntegrationReactStreamingSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_PATH = File.expand_path('../../samples/vite-react-streaming-ssr-app/dist/server/entry-server.js', __dir__)
 
     def setup
-      skip 'React Streaming SSR bundle not built — run `bundle exec rake samples:build`' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_produces_valid_html
@@ -49,11 +53,13 @@ module SSR
   end
 
   class TestIntegrationReactMuiDashboardSSR < Minitest::Test
+    include SampleBundleGuard
+
     BUNDLE_DIR = '../../samples/vite-react-emotion-mui-dashboard-ssr-app/dist/server'
     BUNDLE_PATH = File.expand_path("#{BUNDLE_DIR}/entry-server.js", __dir__)
 
     def setup
-      skip 'React MUI Dashboard SSR bundle not built' unless File.exist?(BUNDLE_PATH)
+      require_sample_bundle!(BUNDLE_PATH)
     end
 
     def test_render_react_mui_dashboard_ssr
