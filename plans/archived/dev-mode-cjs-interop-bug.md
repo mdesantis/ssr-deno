@@ -466,11 +466,7 @@ If `dev_load_entry` raises `"Entry did not assign a function to globalThis.rende
 
 ## Action items if we proceed
 
-- [ ] Build standalone Rust repro (separate Cargo project, not embedded in this gem)
-- [ ] Test against Deno CLI to determine if embedder-specific
-- [ ] File upstream issue at `denoland/deno` with `embedder` label, link to repro
-- [ ] Decide: revert step 13 vs leave wired with docs
-- [ ] Update `plans/ssr-source-dev-mode.md` §step 13 status: blocked → revert or limited (now archived)
+Moved to the active plan [`plans/dev-mode-cjs-interop-upstream.md`](../dev-mode-cjs-interop-upstream.md) — genuinely outstanding, so it belongs outside `archived/`.
 
 ## Cross-references
 
