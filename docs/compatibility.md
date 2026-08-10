@@ -136,7 +136,7 @@ via ES module resolution. This means:
   available at runtime.
 - **`require()` for file paths** (`require("./relative.js")`,
   `require("/absolute.js")`) is explicitly rejected by the custom
-  `DenoNodeRequireLoader`. All npm dependencies must be inlined at build time.
+  `SSRDenoNodeRequireLoader`. All npm dependencies must be inlined at build time.
 - **`require()` for Node.js builtins** (`require("stream")`) works only when
   `node_builtins_enabled = true`. The `NodeBuiltinOnlyModuleLoader` resolves
   `node:` scheme specifiers; everything else returns an error.
@@ -151,7 +151,7 @@ The two module loaders:
 ### Synchronous blocking JS and timeouts
 
 The render timeout is enforced by a dedicated watchdog thread (`Watchdog` in
-`render.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the
+`watchdog.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the
 configured deadline. This interrupts both synchronous blocking JS (e.g.,
 `while(Date.now() < end) {}`) and hung async renders (Promises that never
 resolve). After termination, `cancel_terminate_execution()` restores the isolate
