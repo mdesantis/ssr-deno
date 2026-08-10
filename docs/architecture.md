@@ -34,12 +34,15 @@ flowchart TB
 | `lib/ssr/deno.rb` | Entry point — `require`s the native extension and all `SSR::Deno::*` Ruby modules. |
 | `lib/ssr/deno/config.rb` | `SSR::Deno::Config` — config setters (`max_heap_size_mb=`, `isolate_pool_size=`, `render_timeout_ms=`, `node_builtins_enabled=`, `source_maps_enabled=`, `dev_resolve_alias=`). Env var defaults (`SSR_DENO_*` prefix) applied at load time. |
 | `lib/ssr/deno/heap_stats.rb` | `SSR::Deno::HeapStats.fetch` / `fetch!` — V8 heap statistics. |
-| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator`. Class-level `@@registry` (built via `Bundle.bootstrap(config)`) backs named-bundle lookup. |
+| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator`. Class-instance `@registry` (populated by `Bundle.create_bundles!`) backs named-bundle lookup. |
+| `lib/ssr/deno/render_error.rb` | `SSR::Deno::RenderError` and friends — maps native render failures to typed Ruby exceptions with `js_error_message`/`js_error_backtrace`/`js_error_name`. |
 | `lib/ssr/deno/dev_mode_bundle.rb` | `SSR::Deno::DevModeBundle` — dev-mode equivalent of `Bundle` (per-request module reload, no Vite build). |
-| `lib/ssr/deno/ractor_pool.rb` | `SSR::Deno::RactorPool` — opt-in Ractor-based isolate pool. |
+| `lib/ssr/deno/ractor_pool.rb`, `lib/ssr/deno/ractor_pool/worker.rb` | `SSR::Deno::RactorPool` — opt-in Ractor-based isolate pool, and its per-Ractor worker. |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`). |
 | `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev. |
 | `lib/ssr/deno/rails/helper.rb` | View helper `ssr_render(data)`. |
+| `lib/ssr/deno/rails/log_subscriber.rb` | `ActiveSupport::LogSubscriber` — logs render/bundle-load events from `instrumenter.rb`. |
+| `lib/ssr/deno/rails/generators/` | `rails g ssr:deno:install` generator. |
 
 Config setters write to a Rust `Mutex<Config>` and must be called **before** the first `Bundle.new` (which triggers pool init).
 
@@ -87,7 +90,7 @@ flowchart LR
 - Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/archived/v8-oom-protection.md`](../plans/archived/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
-- Render timeout is enforced by a watchdog thread (`Watchdog` in `render.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the configured deadline. This interrupts both synchronous blocking JS and hung async renders. After termination, `cancel_terminate_execution()` restores the isolate for reuse.
+- Render timeout is enforced by a watchdog thread (`Watchdog` in `watchdog.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the configured deadline. This interrupts both synchronous blocking JS and hung async renders. After termination, `cancel_terminate_execution()` restores the isolate for reuse.
 
 ### Worker Thread Lifecycle
 
@@ -163,7 +166,7 @@ See `samples/` for complete working examples covering: barebone (plain JS), deno
 When enabled:
 1. `build_worker` uses `NodeBuiltinOnlyModuleLoader` (allows `node:` scheme URLs) instead of `NoopModuleLoader`.
 2. `build_worker` initializes `NodeExtInitServices` with a `NodeRequireLoader`, `NodeResolver`, and `PackageJsonResolver`.
-3. Before each bundle evaluation, `setup_require` runs an async `import('node:module')` and polls the microtask queue with a 10ms deadline until `globalThis.require` is available via `createRequire`; raises `BundleLoad` error if the import fails.
+3. Before each bundle evaluation, `setup_require` runs an async `import('node:module')`, then `await`s `MainWorker::run_event_loop` until `globalThis.require` is available via `createRequire` (a bare microtask checkpoint isn't enough — the import resolves through `node_resolver`'s async filesystem ops, not pure microtasks); raises `BundleLoad` error if the import fails. Skipped entirely if `globalThis.require` is already set from a prior bundle load into the same isolate.
 
 This allows CJS bundles that call `require("stream")`, `require("buffer")`, `require("events")`, etc. to work in the embedded V8 context. Packages like `@emotion/server` that depend on Node.js built-in modules via `through2` → `multipipe` → `html-tokenize` can be used without manual CSS extraction.
 
@@ -183,10 +186,17 @@ between suites. Each suite sets its own config before pool init:
 | `test:node_builtins` | `node_builtins_enabled=true`, `render_timeout_ms=2000` | Node builtin modules |
 | `test:async` | `render_timeout_ms=100` | Async render, promise polling |
 | `test:env_config` | Env vars only | `SSR_DENO_*` env var loading |
+| `test:ractor` | `pool_size=4`, `render_timeout_ms=5000` | `RactorPool` (round-robin, reload, shutdown) |
+| `test:puma` | `render_timeout_ms=5000` | Puma integration — in-process single mode + clustered subprocess |
+| `test:rails` | Combustion Rails app | Railtie, view helper, `LogSubscriber` |
+| `test:perf` | `pool_size=4`, `node_builtins_enabled=true` | Performance regression vs `test/fixtures/perf-baselines.yml` |
 
-All suites run via `bundle exec rake test` (or as part of `bundle exec rake`).
-Each sets `SimpleCov.command_name` for a distinct key in `.resultset.json`.
-The final merge validates combined coverage at **100% line + 100% branch**.
+See `rakelib/test.rake` for the exact per-suite config. All suites except
+`test:perf` run via `bundle exec rake test` (or as part of `bundle exec rake`),
+each setting `SimpleCov.command_name` for a distinct key in `.resultset.json`;
+the final merge validates combined coverage at **100% line + 100% branch**.
+`test:perf` runs standalone via `perf:check` and skips coverage instrumentation
+entirely (`SSR_DENO_SKIP_COVERAGE=true`) since it measures throughput.
 
 ---
 
@@ -246,33 +256,34 @@ ext/ssr_deno/                                         # Rust native extension
     │   └── dev_{handle,worker,load}.rs               # Dev-mode worker + CJS cache warm-up
     ├── nop_types.rs                                  # NOP impls (InNpmPackageChecker, …)
     ├── node_builtin_loader.rs                        # ModuleLoader for node: scheme
-    └── require_loader.rs                             # NodeRequireLoader for builtins
+    ├── require_loader.rs                             # NodeRequireLoader for builtins
+    └── cjs_interop_repro_test.rs                      # Test-only: CJS/ESM interop repro (see plans/archived/dev-mode-cjs-interop-bug.md)
 
 lib/ssr/deno/                                         # Ruby module
 ├── version.rb                                        # VERSION
 ├── config.rb                                         # SSR::Deno::Config (setters, env defaults)
 ├── heap_stats.rb                                     # SSR::Deno::HeapStats.fetch / fetch!
 ├── bundle.rb                                         # Bundle class + named-bundle registry
+├── render_error.rb                                   # RenderError and friends (typed exceptions)
 ├── dev_mode_bundle.rb                                # DevModeBundle (no-build dev mode)
-├── ractor_pool.rb                                    # Opt-in Ractor pool
+├── ractor_pool.rb, ractor_pool/worker.rb             # Opt-in Ractor pool + per-Ractor worker
 ├── instrumenter.rb                                   # Notifications wrapper
 ├── rails.rb                                          # Rails integration entry point
-└── rails/                                            # Railtie, helper, generator
+└── rails/                                            # Railtie, helper, log subscriber, generator
                                                       # (deno.rb at lib/ssr/ is the require entry point)
 
 sig/ssr/deno.rbs                                      # RBS type signatures
 
-test/
+test/                                                  # 20+ files across test/ssr/ (unit + integration)
 ├── test_helper.rb                                    # SimpleCov, pool config
-├── ssr/test_deno*.rb                                 # Unit tests (Bundle, errors, etc.)
-├── ssr/test_integration_samples.rb                   # Integration tests (all samples)
-└── ssr/test_integration_node_builtins.rb             # node_builtins integration test
+├── support/                                          # Fixture paths, sample-bundle guard, perf helpers, …
+└── ssr/                                               # See rakelib/test.rake for how suites map to files
 
 rakelib/
-├── cargo.rake                                        # cargo:test, cargo:clippy, cargo:fmt, cargo:coverage
+├── cargo.rake                                        # cargo:test(:<crate>), cargo:clippy, cargo:fmt, cargo:coverage
 ├── perf.rake                                         # perf:check, perf:baseline:update
 ├── rbs.rake                                          # rbs:validate, rbs:up_to_date, rbs:diff
-├── samples.rake                                      # samples:build
+├── samples.rake                                      # samples:build(:<name>), samples:clean
 └── test.rake                                         # test:main, test:config, test:node_builtins, test:async, test:env_config, test:ractor, test:puma, test:rails, test:perf, coverage:check
 
 samples/
@@ -280,6 +291,7 @@ samples/
 ├── deno-native-ssr-app/                              # Deno.serve() + template strings, no build
 ├── deno-native-react-ssr-app/                        # Deno.serve() + React 19, no build
 ├── vite-ssr-app/                                     # Plain TS + Vite
+├── vite-hmr-ssr-app/                                 # HMR/auto_reload test fixture (not a runnable app)
 ├── vite-react-ssr-app/                               # React 19 + Vite
 ├── vite-react-streaming-ssr-app/                     # React 19 streaming SSR + Vite
 ├── vite-react-mui-ssr-app/                           # React 19 + MUI v9 + Vite
