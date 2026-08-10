@@ -14,7 +14,7 @@
 //!   (see [`dev_mode_builder.rs`](../../crates/ssr_deno_dev_mode/src/dev_mode_builder.rs)).
 //! - See [`plans/archived/dev-mode-cjs-interop-bug.md`](../../plans/archived/dev-mode-cjs-interop-bug.md).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -177,7 +177,7 @@ fn create_fixtures() -> (TempDir, PathBuf) {
     (dir, root)
 }
 
-async fn build_worker(project_root: &PathBuf) -> (MainWorker, SharedCjsPaths) {
+async fn build_worker(project_root: &Path) -> (MainWorker, SharedCjsPaths) {
     let cjs_paths: SharedCjsPaths = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut worker = build_dev_mode_worker(
         &Url::parse("https://ssr-deno.local/").unwrap(),

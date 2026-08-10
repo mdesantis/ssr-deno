@@ -40,7 +40,7 @@ end
 
 desc 'Run clippy lints on the ssr_deno crate'
 task 'cargo:clippy' do
-  sh 'cargo', 'clippy', '--', '-D', 'warnings', chdir: 'ext/ssr_deno'
+  sh 'cargo', 'clippy', '--all-targets', '--', '-D', 'warnings', chdir: 'ext/ssr_deno'
 end
 
 desc 'Check Rust formatting'
