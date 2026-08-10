@@ -181,6 +181,14 @@ task 'coverage:check' do
   abort 'No coverage results — run `rake test` first' unless File.exist?(rs_path)
 
   results = SimpleCov::ResultMerger.merged_result
+
+  unless results
+    age = (Time.now - File.mtime(rs_path)).round
+
+    abort "Coverage resultset is stale (#{age}s old, merge_timeout is " \
+          "#{SimpleCov.merge_timeout}s) — run `rake test` again"
+  end
+
   stats = results.coverage_statistics
 
   line_stat = stats[:line]
