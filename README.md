@@ -304,27 +304,31 @@ Full docs, CJS interop notes, caveats: [`docs/dev-mode.md`](docs/dev-mode.md).
 
 ## Samples
 
-The `samples/` directory contains several SSR samples. Run any with
-`deno task build && deno task serve`:
+The `samples/` directory contains several SSR samples. Most run with
+`deno task build && deno task serve`, but three have no `build` task
+(`deno-native-*` samples serve their `.tsx`/`.ts` directly; `barebone-ssr-app`
+ships a pre-built bundle) and one has no `serve` task (`vite-hmr-ssr-app` is a
+test fixture for `DevModeBundle#auto_reload`, not a runnable app). See the
+**Run** column below for the actual command.
 
-| Port | Directory | Description |
-|------|-----------|-------------|
-| 3100 | [`barebone-ssr-app`](samples/barebone-ssr-app/) | Plain JS bundle, zero dependencies |
-| 3101 | [`deno-native-ssr-app`](samples/deno-native-ssr-app/) | Deno.serve() + template strings, no build |
-| 3102 | [`vite-ssr-app`](samples/vite-ssr-app/) | Vanilla TypeScript + Vite |
-| 3103 | [`deno-native-react-ssr-app`](samples/deno-native-react-ssr-app/) | Deno.serve() + React 19, no build |
-| 3104 | [`vite-svelte-ssr-app`](samples/vite-svelte-ssr-app/) | Svelte 5 + Vite |
-| 3105 | [`vite-vue-ssr-app`](samples/vite-vue-ssr-app/) | Vue 3 + Vite |
-| 3106 | [`vite-preact-ssr-app`](samples/vite-preact-ssr-app/) | Preact + Vite |
-| 3107 | [`vite-react-ssr-app`](samples/vite-react-ssr-app/) | React 19 + Vite |
-| 3108 | [`vite-react-mui-ssr-app`](samples/vite-react-mui-ssr-app/) | React 19 + MUI v9 + Vite |
-| 3109 | [`vite-react-mui-emotion-ssr-app`](samples/vite-react-mui-emotion-ssr-app/) | React 19 + MUI v9 + Emotion CSS + Vite |
-| 3110 | [`vite-react-emotion-mui-dashboard-ssr-app`](samples/vite-react-emotion-mui-dashboard-ssr-app/) | Full MUI dashboard + Vite |
-| 3111 | [`webpack-ssr-app`](samples/webpack-ssr-app/) | Vanilla TypeScript + Webpack 5 |
-| 3112 | [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 |
-| 3113 | [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) |
-| 3114 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite |
-| 3115 | [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | Vite HMR development server |
+| Port | Directory | Description | Run |
+|------|-----------|-------------|-----|
+| 3100 | [`barebone-ssr-app`](samples/barebone-ssr-app/) | Plain JS bundle, zero dependencies | `deno task serve` |
+| 3101 | [`deno-native-ssr-app`](samples/deno-native-ssr-app/) | Deno.serve() + template strings, no build | `deno task serve` |
+| 3102 | [`vite-ssr-app`](samples/vite-ssr-app/) | Vanilla TypeScript + Vite | `deno task build && deno task serve` |
+| 3103 | [`deno-native-react-ssr-app`](samples/deno-native-react-ssr-app/) | Deno.serve() + React 19, no build | `deno task serve` |
+| 3104 | [`vite-svelte-ssr-app`](samples/vite-svelte-ssr-app/) | Svelte 5 + Vite | `deno task build && deno task serve` |
+| 3105 | [`vite-vue-ssr-app`](samples/vite-vue-ssr-app/) | Vue 3 + Vite | `deno task build && deno task serve` |
+| 3106 | [`vite-preact-ssr-app`](samples/vite-preact-ssr-app/) | Preact + Vite | `deno task build && deno task serve` |
+| 3107 | [`vite-react-ssr-app`](samples/vite-react-ssr-app/) | React 19 + Vite | `deno task build && deno task serve` |
+| 3108 | [`vite-react-mui-ssr-app`](samples/vite-react-mui-ssr-app/) | React 19 + MUI v9 + Vite | `deno task build && deno task serve` |
+| 3109 | [`vite-react-mui-emotion-ssr-app`](samples/vite-react-mui-emotion-ssr-app/) | React 19 + MUI v9 + Emotion CSS + Vite | `deno task build && deno task serve` |
+| 3110 | [`vite-react-emotion-mui-dashboard-ssr-app`](samples/vite-react-emotion-mui-dashboard-ssr-app/) | Full MUI dashboard + Vite | `deno task build && deno task serve` |
+| 3111 | [`webpack-ssr-app`](samples/webpack-ssr-app/) | Vanilla TypeScript + Webpack 5 | `deno task build && deno task serve` |
+| 3112 | [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 | `deno task build && deno task serve` |
+| 3113 | [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) | `npm run build && npm run serve` |
+| 3114 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite | `deno task build && deno task serve` |
+| — | [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | HMR/`auto_reload` test fixture, not a runnable app | `deno task build` |
 
 Build all Vite samples at once:
 
@@ -395,12 +399,15 @@ See [CSP Nonce](#csp-nonce) for standalone usage and JS-side setup.
 
 - Ruby 3.3+
 - Rust toolchain ([rustup](https://rustup.rs))
-- Deno (for sample builds)
+- Deno (for most sample builds)
+- Node.js + npm (for the `node-ssr-app` sample, which uses esbuild via npm scripts instead of `deno task`)
 
 **Linux**
 
 ```bash
-# Required: libclang (used by bindgen for SQLite bindings)
+# Required: libclang, used by bindgen — rb-sys generates Ruby C API bindings
+# per-Ruby-ABI at build time (can't be pre-shipped), and libnghttp2/libsqlite3-sys
+# in the Deno dependency tree also run bindgen.
 sudo apt-get install -y libclang-dev
 
 # Optional: faster linking
@@ -448,8 +455,11 @@ First compile downloads prebuilt V8 from crates.io and links it into the native 
 bundle exec rake
 ```
 
-Runs: Rust unit tests → Vite sample builds → Ruby tests → RuboCop → RBS
-validation. Coverage must stay at 100% line + 100% branch.
+Runs the full default chain: compile → Clippy → Rust unit tests (all crates)
+→ Rust coverage → `cargo fmt --check` → sample builds → Ruby tests →
+coverage check → perf regression check → RuboCop (+ Rails config) → RBS
+validation. Ruby coverage must stay at 100% line + 100% branch; see
+`rakelib/*.rake` for the exact task list.
 
 ## Architecture
 
