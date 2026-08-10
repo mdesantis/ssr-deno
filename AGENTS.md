@@ -36,7 +36,7 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
   - Move `## Unreleased` to `## [version] - YYYY-MM-DD`, add fresh empty `## Unreleased` on top.
   - Tag commit (e.g. `v0.1.0-alpha.4`).
 - **Stale audit after every changeset.** Check before marking complete:
-  - `README.md`, `plans/*.md`, `CHANGELOG.md`, source comments, `lib/ssr/deno/bundle.rb` (`:nocov:` directives), `.github/workflows/ci.yml`, test files, sample files/dirs, `.vscode/settings.json` (`deno.enablePaths` — gitignored but commit with `git add -f`).
+  - `README.md`, `plans/*.md`, `CHANGELOG.md`, source comments, `docs/*.md`, `rakelib/*.rake` header comments, `.github/workflows/ci.yml`, test files, sample files/dirs, `.vscode/settings.json` (`deno.enablePaths` — gitignored but commit with `git add -f`).
   - When adding/renaming/deleting samples: `rg` across non-vendor/non-generated repo for stale path refs.
 - **RuboCop: auto-correct first.** `[Correctable]` offenses → `bundle exec rubocop -a <file>` (safe) or `-A` (all). Manual edit only if auto-correct fails.
 - **TDD when step is testable.** Write failing test → implement → verify pass. If expected-fail test passes immediately, investigate before implementing. Fast loop: `bundle exec rake test`; full gate: `bundle exec rake`.
@@ -51,14 +51,14 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 
 ## Test architecture
 
-Two separate Ruby processes to avoid pool re-initialization:
+9 suites, each a separate Ruby process (avoids pool re-initialization —
+the pool is permanent once created) writing its own generated runner to
+`tmp/test_runner_*.rb`. See `rakelib/test.rake` for the exact per-suite
+config — don't duplicate the list here, it goes stale.
 
-| Suite | File | `node_builtins` | Coverage key |
-|-------|------|-----------------|--------------|
-| `test:main` | `tmp/test_runner_main.rb` | `false` | `test:main` |
-| `test:node_builtins` | `tmp/test_runner_node.rb` | `true` | `test:node_builtins` |
-
-`test:node_builtins` merges coverage, enforces 100% line + 100% branch.
+`bundle exec rake test` runs all of them except `test:perf` (which runs
+standalone via `perf:check`) and merges coverage; `coverage:check` enforces
+100% line + 100% branch on the merged result.
 
 ## Code style — assignment blank line rule
 

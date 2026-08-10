@@ -6,12 +6,15 @@ require 'minitest/test_task'
 Minitest::TestTask.create
 
 # Override test: clears the default Minitest task and splits into suites:
-#   test:main         — default config
-#   test:config       — before pool init
+#   test:main          — default config
+#   test:config        — before pool init
 #   test:node_builtins — node_builtins enabled, 2000ms timeout
-#   test:async        — short 100ms timeout
-#   test:env_config   — env var config
-#   test:puma         — Puma integration (in-process single + clustered subprocess)
+#   test:async         — short 100ms timeout
+#   test:env_config    — env var config
+#   test:ractor        — RactorPool, pool_size=4, 5000ms timeout
+#   test:puma          — Puma integration (in-process single + clustered subprocess)
+#   test:rails         — Railtie/helper/LogSubscriber via Combustion
+#   test:perf          — performance regression, runs standalone via perf:check
 Rake::Task[:test].clear if Rake::Task.task_defined?(:test)
 
 root = File.expand_path('..', __dir__)
