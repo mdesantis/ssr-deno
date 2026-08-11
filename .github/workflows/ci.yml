@@ -97,18 +97,19 @@ jobs:
         run: bundle exec rake samples:build
       - name: Run tests
         run: bundle exec rake test
-      # Ruby 3.4 hits a documented upstream Coverage/GC race (any GC pass
-      # during the run can zero out real hit counts for already-executed
-      # lines — bugs.ruby-lang.org #22179, #22187) that 3.4's more frequent
-      # major GCs under concurrent workloads make far more likely to fire
-      # than on 3.3/4.0. Reproduced locally: ~50% flake rate on 3.4.10 in
-      # complete isolation (single suite, single process), 0% on 4.0.3.
-      # GC.disable eliminates it (confirmed) but would defeat
-      # test_deno_stability.rb's own purpose (leak detection needs GC to
-      # run); a single forced GC.start before result-collection only
-      # narrows the window, doesn't close it. No safe app-level fix exists.
+      # Coverage doesn't vary by Ruby version, but a documented upstream
+      # Coverage/GC race does (bugs.ruby-lang.org #22179, #22187): any GC
+      # pass during the run can zero out real hit counts for
+      # already-executed lines. Confirmed locally (~50% flake rate on
+      # 3.4.10 in complete isolation; GC.disable eliminates it, proving
+      # the mechanism — but disabling GC across the whole test process
+      # would defeat test_deno_stability.rb's own leak-detection purpose).
+      # 3.3 and 4.0 hit the same race in real CI runs too, just at lower
+      # odds — checking multiple versions only multiplies the chance of
+      # a flaky failure with zero extra signal, since it's the same code.
+      # Run on one canonical version only.
       - name: Check coverage
-        if: matrix.ruby != '3.4'
+        if: matrix.ruby == '4.0'
         run: bundle exec rake coverage:check
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
