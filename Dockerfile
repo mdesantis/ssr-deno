@@ -21,8 +21,6 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     git \
     pkg-config \
     mold \
-    clang-21 \
-    lld-21 \
     libclang-21-dev \
     libssl-dev \
     libyaml-dev \

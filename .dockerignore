@@ -1,9 +1,6 @@
 # Rust build artifacts
 ext/ssr_deno/target/
 
-# Vendored Rust toolchain in V8 source — not needed, we install via rustup
-vendor/rusty_v8/third_party/rust-toolchain/
-
 # Temp files
 tmp/
 
@@ -14,7 +11,6 @@ node_modules/
 .git/
 .gitattributes
 .gitignore
-.gitmodules
 
 # CI
 .github/
@@ -23,7 +19,6 @@ node_modules/
 test/
 docs/
 samples/
-benches/
 coverage/
 plans/
 
