@@ -108,4 +108,4 @@ Re-read this file, then execute every applicable item:
 2. **`bundle exec rake`** — must exit 0
 3. **`sig/ssr/deno.rbs`** — in sync with any signature/type changes
 4. **Stale docs/plans/comments audit** — all modified areas
-5. **`CHANGELOG.md`** — entry if user-facing change. User-facing means it changes something a gem consumer or Docker-image builder can observe: published gem contents, runtime behavior, public API, CI/Docker artifacts they pull. Pure repo-internal hygiene (`.gitmodules`, `.dockerignore` entries with no effect on the built image, unused root `package.json`, plan-file bookkeeping, comment resyncs) gets no entry — it's real work, just not this reader's business.
+5. **`CHANGELOG.md`** — entry only for user-facing changes: published gem contents, runtime behavior, public API, README/`docs/*.md` corrections, or Docker-image build/runtime changes. Not for contributor/CI-facing work — CI workflow behavior, `rakelib`/test infrastructure, `AGENTS.md`, plan-file bookkeeping, comment resyncs get no entry even when they took real effort.
