@@ -311,24 +311,24 @@ ships a pre-built bundle) and one has no `serve` task (`vite-hmr-ssr-app` is a
 test fixture for `DevModeBundle#auto_reload`, not a runnable app). See the
 **Run** column below for the actual command.
 
-| Port | Directory | Description | Run |
-|------|-----------|-------------|-----|
-| 3100 | [`barebone-ssr-app`](samples/barebone-ssr-app/) | Plain JS bundle, zero dependencies | `deno task serve` |
-| 3101 | [`deno-native-ssr-app`](samples/deno-native-ssr-app/) | Deno.serve() + template strings, no build | `deno task serve` |
-| 3102 | [`vite-ssr-app`](samples/vite-ssr-app/) | Vanilla TypeScript + Vite | `deno task build && deno task serve` |
-| 3103 | [`deno-native-react-ssr-app`](samples/deno-native-react-ssr-app/) | Deno.serve() + React 19, no build | `deno task serve` |
-| 3104 | [`vite-svelte-ssr-app`](samples/vite-svelte-ssr-app/) | Svelte 5 + Vite | `deno task build && deno task serve` |
-| 3105 | [`vite-vue-ssr-app`](samples/vite-vue-ssr-app/) | Vue 3 + Vite | `deno task build && deno task serve` |
-| 3106 | [`vite-preact-ssr-app`](samples/vite-preact-ssr-app/) | Preact + Vite | `deno task build && deno task serve` |
-| 3107 | [`vite-react-ssr-app`](samples/vite-react-ssr-app/) | React 19 + Vite | `deno task build && deno task serve` |
-| 3108 | [`vite-react-mui-ssr-app`](samples/vite-react-mui-ssr-app/) | React 19 + MUI v9 + Vite | `deno task build && deno task serve` |
-| 3109 | [`vite-react-mui-emotion-ssr-app`](samples/vite-react-mui-emotion-ssr-app/) | React 19 + MUI v9 + Emotion CSS + Vite | `deno task build && deno task serve` |
-| 3110 | [`vite-react-emotion-mui-dashboard-ssr-app`](samples/vite-react-emotion-mui-dashboard-ssr-app/) | Full MUI dashboard + Vite | `deno task build && deno task serve` |
-| 3111 | [`webpack-ssr-app`](samples/webpack-ssr-app/) | Vanilla TypeScript + Webpack 5 | `deno task build && deno task serve` |
-| 3112 | [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 | `deno task build && deno task serve` |
-| 3113 | [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) | `npm run build && npm run serve` |
-| 3114 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite | `deno task build && deno task serve` |
-| — | [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | HMR/`auto_reload` test fixture, not a runnable app | `deno task build` |
+| Directory | Description | Run |
+|-----------|-------------|-----|
+| [`barebone-ssr-app`](samples/barebone-ssr-app/) | Plain JS bundle, zero dependencies | `deno task serve` |
+| [`deno-native-ssr-app`](samples/deno-native-ssr-app/) | Deno.serve() + template strings, no build | `deno task serve` |
+| [`vite-ssr-app`](samples/vite-ssr-app/) | Vanilla TypeScript + Vite | `deno task build && deno task serve` |
+| [`deno-native-react-ssr-app`](samples/deno-native-react-ssr-app/) | Deno.serve() + React 19, no build | `deno task serve` |
+| [`vite-svelte-ssr-app`](samples/vite-svelte-ssr-app/) | Svelte 5 + Vite | `deno task build && deno task serve` |
+| [`vite-vue-ssr-app`](samples/vite-vue-ssr-app/) | Vue 3 + Vite | `deno task build && deno task serve` |
+| [`vite-preact-ssr-app`](samples/vite-preact-ssr-app/) | Preact + Vite | `deno task build && deno task serve` |
+| [`vite-react-ssr-app`](samples/vite-react-ssr-app/) | React 19 + Vite | `deno task build && deno task serve` |
+| [`vite-react-mui-ssr-app`](samples/vite-react-mui-ssr-app/) | React 19 + MUI v9 + Vite | `deno task build && deno task serve` |
+| [`vite-react-mui-emotion-ssr-app`](samples/vite-react-mui-emotion-ssr-app/) | React 19 + MUI v9 + Emotion CSS + Vite | `deno task build && deno task serve` |
+| [`vite-react-emotion-mui-dashboard-ssr-app`](samples/vite-react-emotion-mui-dashboard-ssr-app/) | Full MUI dashboard + Vite | `deno task build && deno task serve` |
+| [`webpack-ssr-app`](samples/webpack-ssr-app/) | Vanilla TypeScript + Webpack 5 | `deno task build && deno task serve` |
+| [`webpack-react-ssr-app`](samples/webpack-react-ssr-app/) | React 19 + Webpack 5 | `deno task build && deno task serve` |
+| [`node-ssr-app`](samples/node-ssr-app/) | Vanilla TypeScript + esbuild (Node.js) | `npm run build && npm run serve` |
+| [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite | `deno task build && deno task serve` |
+| [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | HMR/`auto_reload` test fixture, not a runnable app | `deno task build` |
 
 Build all Vite samples at once:
 
