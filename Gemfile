@@ -22,4 +22,4 @@ gem 'rubocop-performance', '~> 1.26', require: false
 gem 'rubocop-rails', '~> 2.31', require: false
 gem 'rubocop-rake', '~> 0.7', require: false
 gem 'rubocop-thread_safety', '~> 0.7', require: false
-gem 'simplecov', '~> 0.22', require: false
+gem 'simplecov', '~> 1.0', require: false
