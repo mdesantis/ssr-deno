@@ -9,6 +9,6 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "@types/deno": "npm:@types/deno@^2.0.0"
+    "@types/deno": "npm:@types/deno@^2.7.0"
   }
 }

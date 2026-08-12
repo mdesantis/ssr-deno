@@ -10,11 +10,11 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "webpack": "npm:webpack@^5.98.0",
-    "webpack-cli": "npm:webpack-cli@^6.0.0",
-    "ts-loader": "npm:ts-loader@^9.5.0",
-    "typescript": "npm:typescript@^5.9.0",
-    "@types/deno": "npm:@types/deno@^2.0.0"
+    "webpack": "npm:webpack@^5.109.2",
+    "webpack-cli": "npm:webpack-cli@^6.0.1",
+    "ts-loader": "npm:ts-loader@^9.6.2",
+    "typescript": "npm:typescript@^5.9.3",
+    "@types/deno": "npm:@types/deno@^2.7.0"
   },
   "compilerOptions": {
     "types": ["npm:@types/deno"]
