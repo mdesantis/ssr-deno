@@ -189,7 +189,7 @@ between suites. Each suite sets its own config before pool init:
 | `test:ractor` | `pool_size=4`, `render_timeout_ms=5000` | `RactorPool` (round-robin, reload, shutdown) |
 | `test:puma` | `render_timeout_ms=5000` | Puma integration — in-process single mode + clustered subprocess |
 | `test:rails` | Combustion Rails app | Railtie, view helper, `LogSubscriber` |
-| `test:perf` | `pool_size=4`, `node_builtins_enabled=true` | Performance regression vs `test/fixtures/perf-baselines.yml` |
+| `test:perf` | `pool_size=4`, `node_builtins_enabled=true` | Performance regression — same-bundle single-vs-`RactorPool` ratios, no committed baseline (not portable across machines; see `test/support/perf_helpers.rb`) |
 
 See `rakelib/test.rake` for the exact per-suite config. All suites except
 `test:perf` run via `bundle exec rake test` (or as part of `bundle exec rake`),
@@ -281,7 +281,7 @@ test/                                                  # 20+ files across test/s
 
 rakelib/
 ├── cargo.rake                                        # cargo:test(:<crate>), cargo:clippy, cargo:fmt, cargo:coverage
-├── perf.rake                                         # perf:check, perf:baseline:update
+├── perf.rake                                         # perf:check
 ├── rbs.rake                                          # rbs:validate, rbs:up_to_date, rbs:diff
 ├── samples.rake                                      # samples:build(:<name>), samples:clean
 └── test.rake                                         # test:main, test:config, test:node_builtins, test:async, test:env_config, test:ractor, test:puma, test:rails, test:perf, coverage:check

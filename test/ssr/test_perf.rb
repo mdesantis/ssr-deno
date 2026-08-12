@@ -73,12 +73,9 @@ module SSR
       assert_no_crash(r[:mui_ractor_pool][:ops], 'MUI emotion ractor_pool')
     end
 
-    def test_baseline_checks
-      assert_within_baseline(r[:min_single][:ops], 'minimal_single')
-      assert_within_baseline(r[:min_ractor_pool][:ops], 'minimal_ractor_pool')
-      assert_within_baseline(r[:react_single][:ops], 'react_single', pct: 50)
-      assert_within_baseline(r[:mui_single][:ops], 'mui_emotion_single', pct: 50)
-      assert_within_baseline(r[:mui_ractor_pool][:ops], 'mui_emotion_ractor_pool', pct: 50)
+    def test_ractor_pool_overhead_reasonable
+      assert_pool_overhead_reasonable(r[:min_single][:ops], r[:min_ractor_pool][:ops], 'minimal')
+      assert_pool_overhead_reasonable(r[:mui_single][:ops], r[:mui_ractor_pool][:ops], 'mui_emotion')
     end
   end
 end

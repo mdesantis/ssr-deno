@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require 'yaml'
-require 'json'
-require 'etc'
-
 # ---------------------------------------------------------------------------
 # Standalone helpers
 # ---------------------------------------------------------------------------
@@ -123,39 +119,6 @@ module PerfHelpers
 
     { ops: ops, p50_ms: p50_ms, p99_ms: p99_ms }
   end
-
-  # -------------------------------------------------------------------------
-  # Baseline I/O
-  # -------------------------------------------------------------------------
-
-  BASELINE_FILE = File.expand_path('../../test/fixtures/perf-baselines.yml', __dir__).freeze
-
-  def self.load_baselines
-    return nil unless File.exist?(BASELINE_FILE)
-
-    YAML.safe_load_file(BASELINE_FILE)
-  end
-
-  def self.write_baselines(results, path = BASELINE_FILE)
-    FileUtils.mkdir_p(File.dirname(path))
-
-    bl_data = {}
-    results.each do |key, ops|
-      bl_data[key.to_s] = { 'ops' => ops }
-    end
-
-    baselines = {
-      'meta' => {
-        'generated' => Time.now.strftime('%Y-%m-%d'),
-        'ruby' => RUBY_VERSION,
-        'cpu' => Etc.nprocessors
-      },
-      'thresholds' => { 'ops_pct' => 70, 'p99_mult' => 5.0 },
-      'baselines' => bl_data
-    }
-
-    File.write(path, YAML.dump(baselines))
-  end
 end
 
 # ---------------------------------------------------------------------------
@@ -191,16 +154,27 @@ module PerfAssertions
     assert_operator ops, :>, 0, "#{label}: 0 ops (render likely crashed)"
   end
 
-  def assert_within_baseline(ops, key, pct: 70)
-    baselines = PerfHelpers.load_baselines
-    skip 'No baselines at test/fixtures/perf-baselines.yml — run rake perf:baseline:update' unless baselines
+  # A committed absolute-ops baseline doesn't transfer across machines: the
+  # same dependency set measured ~9.7k ops/sec for minimal_single on a
+  # 24-core box and ~20k on a 10-core laptop — a >2x swing from hardware
+  # alone, before any real regression. Cross-bundle ratios (react_single as
+  # a fraction of minimal_single) swing even harder, since trivial and heavy
+  # bundles are bottlenecked on different things (FFI/dispatch overhead vs.
+  # actual V8 execution) that don't scale together across CPU generations.
+  #
+  # What *does* stay in the same order of magnitude across machines: the
+  # same bundle's own single-render vs. RactorPool-render ratio, measured in
+  # the same run. This asserts that ratio doesn't collapse — RactorPool
+  # dispatch overhead becoming catastrophically worse relative to single
+  # mode for the same workload — without needing any committed number.
+  # `min_ratio` is intentionally generous (observed 44-110% across two very
+  # different machines); this is a floor against a real regression, not a
+  # performance target.
+  def assert_pool_overhead_reasonable(single_ops, pool_ops, label, min_ratio: 0.2)
+    ratio = pool_ops.to_f / [single_ops, 1].max
 
-    baseline = baselines['baselines'][key.to_s]
-    skip "No baseline entry for #{key}" unless baseline
-
-    threshold = baseline['ops'] * pct / 100.0
-
-    assert_operator ops, :>=, threshold.round,
-                    "#{key}: #{ops} ops is below #{pct}% of baseline (#{baseline['ops']} ops)"
+    assert_operator ratio, :>=, min_ratio,
+                    "#{label}: RactorPool/single ratio #{ratio.round(2)} is below #{min_ratio} " \
+                    "(#{pool_ops} pool ops vs #{single_ops} single ops for the same bundle)"
   end
 end
