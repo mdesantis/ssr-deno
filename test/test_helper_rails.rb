@@ -7,11 +7,9 @@ unless ENV['SSR_DENO_SKIP_COVERAGE']
 
   SimpleCov.start do
     enable_coverage :branch
-    add_filter 'test/internal/'
-    add_filter 'test/'
-    add_filter 'lib/ssr/deno/rails.rb'
-    add_filter 'lib/ssr/deno/rails/'
-    add_filter 'lib/ssr/deno/ractor_pool' # SimpleCov can't trace inside Ractors
+    skip 'lib/ssr/deno/rails.rb'
+    skip 'lib/ssr/deno/rails/'
+    skip 'lib/ssr/deno/ractor_pool' # SimpleCov can't trace inside Ractors
     formatter SimpleCov::Formatter::MultiFormatter.new(
       [
         SimpleCov::Formatter::SimpleFormatter,
