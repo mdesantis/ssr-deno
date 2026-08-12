@@ -108,4 +108,4 @@ Re-read this file, then execute every applicable item:
 2. **`bundle exec rake`** — must exit 0
 3. **`sig/ssr/deno.rbs`** — in sync with any signature/type changes
 4. **Stale docs/plans/comments audit** — all modified areas
-5. **`CHANGELOG.md`** — entry only for user-facing changes: published gem contents, runtime behavior, public API, README/`docs/*.md` corrections, or Docker-image build/runtime changes. Not for contributor/CI-facing work — CI workflow behavior, `rakelib`/test infrastructure, `AGENTS.md`, plan-file bookkeeping, comment resyncs get no entry even when they took real effort.
+5. **`CHANGELOG.md`** — entry only for user-facing changes: published gem contents, runtime behavior, public API, README/`docs/*.md` corrections, or Docker-image build/runtime changes. Not for contributor/CI-facing work — CI workflow behavior, `rakelib`/test infrastructure, `AGENTS.md`, plan-file bookkeeping, comment resyncs get no entry even when they took real effort. State the change, not how it was verified — "verified with a full `docker build`" or "confirmed via CI" describes process, not the change; the reader wants to know what's different, not how you checked.

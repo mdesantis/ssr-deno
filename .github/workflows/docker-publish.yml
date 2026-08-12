@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         ruby:
-          - { version: '4.0.5', tag: '4.0' }
-          - { version: '3.4.9', tag: '3.4' }
-          - { version: '3.3.11', tag: '3.3' }
+          - { version: '4.0.6', tag: '4.0' }
+          - { version: '3.4.10', tag: '3.4' }
+          - { version: '3.3.12', tag: '3.3' }
         platform:
           - { name: amd64, runner: ubuntu-latest    }
           - { name: arm64, runner: ubuntu-24.04-arm }
@@ -73,9 +73,9 @@ jobs:
       fail-fast: false
       matrix:
         ruby:
-          - { version: '4.0.5', tag: '4.0' }
-          - { version: '3.4.9', tag: '3.4' }
-          - { version: '3.3.11', tag: '3.3' }
+          - { version: '4.0.6', tag: '4.0' }
+          - { version: '3.4.10', tag: '3.4' }
+          - { version: '3.3.12', tag: '3.3' }
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8
