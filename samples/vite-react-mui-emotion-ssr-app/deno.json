@@ -27,14 +27,14 @@
     "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^6.0.5",
     "vite": "npm:vite@^8.2.1",
     "@types/deno": "npm:@types/deno@^2.7.0",
-    "@types/node": "npm:@types/node@^22.20.1"
+    "@types/node": "npm:@types/node@^26.2.0"
   },
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "types": [
       "npm:@types/deno",
-      "npm:@types/node@^22.0.0",
+      "npm:@types/node@^26.0.0",
       "npm:@types/react@^19.2.14",
       "npm:@types/react-dom@^19.2.3"
     ]
