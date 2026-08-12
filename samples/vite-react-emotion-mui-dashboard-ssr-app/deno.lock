@@ -12,7 +12,7 @@
     "npm:@mui/x-data-grid@^9.11.0": "9.11.0_@emotion+react@11.14.0__react@19.2.8_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@19.2.8__react@19.2.8_@mui+material@9.3.1__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8__react-dom@19.2.8___react@19.2.8_@mui+system@9.3.0__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8_react@19.2.8_react-dom@19.2.8__react@19.2.8_@types+react@19.2.18",
     "npm:@mui/x-date-pickers@^9.11.0": "9.11.0_@emotion+react@11.14.0__react@19.2.8_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@19.2.8__react@19.2.8_@mui+material@9.3.1__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8__react-dom@19.2.8___react@19.2.8_@mui+system@9.3.0__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8_dayjs@1.11.21_react@19.2.8_react-dom@19.2.8__react@19.2.8_@types+react@19.2.18",
     "npm:@mui/x-tree-view@^9.11.0": "9.11.0_@emotion+react@11.14.0__react@19.2.8_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@19.2.8__react@19.2.8_@mui+material@9.3.1__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8__react-dom@19.2.8___react@19.2.8_@mui+system@9.3.0__@emotion+react@11.14.0___react@19.2.8__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@19.2.8___react@19.2.8__@types+react@19.2.18__react@19.2.8_react@19.2.8_react-dom@19.2.8__react@19.2.8_@types+react@19.2.18",
-    "npm:@react-spring/web@^9.7.5": "9.7.5_react@19.2.8_react-dom@19.2.8__react@19.2.8",
+    "npm:@react-spring/web@^10.1.2": "10.1.2_react@19.2.8_react-dom@19.2.8__react@19.2.8",
     "npm:@types/deno@*": "2.7.0",
     "npm:@types/deno@^2.7.0": "2.7.0",
     "npm:@types/node@26": "26.2.0",
@@ -534,16 +534,16 @@
     "@popperjs/core@2.11.8": {
       "integrity": "sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A=="
     },
-    "@react-spring/animated@9.7.5_react@19.2.8": {
-      "integrity": "sha512-Tqrwz7pIlsSDITzxoLS3n/v/YCUHQdOIKtOJf4yL6kYVSDTSmVK1LI1Q3M/uu2Sx4X3pIWF3xLUhlsA6SPNTNg==",
+    "@react-spring/animated@10.1.2_react@19.2.8": {
+      "integrity": "sha512-yAsQ/bbp6+vko7WNCI1M00c6KLE9XKTGCrgRhQqS4JcK3oF5qBV4rHYrQEprvEvYXxt+1H5FsLS2eVValEPfFw==",
       "dependencies": [
         "@react-spring/shared",
         "@react-spring/types",
         "react"
       ]
     },
-    "@react-spring/core@9.7.5_react@19.2.8": {
-      "integrity": "sha512-rmEqcxRcu7dWh7MnCcMXLvrf6/SDlSokLaLTxiPlAYi11nN3B5oiCUAblO72o+9z/87j2uzxa2Inm8UbLjXA+w==",
+    "@react-spring/core@10.1.2_react@19.2.8": {
+      "integrity": "sha512-lPGOAg0V+PV3ucopOajD+YCxoe8twALqAeG4c/+sqVjBsyUNNdx8qfz/DcNSPKA8PV3+AyQELlCxlDfap9cmBQ==",
       "dependencies": [
         "@react-spring/animated",
         "@react-spring/shared",
@@ -551,27 +551,28 @@
         "react"
       ]
     },
-    "@react-spring/rafz@9.7.5": {
-      "integrity": "sha512-5ZenDQMC48wjUzPAm1EtwQ5Ot3bLIAwwqP2w2owG5KoNdNHpEJV263nGhCeKKmuA3vG2zLLOdu3or6kuDjA6Aw=="
+    "@react-spring/rafz@10.1.2": {
+      "integrity": "sha512-KC6vSFZyPnRJ2rXqipV9QqR4SaYbYXjvKfdYKWipNK2mWuV79gr20WmpVUOsTiEHGRY3WSOdWCHN+P9Pdaqb7Q=="
     },
-    "@react-spring/shared@9.7.5_react@19.2.8": {
-      "integrity": "sha512-wdtoJrhUeeyD/PP/zo+np2s1Z820Ohr/BbuVYv+3dVLW7WctoiN7std8rISoYoHpUXtbkpesSKuPIw/6U1w1Pw==",
+    "@react-spring/shared@10.1.2_react@19.2.8": {
+      "integrity": "sha512-47/8bNQ/o0uEmxEnPBuERlC29VSqiTn5P9ln9tUMSVkYKYxBtouYE686F5kAGj+eHRPoNCw7drxWE9nv2d1LMw==",
       "dependencies": [
         "@react-spring/rafz",
         "@react-spring/types",
         "react"
       ]
     },
-    "@react-spring/types@9.7.5": {
-      "integrity": "sha512-HVj7LrZ4ReHWBimBvu2SKND3cDVUPWKLqRTmWe/fNY6o1owGOX0cAHbdPDTMelgBlVbrTKrre6lFkhqGZErK/g=="
+    "@react-spring/types@10.1.2": {
+      "integrity": "sha512-G4CWowmVPz+rDG1y9QRVq/prZNxiNwQaHC0kgT/MgY6jAGgdRgTV4VThpvJDwWvUitk3xZB4soP4d36fjeQ09g=="
     },
-    "@react-spring/web@9.7.5_react@19.2.8_react-dom@19.2.8__react@19.2.8": {
-      "integrity": "sha512-lmvqGwpe+CSttsWNZVr+Dg62adtKhauGwLyGE/RRyZ8AAMLgb9x3NDMA5RMElXo+IMyTkPp7nxTB8ZQlmhb6JQ==",
+    "@react-spring/web@10.1.2_react@19.2.8_react-dom@19.2.8__react@19.2.8": {
+      "integrity": "sha512-KxDB3zaDqy9qFsu7fdxjyraAxweHH4k5TW5WGT/OuMK6hKaxSDfhrQfRBzfFaSVvMBf+NghbJFanllV4ia6i7A==",
       "dependencies": [
         "@react-spring/animated",
         "@react-spring/core",
         "@react-spring/shared",
         "@react-spring/types",
+        "csstype",
         "react",
         "react-dom"
       ]
@@ -1294,7 +1295,7 @@
       "npm:@mui/x-data-grid@^9.11.0",
       "npm:@mui/x-date-pickers@^9.11.0",
       "npm:@mui/x-tree-view@^9.11.0",
-      "npm:@react-spring/web@^9.7.5",
+      "npm:@react-spring/web@^10.1.2",
       "npm:@types/deno@*",
       "npm:@types/deno@^2.7.0",
       "npm:@types/node@26",
