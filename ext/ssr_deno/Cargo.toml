@@ -26,12 +26,12 @@ ssr_deno_dev_mode = { path = "crates/ssr_deno_dev_mode", optional = true }
 magnus = { version = "0.8", features = ["embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1.52.3", features = ["full"] }
-deno_runtime = { version = "0.261.0", features = ["hmr"] }
-deno_core = "=0.406.0"
-deno_semver = "=0.10.0"
+tokio = { version = "1.53.1", features = ["full"] }
+deno_runtime = { version = "0.265.0", features = ["hmr"] }
+deno_core = "=0.410.0"
+deno_semver = "=0.10.1"
 deno_error = "=0.7.1"
-node_resolver = "=0.91.0"
+node_resolver = "=0.95.0"
 sys_traits = "=0.1.28"
 
 [profile.release]
@@ -49,6 +49,12 @@ opt-level = 1
 # library is compiled at full optimization, and the Rust FFI/snapshot code
 # behaves incorrectly at lower levels (panics, JIT failures, bad codegen).
 [profile.dev.package.v8]
+opt-level = 3
+
+# deno_core 0.410 reaches V8 through this facade crate (aliases the `v8`
+# package as `rusty_v8`) — the override above still matches the real `v8`
+# package name, but the facade itself is new and needs its own override.
+[profile.dev.package.deno_v8]
 opt-level = 3
 
 [profile.dev.package.deno_core]
