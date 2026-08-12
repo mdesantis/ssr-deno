@@ -3,8 +3,8 @@
   "specifiers": {
     "npm:@types/deno@*": "2.7.0",
     "npm:@types/deno@^2.7.0": "2.7.0",
-    "npm:ts-loader@^9.6.2": "9.6.2_typescript@5.9.3_webpack@5.109.2",
-    "npm:typescript@^5.9.3": "5.9.3",
+    "npm:ts-loader@^9.6.2": "9.6.2_typescript@6.0.3_webpack@5.109.2",
+    "npm:typescript@^6.0.3": "6.0.3",
     "npm:webpack-cli@*": "7.2.2_webpack@5.109.2",
     "npm:webpack-cli@^7.2.2": "7.2.2_webpack@5.109.2",
     "npm:webpack@^5.109.2": "5.109.2"
@@ -536,7 +536,7 @@
       ],
       "bin": true
     },
-    "ts-loader@9.6.2_typescript@5.9.3_webpack@5.109.2": {
+    "ts-loader@9.6.2_typescript@6.0.3_webpack@5.109.2": {
       "integrity": "sha512-R4iuczmtgxvtuI556s+hTZ6/7Ee03VCAk/l/M8LY1OAsUgB7YydsCxkgq9D9pKRaD7GJqUi2u8fp9zZP/ufjKA==",
       "dependencies": [
         "chalk",
@@ -546,8 +546,8 @@
         "webpack"
       ]
     },
-    "typescript@5.9.3": {
-      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+    "typescript@6.0.3": {
+      "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
       "bin": true
     },
     "undici-types@8.3.0": {
@@ -636,7 +636,7 @@
       "npm:@types/deno@*",
       "npm:@types/deno@^2.7.0",
       "npm:ts-loader@^9.6.2",
-      "npm:typescript@^5.9.3",
+      "npm:typescript@^6.0.3",
       "npm:webpack-cli@^7.2.2",
       "npm:webpack@^5.109.2"
     ]
