@@ -15,7 +15,7 @@
   "imports": {
     "svelte": "npm:svelte@^5.56.8",
     "svelte/server": "npm:svelte@^5.56.8/server",
-    "@sveltejs/vite-plugin-svelte": "npm:@sveltejs/vite-plugin-svelte@^5.1.1",
+    "@sveltejs/vite-plugin-svelte": "npm:@sveltejs/vite-plugin-svelte@^7.3.0",
     "vite": "npm:vite@^8.2.1",
     "@types/deno": "npm:@types/deno@^2.7.0"
   }
