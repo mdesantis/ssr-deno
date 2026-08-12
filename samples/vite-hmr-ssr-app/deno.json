@@ -8,6 +8,6 @@
     "build": "deno run --unstable-bare-node-builtins -A npm:vite build --ssr"
   },
   "imports": {
-    "vite": "npm:vite@^8.0.10"
+    "vite": "npm:vite@^8.2.1"
   }
 }

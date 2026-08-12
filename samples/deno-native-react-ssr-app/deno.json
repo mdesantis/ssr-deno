@@ -18,10 +18,10 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.tsx"
   },
   "imports": {
-    "react": "npm:react@^19.0.0",
-    "react-dom": "npm:react-dom@^19.0.0",
-    "react-dom/server": "npm:react-dom@^19.0.0/server",
-    "react/jsx-runtime": "npm:react@^19.0.0/jsx-runtime",
-    "@types/deno": "npm:@types/deno@^2.0.0"
+    "react": "npm:react@^19.2.8",
+    "react-dom": "npm:react-dom@^19.2.8",
+    "react-dom/server": "npm:react-dom@^19.2.8/server",
+    "react/jsx-runtime": "npm:react@^19.2.8/jsx-runtime",
+    "@types/deno": "npm:@types/deno@^2.7.0"
   }
 }

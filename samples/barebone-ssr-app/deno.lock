@@ -1,16 +1,16 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:@types/deno@2": "2.5.0"
+    "npm:@types/deno@^2.7.0": "2.7.0"
   },
   "npm": {
-    "@types/deno@2.5.0": {
-      "integrity": "sha512-g8JS38vmc0S87jKsFzre+0ZyMOUDHPVokEJymSCRlL57h6f/FdKPWBXgdFh3Z8Ees9sz11qt9VWELU9Y9ZkiVw=="
+    "@types/deno@2.7.0": {
+      "integrity": "sha512-Y6fWcV8KpYeO3Lik/RiYnUxtr/LWqoeACciU0CA+dr1U/45tGgaX3HWQQAPCNN53raN4Rr4Fht4y6qsUH57fDA=="
     }
   },
   "workspace": {
     "dependencies": [
-      "npm:@types/deno@2"
+      "npm:@types/deno@^2.7.0"
     ]
   }
 }

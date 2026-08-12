@@ -13,10 +13,10 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "svelte": "npm:svelte@^5.0.0",
-    "svelte/server": "npm:svelte@^5.0.0/server",
-    "@sveltejs/vite-plugin-svelte": "npm:@sveltejs/vite-plugin-svelte@^5.0.0",
-    "vite": "npm:vite@^8.0.10",
-    "@types/deno": "npm:@types/deno@^2.0.0"
+    "svelte": "npm:svelte@^5.56.8",
+    "svelte/server": "npm:svelte@^5.56.8/server",
+    "@sveltejs/vite-plugin-svelte": "npm:@sveltejs/vite-plugin-svelte@^5.1.1",
+    "vite": "npm:vite@^8.2.1",
+    "@types/deno": "npm:@types/deno@^2.7.0"
   }
 }
