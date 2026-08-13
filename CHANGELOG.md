@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.10] - 2026-08-13
+
 ### Changed
 - **Docker image's Ruby patch versions bumped** — 4.0.5→4.0.6, 3.4.9→3.4.10, 3.3.11→3.3.12 (`Dockerfile`'s `RUBY_VERSION` default and both matrices in the Docker-publish workflow).
 - **Rust deps bumped** — `deno_runtime` 0.261→0.265, `deno_core` 0.406→0.410, `deno_resolver` 0.84→0.88, `node_resolver` 0.91→0.95, `deno_ast` 0.53.2→0.53.3, `deno_semver` 0.10.0→0.10.1, `tokio` 1.52.3→1.53.1. V8 149.4.0→150.4.0. `deno_core` now reaches V8 through a new `deno_v8` facade crate, so `[profile.dev.package.deno_v8] opt-level = 3` was added alongside the existing `v8` override. `deno_error` stays pinned at `=0.7.1` — the whole stack hard-pins that exact version internally; `deno_ast`/`deno_semver` moved because the stack pins them exactly, not by choice.
