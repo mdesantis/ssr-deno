@@ -8,6 +8,7 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 
 **Boundary:** `lib/ssr/deno/` (Ruby API) ↔ `ext/ssr_deno/src/` (Rust/magnus).
 **Pure-Rust types:** `ext/ssr_deno/crates/ssr_deno_core/` — no V8 dep, fast compile.
+**Rust edition/MSRV:** shared via `[workspace.package]` in `ext/ssr_deno/Cargo.toml`. MSRV is `rust-version = "1.95"`, CI-verified (`msrv` job in `ci.yml`, pinned toolchain, not floating `@stable`) — not aspirational. Bumping any pinned Deno/V8 crate can silently raise the real floor higher than the declared one (happened when establishing it — a chain of transitive deps forced 1.95, ten minors above what the top-level crate's own edition alone implied). Re-run `RUSTUP_TOOLCHAIN=<candidate> bundle exec rake compile` after any dep bump before assuming `1.95` still holds — if the floor moves, update both `Cargo.toml`'s `rust-version` and the `msrv` job's `dtolnay/rust-toolchain@<version>` pin + job name in `ci.yml` together, or CI silently stops verifying the real floor.
 
 ## Conventions
 

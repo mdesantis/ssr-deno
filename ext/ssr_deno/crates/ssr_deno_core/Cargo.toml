@@ -1,7 +1,8 @@
 [package]
 name = "ssr_deno_core"
 version = "0.1.0-alpha.9"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 sourcemap = "9.3.2"
