@@ -37,3 +37,6 @@ impl NodeRequireLoader for SSRDenoNodeRequireLoader {
         Ok(false)
     }
 }
+
+#[cfg(test)]
+mod tests;
