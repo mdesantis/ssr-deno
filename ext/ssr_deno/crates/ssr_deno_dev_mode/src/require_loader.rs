@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use deno_error::JsErrorBox;
-use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::FastString;
+use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_node::NodeRequireLoader;
 use node_resolver::errors::PackageJsonLoadError;
 

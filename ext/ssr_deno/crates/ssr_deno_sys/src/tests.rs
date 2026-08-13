@@ -558,13 +558,21 @@ fn env_home_dir_on_unix() {
         if let Some(h) = home {
             assert!(h.is_absolute() || !h.as_os_str().is_empty());
         }
-        // Exercise None branch by temporarily removing HOME
+        // Exercise None branch by temporarily removing HOME.
+        // SAFETY: mutating process env vars races with any other thread
+        // reading them concurrently. No other test in this crate reads
+        // HOME, so this is safe in practice, though not enforced by the
+        // type system.
         let old_home = std::env::var_os("HOME");
-        std::env::remove_var("HOME");
+        unsafe {
+            std::env::remove_var("HOME");
+        }
         let home2 = sys.env_home_dir();
         assert!(home2.is_none());
         if let Some(h) = old_home {
-            std::env::set_var("HOME", h);
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
     #[cfg(not(unix))]

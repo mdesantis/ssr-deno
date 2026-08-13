@@ -2,8 +2,8 @@ use std::sync::mpsc;
 
 use tokio::sync::oneshot;
 
-use super::types::{ChunkedRenderResult, WorkerMsg};
 use super::SSRDenoError;
+use super::types::{ChunkedRenderResult, WorkerMsg};
 
 // ---------------------------------------------------------------------------
 // IsolateHandle — per-isolate channel sender

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use tokio::sync::oneshot;
 
@@ -9,9 +9,9 @@ use super::intern_script_name;
 use ssr_deno_core::next_index;
 use ssr_deno_core::validate_pool_size;
 
+use super::SSRDenoError;
 use super::handle::IsolateHandle;
 use super::types::{ChunkedRenderResult, WorkerMsg};
-use super::SSRDenoError;
 
 // ---------------------------------------------------------------------------
 // IsolatePool — dispatcher of render requests across N isolates

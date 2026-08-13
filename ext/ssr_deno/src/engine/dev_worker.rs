@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use deno_runtime::deno_core::url::Url;
 use tokio::runtime;
 use tokio::task::LocalSet;
 
-use ssr_deno_dev_mode::{build_dev_mode_worker, DevModeMtimeCache, SharedAliasMap, SharedCjsPaths};
+use ssr_deno_dev_mode::{DevModeMtimeCache, SharedAliasMap, SharedCjsPaths, build_dev_mode_worker};
 
 use super::dev_handle::DevModeWorkerMsg;
 use super::render;

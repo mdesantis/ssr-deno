@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
 use tokio::sync::oneshot;
 
-use super::types::ChunkedRenderResult;
 use super::SSRDenoError;
+use super::types::ChunkedRenderResult;
 use ssr_deno_dev_mode::DevModeMtimeCache;
 
 pub(crate) enum DevModeWorkerMsg {

@@ -5,8 +5,8 @@ pub mod require_loader;
 
 pub use dev_mode_builder::build_dev_mode_worker;
 pub use dev_mode_module_loader::{
-    drain_cjs_paths, set_aliases, DevModeModuleLoader, DevModeMtimeCache, SharedAliasMap,
-    SharedCjsPaths,
+    DevModeModuleLoader, DevModeMtimeCache, SharedAliasMap, SharedCjsPaths, drain_cjs_paths,
+    set_aliases,
 };
 pub use dev_mode_npm_resolver::build_dev_mode_npm_resolver;
 pub use require_loader::DevModeNodeRequireLoader;
