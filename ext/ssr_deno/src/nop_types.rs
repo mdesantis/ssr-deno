@@ -178,3 +178,6 @@ impl PermissionDescriptorParser for NopPermissionDescriptorParser {
         RunQueryDescriptor::parse(requested, &Sys).map_err(RunDescriptorParseError::PathResolve)
     }
 }
+
+#[cfg(test)]
+mod tests;
