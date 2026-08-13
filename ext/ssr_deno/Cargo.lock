@@ -7063,7 +7063,7 @@ dependencies = [
 
 [[package]]
 name = "ssr_deno"
-version = "0.1.0-alpha.9"
+version = "0.1.0-alpha.10"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -7082,14 +7082,14 @@ dependencies = [
 
 [[package]]
 name = "ssr_deno_core"
-version = "0.1.0-alpha.9"
+version = "0.1.0-alpha.10"
 dependencies = [
  "sourcemap",
 ]
 
 [[package]]
 name = "ssr_deno_dev_mode"
-version = "0.1.0-alpha.9"
+version = "0.1.0-alpha.10"
 dependencies = [
  "deno_ast",
  "deno_core",
@@ -7108,7 +7108,7 @@ dependencies = [
 
 [[package]]
 name = "ssr_deno_sys"
-version = "0.1.0-alpha.9"
+version = "0.1.0-alpha.10"
 dependencies = [
  "sys_traits",
 ]
