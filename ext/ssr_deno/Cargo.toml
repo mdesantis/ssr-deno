@@ -7,10 +7,20 @@ members = [
     "crates/ssr_deno_dev_mode",
 ]
 
+# MSRV verified empirically (see AGENTS.md "Rust edition/MSRV"): 1.85.0/
+# 1.88.0/1.90.0/1.93.0/1.94.0 all fail on transitive deps (icu/time/home,
+# deno_core's cppgc.rs const TypeId::of, libsqlite3-sys's cfg_select!).
+# 1.95.0 is the first version where the whole workspace compiles.
+# Re-verify after any dep bump.
+[workspace.package]
+edition = "2021"
+rust-version = "1.95"
+
 [package]
 name = "ssr_deno"
 version = "0.1.0-alpha.9"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 
 [features]
 default = ["dev-mode"]

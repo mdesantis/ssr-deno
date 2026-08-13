@@ -127,3 +127,67 @@ jobs:
         run: bundle exec rake rubocop:rails
       - name: Validate RBS signatures
         run: bundle exec rake rbs
+
+  msrv:
+    runs-on: ubuntu-latest
+    name: MSRV (1.95.0)
+    # Verifies the `rust-version` declared in ext/ssr_deno/Cargo.toml's
+    # [workspace.package] continuously — a declared floor that CI never
+    # builds against is just a comment. Every other job floats
+    # dtolnay/rust-toolchain@stable; this one pins the exact floor so a
+    # future dep bump that silently raises the real requirement (as
+    # happened when establishing this floor — see the [workspace.package]
+    # comment in Cargo.toml) fails here instead of going unnoticed. One
+    # platform/Ruby combo is enough: this is a toolchain check, not a
+    # Ruby-compatibility check.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - name: Set up Rust (pinned MSRV)
+        uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Mozilla-Actions/sccache-action@v0.0.11
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq --no-install-suggests --no-install-recommends \
+            mold \
+            pkg-config \
+            libclang-dev
+      - name: Cache Cargo registry + git deps
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          restore-keys: |
+            cargo-deps-
+      - name: Cache Cargo build artifacts (target dir)
+        uses: actions/cache@v6
+        with:
+          path: tmp/cargo-target
+          key: cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          restore-keys: |
+            cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-msrv-
+      - name: Compile native extension
+        # Override the workflow-wide `release` profile: this job checks
+        # whether rustc 1.95.0 accepts the code, not release-build
+        # performance. `dev` skips LTO/codegen-units=1, which matters a
+        # lot here — this toolchain shares no sccache hits with the
+        # floating-`stable` jobs once `stable` advances past 1.95.0.
+        env:
+          RB_SYS_CARGO_PROFILE: 'dev'
+        run: bundle exec rake compile
+      - name: Run Rust unit tests (V8-free crates)
+        run: bundle exec rake cargo:test
+      - name: Run Rust unit tests (ssr_deno_dev_mode)
+        run: bundle exec rake cargo:test:ssr_deno_dev_mode
+      - name: Run Rust unit tests (ssr_deno)
+        run: bundle exec rake cargo:test:ssr_deno
