@@ -28,8 +28,9 @@ jobs:
     name: CI (${{ matrix.platform.arch }}) - ${{ matrix.ruby }}
     # Legs run ~13-16m warm-cache. No job in this file had a timeout before
     # this — a genuine hang (e.g. a runtime deadlock in the render path)
-    # would've silently sat for the GitHub default of 6h.
-    timeout-minutes: 30
+    # would've silently sat for the GitHub default of 6h. Matches the msrv
+    # job's 45m for one consistent number across the workflow.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
