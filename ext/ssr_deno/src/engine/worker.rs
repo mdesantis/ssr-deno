@@ -1,5 +1,5 @@
 use std::sync::atomic::AtomicBool;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
 use deno_runtime::deno_core::url::Url;
 use tokio::runtime;
@@ -132,10 +132,8 @@ async fn load_bundle_in_worker(
     script_name: &'static str,
     node_builtins: bool,
 ) -> Result<(), String> {
-    if node_builtins {
-        if let Err(e) = setup_require(worker).await {
-            return Err(format!("Failed to set up require: {e}"));
-        }
+    if node_builtins && let Err(e) = setup_require(worker).await {
+        return Err(format!("Failed to set up require: {e}"));
     }
 
     let wrapped_code = format!("(function(){{\n{}\n}})();", bundle_code);

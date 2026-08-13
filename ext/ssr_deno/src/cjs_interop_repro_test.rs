@@ -15,15 +15,15 @@
 //! - See [`plans/archived/dev-mode-cjs-interop-bug.md`](../../plans/archived/dev-mode-cjs-interop-bug.md).
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::worker::MainWorker;
 
 use crate::engine::dev_load::warm_cjs_cache;
 use crate::engine::worker::setup_require;
-use ssr_deno_dev_mode::{build_dev_mode_worker, DevModeMtimeCache, SharedCjsPaths};
+use ssr_deno_dev_mode::{DevModeMtimeCache, SharedCjsPaths, build_dev_mode_worker};
 
 static DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 

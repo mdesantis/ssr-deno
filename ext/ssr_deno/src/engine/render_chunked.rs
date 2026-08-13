@@ -5,8 +5,8 @@ use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
 
-use super::render::{begin_render, end_render, poll_render_state, to_js_string, RenderState};
 use super::SSRDenoError;
+use super::render::{RenderState, begin_render, end_render, poll_render_state, to_js_string};
 
 // ---------------------------------------------------------------------------
 // Chunked render — chunks flow through JS global array to Ruby

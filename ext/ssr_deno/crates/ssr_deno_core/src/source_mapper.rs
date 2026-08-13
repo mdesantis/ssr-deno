@@ -43,10 +43,10 @@ impl SsrSourceMapper {
     pub fn register(&mut self, bundle_path: &str, map_path: &Path) {
         let current_mtime = std::fs::metadata(map_path).and_then(|m| m.modified()).ok();
 
-        if let Some(entry) = self.maps.get(bundle_path) {
-            if Some(entry.mtime) == current_mtime {
-                return;
-            }
+        if let Some(entry) = self.maps.get(bundle_path)
+            && Some(entry.mtime) == current_mtime
+        {
+            return;
         }
 
         let Ok(map_data) = std::fs::read(map_path) else {
@@ -73,10 +73,10 @@ impl SsrSourceMapper {
     /// Skips re-parsing if `mtime` matches the cached entry (parity with
     /// [`register`]).
     pub fn register_inline(&mut self, path: &str, sourcemap_json: &str, mtime: SystemTime) {
-        if let Some(entry) = self.maps.get(path) {
-            if entry.mtime == mtime {
-                return;
-            }
+        if let Some(entry) = self.maps.get(path)
+            && entry.mtime == mtime
+        {
+            return;
         }
         let Ok(map) = SourceMap::from_slice(sourcemap_json.as_bytes()) else {
             return;
@@ -152,19 +152,11 @@ impl SsrSourceMapper {
             .lookup_token(sm_line, sm_col)
             .map_or(v8_line, |t| {
                 let l = t.get_src_line();
-                if l > 0 {
-                    l + 1
-                } else {
-                    v8_line
-                }
+                if l > 0 { l + 1 } else { v8_line }
             });
         let src_col = entry.map.lookup_token(sm_line, sm_col).map_or(v8_col, |t| {
             let c = t.get_src_col();
-            if c > 0 {
-                c + 1
-            } else {
-                v8_col
-            }
+            if c > 0 { c + 1 } else { v8_col }
         });
 
         Some(format!("at {source}:{src_line}:{src_col}"))

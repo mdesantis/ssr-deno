@@ -1,18 +1,18 @@
 use std::borrow::Cow;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs::sync::MaybeArc;
 use deno_runtime::deno_node::{NodeExtInitServices, NodeRequireLoaderRc, NodeResolver};
 use deno_runtime::deno_permissions::{Permissions, PermissionsContainer};
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::{NodeConditionOptions, NodeResolverOptions, PackageJsonResolver};
 
 use crate::node_builtin_loader::NodeBuiltinOnlyModuleLoader;

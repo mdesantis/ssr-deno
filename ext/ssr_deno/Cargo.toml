@@ -13,7 +13,7 @@ members = [
 # 1.95.0 is the first version where the whole workspace compiles.
 # Re-verify after any dep bump.
 [workspace.package]
-edition = "2021"
+edition = "2024"
 rust-version = "1.95"
 
 [package]

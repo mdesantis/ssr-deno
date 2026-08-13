@@ -1,7 +1,7 @@
 use deno_error::JsErrorBox;
 use deno_runtime::deno_core::{
-    resolve_import, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader,
-    ModuleSpecifier, ResolutionKind,
+    ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader, ModuleSpecifier,
+    ResolutionKind, resolve_import,
 };
 
 /// Module loader that only allows `node:` scheme URLs.

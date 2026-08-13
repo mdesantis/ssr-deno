@@ -1,12 +1,12 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use deno_runtime::deno_core::v8;
 use deno_runtime::worker::MainWorker;
 
-use super::watchdog::Watchdog;
 use super::SSRDenoError;
+use super::watchdog::Watchdog;
 
 // ---------------------------------------------------------------------------
 // Render — event-loop based, returns final result as JSON string

@@ -18,9 +18,9 @@ use std::sync::Arc;
 
 use engine::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
-use magnus::{block::Yield, function, method, Error, ExceptionClass, Module, Object, Ruby, Value};
+use magnus::{Error, ExceptionClass, Module, Object, Ruby, Value, block::Yield, function, method};
 use ssr_deno_core::source_mapper::global_get_source_mapper;
-use ssr_deno_core::{max_heap_size_mb_checked, validate_render_timeout_ms, Config};
+use ssr_deno_core::{Config, max_heap_size_mb_checked, validate_render_timeout_ms};
 
 // Recover from poisoned mutex instead of panicking. Poison happens if a thread
 // panics while holding the lock — extremely rare, but unrecoverable if we
@@ -37,7 +37,7 @@ fn lock_config() -> MutexGuard<'static, Config> {
 // The callback (`func`) must not touch Ruby objects, use Ruby APIs, or panic
 // through the FFI boundary. `ubf` (unblock function) must be signal-safe if set.
 // We pass `None` for `ubf`, so no unblock-function constraint applies.
-extern "C" {
+unsafe extern "C" {
     fn rb_thread_call_without_gvl(
         func: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
         data1: *mut std::ffi::c_void,
@@ -62,7 +62,7 @@ struct RawRenderResult {
 // is safe to run without the GVL (as required by `rb_thread_call_without_gvl`).
 // The returned `Box<RawRenderResult>` is re-boxed as a raw pointer for the caller.
 unsafe extern "C" fn render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-    let args = Box::from_raw(data as *mut RenderArgs);
+    let args = unsafe { Box::from_raw(data as *mut RenderArgs) };
     let result = args.pool.dispatch_render(&args.bundle_id, &args.args_json);
     Box::into_raw(Box::new(RawRenderResult { result })) as *mut std::ffi::c_void
 }
@@ -351,12 +351,17 @@ fn native_heap_stats(ruby: &Ruby) -> Result<String, Error> {
 /// `SSR::Deno::RenderError` if the render fails during chunk delivery.
 ///
 /// The Ruby thread blocks on each `chunk_rx.blocking_recv()` between yields.
+///
+/// `+ use<>` on the return type opts out of edition 2024's default RPIT
+/// lifetime capture — without it, the returned `impl Iterator` implicitly
+/// borrows `ruby`'s elided lifetime, which breaks magnus's `method!` macro
+/// trait bounds at the registration call site below.
 fn native_render_chunks(
     ruby: &Ruby,
     rb_self: Value,
     bundle_id: String,
     args_json: String,
-) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+) -> Result<Yield<impl Iterator<Item = String> + use<>>, Error> {
     if !ruby.block_given() {
         return Ok(Yield::Enumerator(
             rb_self.enumeratorize("native_render_chunks", (bundle_id, args_json)),
@@ -423,7 +428,8 @@ fn native_dev_worker_new(
 
 #[cfg(feature = "dev-mode")]
 unsafe extern "C" fn dev_check_stale_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-    let handle = Box::from_raw(data as *mut Arc<engine::dev_handle::DevModeIsolateHandle>);
+    let handle =
+        unsafe { Box::from_raw(data as *mut Arc<engine::dev_handle::DevModeIsolateHandle>) };
     let result = handle.check_stale();
     Box::into_raw(Box::new(result)) as *mut std::ffi::c_void
 }
@@ -458,7 +464,7 @@ struct RawLoadEntryResult {
 // objects touched — the callback is safe to run without the GVL.
 #[cfg(feature = "dev-mode")]
 unsafe extern "C" fn dev_load_entry_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-    let args = Box::from_raw(data as *mut DevLoadEntryArgs);
+    let args = unsafe { Box::from_raw(data as *mut DevLoadEntryArgs) };
     let result = args
         .handle
         .block_on_load_entry(&args.entry_path, args.aliases);
@@ -508,7 +514,7 @@ struct DevRenderArgs {
 // Ownership reclaimed here via `Box::from_raw`. No Ruby objects touched.
 #[cfg(feature = "dev-mode")]
 unsafe extern "C" fn dev_render_worker(data: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-    let args = Box::from_raw(data as *mut DevRenderArgs);
+    let args = unsafe { Box::from_raw(data as *mut DevRenderArgs) };
     let result =
         args.handle
             .block_on_render(&args.bundle_id, &args.args_json, args.render_timeout_ms);
@@ -542,6 +548,8 @@ fn native_dev_render(
     raw.result.map_err(|e| map_render_error(ruby, e))
 }
 
+// `+ use<>` opts out of edition 2024's default RPIT lifetime capture — see
+// `native_render_chunks` above for why.
 #[cfg(feature = "dev-mode")]
 fn native_dev_render_chunks(
     ruby: &Ruby,
@@ -550,7 +558,7 @@ fn native_dev_render_chunks(
     bundle_id: String,
     args_json: String,
     render_timeout_ms: u64,
-) -> Result<Yield<impl Iterator<Item = String>>, Error> {
+) -> Result<Yield<impl Iterator<Item = String> + use<>>, Error> {
     if let Err(msg) = validate_render_timeout_ms(render_timeout_ms) {
         return Err(Error::new(ruby.exception_arg_error(), msg));
     }
@@ -597,7 +605,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     // channels and the round-robin counter uses AtomicUsize, so concurrent
     // Ractors get isolated results without shared mutable state.
     unsafe {
-        extern "C" {
+        unsafe extern "C" {
             fn rb_ext_ractor_safe(flag: bool);
         }
         rb_ext_ractor_safe(true);

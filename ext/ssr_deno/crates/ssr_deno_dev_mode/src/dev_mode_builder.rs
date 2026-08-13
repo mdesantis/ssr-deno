@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use deno_resolver::npm::{ByonmInNpmPackageChecker, ByonmNpmResolver};
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
 use deno_runtime::deno_core::url::Url;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs::sync::MaybeArc;
@@ -13,8 +15,6 @@ use deno_runtime::deno_permissions::{
     Permissions, PermissionsContainer, PermissionsOptions, RuntimePermissionDescriptorParser,
 };
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::dev_mode_module_loader::{

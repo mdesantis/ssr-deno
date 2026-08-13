@@ -8,8 +8,8 @@ use deno_ast::{
 };
 use deno_core::url::Url;
 use deno_core::{
-    resolve_import, FastString, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse,
-    ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind,
+    FastString, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader,
+    ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, ResolutionKind, resolve_import,
 };
 use deno_error::JsErrorBox;
 use node_resolver::{
@@ -20,7 +20,7 @@ use node_resolver::{
 use ssr_deno_sys::Sys;
 
 use crate::dev_mode_npm_resolver::{
-    dev_node_resolver_options, ByonmInNpmPackageChecker, ByonmNpmResolver, DevModeNpmResolverParts,
+    ByonmInNpmPackageChecker, ByonmNpmResolver, DevModeNpmResolverParts, dev_node_resolver_options,
 };
 
 pub type SharedAliasMap = Arc<Mutex<Vec<(String, String)>>>;
@@ -568,14 +568,13 @@ impl DevModeModuleLoader {
 
         let mut target = pkg_dir.join(subpath);
 
-        if target.is_dir() {
-            if let Ok(Some(pkg)) = self
+        if target.is_dir()
+            && let Ok(Some(pkg)) = self
                 .pkg_json_resolver
                 .load_package_json(&target.join("package.json"))
-            {
-                let entry = pkg.module.as_deref().or(pkg.main.as_deref())?;
-                target = target.join(entry);
-            }
+        {
+            let entry = pkg.module.as_deref().or(pkg.main.as_deref())?;
+            target = target.join(entry);
         }
 
         let canonical = std::path::absolute(&target).ok()?;
@@ -612,10 +611,10 @@ impl ModuleLoader for DevModeModuleLoader {
         // directly by deno_core's extension module registry — pass them
         // through unresolved rather than routing them through NodeResolver,
         // which only knows about npm packages and file paths.
-        if let Ok(url) = ModuleSpecifier::parse(spec) {
-            if url.scheme() != "file" {
-                return Ok(url);
-            }
+        if let Ok(url) = ModuleSpecifier::parse(spec)
+            && url.scheme() != "file"
+        {
+            return Ok(url);
         }
 
         // Resolve the referrer to a URL. The referrer may be "." for the
