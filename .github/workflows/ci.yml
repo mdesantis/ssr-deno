@@ -26,6 +26,10 @@ jobs:
   build-and-test:
     runs-on: ${{ matrix.platform.runner }}
     name: CI (${{ matrix.platform.arch }}) - ${{ matrix.ruby }}
+    # Legs run ~13-16m warm-cache. No job in this file had a timeout before
+    # this — a genuine hang (e.g. a runtime deadlock in the render path)
+    # would've silently sat for the GitHub default of 6h.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +135,11 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     name: MSRV (1.95.0)
+    # First cold-cache run took 30m43s (own cache prefix, no sccache hits
+    # since it doesn't share the floating-stable jobs' compiler). Warm runs
+    # should land closer to the main legs' ~15m; 45m covers a repeat cold
+    # run without leaving a genuine hang undetected for hours.
+    timeout-minutes: 45
     # Verifies the `rust-version` declared in ext/ssr_deno/Cargo.toml's
     # [workspace.package] continuously — a declared floor that CI never
     # builds against is just a comment. Every other job floats
