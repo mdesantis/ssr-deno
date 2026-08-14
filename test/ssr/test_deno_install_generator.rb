@@ -32,13 +32,22 @@ module SSR
         end
       end
 
+      # Every option the Railtie reads, so the template can't quietly fall
+      # behind config.ssr_deno again. Railtie constants aren't referenced here
+      # because this suite runs without Rails::Railtie loaded.
+      COMMENTED_OPTIONS = %w[
+        enabled auto_reload raise_on_render_error raise_on_bundle_error
+        max_heap_size_mb isolate_pool_size render_timeout_ms
+        node_builtins_enabled source_maps_enabled heap_stats_sample_rate
+      ].freeze
+
       def test_initializer_contains_commented_options
         run_generator
 
         assert_file 'config/initializers/ssr_deno.rb' do |content|
-          assert_match(/#.*ssr_deno\.enabled/, content)
-          assert_match(/#.*ssr_deno\.auto_reload/, content)
-          assert_match(/#.*ssr_deno\.raise_on_render_error/, content)
+          COMMENTED_OPTIONS.each do |option|
+            assert_match(/#.*ssr_deno\.#{option}/, content)
+          end
         end
       end
 

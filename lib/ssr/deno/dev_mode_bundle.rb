@@ -6,7 +6,7 @@ require_relative 'instrumenter'
 module SSR
   module Deno
     # Dev-mode bundle that loads source `.tsx` files directly into an embedded
-    # Deno V8 isolate via the DevModuleLoader. No pre-build step required.
+    # Deno V8 isolate via the DevModeModuleLoader. No pre-build step required.
     #
     # Registers itself in {Bundle.registry} so {RailsHelper#find_bundle!}
     # resolves it transparently (same `#render` / `#render_chunks` interface
@@ -92,10 +92,15 @@ module SSR
 
         json = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do
+        # Block form only — see the note in +Bundle#render_chunks+.
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do |payload|
           SSR::Deno.native_dev_render_chunks(
             @handle, @bundle_path, json, SSR::Deno::Config.render_timeout_ms, &
           )
+        rescue StandardError => error
+          payload[:error] = error.message
+
+          raise
         end
       end
 

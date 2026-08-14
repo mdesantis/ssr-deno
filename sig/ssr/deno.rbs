@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module SSR
   module Deno
     VERSION: String
@@ -41,15 +39,15 @@ module SSR
       @auto_reload: bool
       @_bundle_mutex: Thread::Mutex
 
-      self.@registry: Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      self.@registry: Hash[(Symbol | String), ({ path: String | Pathname, auto_reload: boolish } | Bundle | DevModeBundle)]
       self.@_create_mutex: Thread::Mutex
       self.@_bundles_created: boolish
 
-      def self.registry: () -> Hash[Symbol, ({ path: String, auto_reload: boolish } | Bundle)]
+      def self.registry: () -> Hash[(Symbol | String), ({ path: String | Pathname, auto_reload: boolish } | Bundle | DevModeBundle)]
 
       def self.create_bundles!: () -> void
 
-      def initialize: (String bundle_path) -> void
+      def initialize: (String | Pathname bundle_path) -> void
 
       attr_reader auto_reload: bool
       attr_reader bundle_path: String
@@ -90,6 +88,13 @@ module SSR
     # Rails-only class -- loaded via require: 'ssr/deno/rails'.
     # Superclass Rails::Railtie is not available in standalone RBS validation.
     class Railtie
+      RUNTIME_CONFIG_KEYS: Array[Symbol]
+
+      def self.apply_runtime_config: (untyped ssr_deno_config) -> void
+
+      def self.subscribe_heap_stats: (untyped sample_rate) -> untyped?
+
+      def self.heap_stats_sampler: (Integer rate) -> ^() -> bool
     end
 
     # Rails-only class -- loaded via require: 'ssr/deno/rails'.
@@ -137,12 +142,14 @@ module SSR
 
       def next_worker: () -> Ractor
 
+      # +private_constant+ in the implementation; RBS has no way to express
+      # that, so it is declared as an ordinary nested module.
       module Worker
         def self?.loop_body: (untyped path, untyped auto) -> void
 
         def self?.maybe_reload: (untyped path, untyped auto, untyped mtime, untyped bundle_id) -> untyped
 
-        def self?.dispatch: (untyped msg, untyped bundle_id, untyped path) -> (:shutdown | :reload | nil)
+        def self?.dispatch: (untyped msg, untyped bundle_id, untyped path) -> untyped
 
         def self?.handle_render: (untyped raw_input, untyped data, untyped raw_output, untyped reply, untyped bundle_id) -> void
 
@@ -152,6 +159,8 @@ module SSR
       end
     end
 
+    # Rails-only class -- loaded via require: 'ssr/deno/rails'.
+    # Superclass Rails::Generators::Base is not available in standalone RBS validation.
     class InstallGenerator
       def create_initializer: () -> void
 
@@ -179,8 +188,7 @@ module SSR
     def self.native_dev_load_entry: (untyped handle, String entry_path, String alias_map_json) -> void
     def self.native_dev_render: (untyped handle, String bundle_id, String json, Integer render_timeout_ms) -> String
     def self.native_dev_render_chunks: (untyped handle, String bundle_id, String json, Integer render_timeout_ms) { (*untyped) -> untyped? } -> void
-                                                                                                    | (untyped handle, String bundle_id, String json, Integer render_timeout_ms) -> Enumerator[String, void]
-                                     | (untyped handle, String bundle_id, String json) { (String) -> void } -> void
+                                     | (untyped handle, String bundle_id, String json, Integer render_timeout_ms) -> Enumerator[String, void]
 
     class DevWorkerHandle
     end
@@ -192,9 +200,10 @@ module SSR
       @name: String | Symbol
       @handle: DevWorkerHandle?
       @auto_reload: bool
+      @reload_pending: bool
       @_bundle_mutex: Thread::Mutex
 
-      def initialize: (String bundle_path, ?name: (String | Symbol)?, ?resolve_alias: Hash[String, String], ?project_root: String) -> void
+      def initialize: (String bundle_path, ?name: (String | Symbol)?, ?resolve_alias: Hash[untyped, untyped]?, ?project_root: String) -> void
 
       attr_reader auto_reload: bool
       attr_reader bundle_path: String
@@ -236,6 +245,7 @@ module SSR
       DEFAULT_DEV_RESOLVE_ALIAS: Hash[String, String]
 
       self.@_mutex: Thread::Mutex
+      self.@dev_resolve_alias: Hash[String, String]?
 
       def self.max_heap_size_mb=: (Integer mb) -> void
       def self.isolate_pool_size=: (Integer size) -> void
@@ -251,12 +261,13 @@ module SSR
 
       def self.dev_resolve_alias: () -> Hash[String, String]
 
-      def self.dev_resolve_alias=: (Hash[String, String] | nil) -> void
+      def self.dev_resolve_alias=: (Hash[untyped, untyped] | nil) -> void
 
       private
 
       def self.apply_env_var_defaults: () -> void
       def self.apply_integer_env: (String env_var, Symbol setter) -> void
+      def self.parse_integer_env: (String env_var, String value) -> Integer?
       def self.apply_bool_env: (String env_var, Symbol setter) -> void
     end
   end

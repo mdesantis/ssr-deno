@@ -149,6 +149,16 @@ module SSR
         end
       end
 
+      def test_dev_bundle_render_chunks_error_instrumentation
+        bundle = DevModeBundle.new(FIXTURE)
+
+        # Same invalid-JSON trick as the buffered case above: the failure has
+        # to reach the instrument block so :error lands in the payload.
+        assert_raises SSR::Deno::RenderError do
+          bundle.render_chunks('not-json{', raw_input: true) { |_chunk| nil }
+        end
+      end
+
       def test_dev_bundle_auto_reload_disabled_no_check
         temp_entry = File.join(temp_dir, 'entry.tsx')
         File.write(temp_entry, <<~JS)

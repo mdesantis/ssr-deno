@@ -22,6 +22,9 @@ module SSR
           debug { "[ssr-deno] #{identifier(event)} completed (#{event.duration.round(2)}ms)" }
         end
       end
+      # No subscribe_log_level here, unlike the handlers around it: this one
+      # logs at :error on failure, so it must stay subscribed even when :debug
+      # is silenced.
 
       def bundle_miss(event)
         debug { "[ssr-deno] #{identifier(event)} not found" }

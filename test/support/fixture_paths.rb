@@ -7,4 +7,5 @@ module TestFixturePaths
   MINIMAL_BUNDLE = File.join(FIXTURES_DIR, 'minimal-bundle.js').freeze
   CHUNKED_BUNDLE = File.join(FIXTURES_DIR, 'chunked-bundle.js').freeze
   LARGE_PAYLOAD_BUNDLE = File.join(FIXTURES_DIR, 'large-payload-bundle.js').freeze
+  REJECT_BUNDLE = File.join(FIXTURES_DIR, 'async-reject-bundle.js').freeze
 end
