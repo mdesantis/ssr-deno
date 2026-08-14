@@ -35,3 +35,6 @@ Thumbs.db
 # Ruby
 .bundle/
 *.gem
+
+# Local build config
+.env
