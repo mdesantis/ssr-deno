@@ -45,6 +45,12 @@ SSR::Deno::Config.node_builtins_enabled = true  # Node.js built-in modules (defa
 SSR::Deno::Config.source_maps_enabled = true  # Resolve V8 errors to original .tsx/.ts files (default: false)
 ```
 
+Dev mode only (see [`docs/dev-mode.md`](docs/dev-mode.md)):
+
+```ruby
+SSR::Deno::Config.dev_resolve_alias = { '@' => 'app/frontend' }  # default: { '@' => 'app/frontend' }
+```
+
 ```ruby
 bundle.auto_reload = true  # Reload SSR bundle from disk when file mtime changes
 ```
@@ -55,8 +61,9 @@ size defaults to `1`. Multiple isolates benefit Ractor-based concurrency
 
 #### Environment variables
 
-All runtime settings can also be configured via environment variables,
+The runtime settings above can also be configured via environment variables,
 which act as **defaults** — explicit setter calls override them.
+`dev_resolve_alias` is the one exception: it has no environment variable.
 
 | Env var | Setting | Type | Default |
 |---|---|---|---|
@@ -66,9 +73,10 @@ which act as **defaults** — explicit setter calls override them.
 | `SSR_DENO_NODE_BUILTINS_ENABLED` | `node_builtins_enabled` | Boolean | false |
 | `SSR_DENO_SOURCE_MAPS_ENABLED` | `source_maps_enabled` | Boolean | false |
 
-Boolean env vars accept `true`, `1`, `yes` (case-insensitive) for true;
-anything else is treated as false. Invalid integer formats print a warning
-and are skipped. Env vars are read once at `require 'ssr/deno'` time.
+Boolean env vars accept `true`, `1`, `yes` for true and `false`, `0`, `no` for
+false (case-insensitive). Any other value prints a warning and leaves the
+setting at its default. Invalid integer formats print a warning and are
+skipped. Env vars are read once at `require 'ssr/deno'` time.
 
 #### Node.js builtins
 
@@ -249,9 +257,8 @@ Check the next section for examples and framework-specific setup.
 
 ## Experimental features
 
-The gem ships two experimental features behind their own APIs. Both
-work and are tested, but their interfaces and error semantics may
-change without a deprecation cycle. **Not recommended for production.**
+The features below ship behind their own APIs. They work and are tested, but
+their interfaces and error semantics may change without a deprecation cycle. **Not recommended for production.**
 Please report bugs and rough edges at
 <https://github.com/mdesantis/ssr-deno/issues> — feedback is what
 unblocks the path to stable.
@@ -305,9 +312,9 @@ Full docs, CJS interop notes, caveats: [`docs/dev-mode.md`](docs/dev-mode.md).
 ## Samples
 
 The `samples/` directory contains several SSR samples. Most run with
-`deno task build && deno task serve`, but three have no `build` task
+`deno task build && deno task serve`, but some have no `build` task
 (`deno-native-*` samples serve their `.tsx`/`.ts` directly; `barebone-ssr-app`
-ships a pre-built bundle) and one has no `serve` task (`vite-hmr-ssr-app` is a
+ships a pre-built bundle) and `vite-hmr-ssr-app` has no `serve` task (it is a
 test fixture for `DevModeBundle#auto_reload`, not a runnable app). See the
 **Run** column below for the actual command.
 
@@ -330,7 +337,7 @@ test fixture for `DevModeBundle#auto_reload`, not a runnable app). See the
 | [`vite-react-streaming-ssr-app`](samples/vite-react-streaming-ssr-app/) | React 19 streaming SSR (renderToPipeableStream) + Vite | `deno task build && deno task serve` |
 | [`vite-hmr-ssr-app`](samples/vite-hmr-ssr-app/) | HMR/`auto_reload` test fixture, not a runnable app | `deno task build` |
 
-Build all Vite samples at once:
+Build every sample that has a build step at once:
 
 ```bash
 bundle exec rake samples:build
@@ -347,31 +354,46 @@ bin/rails generate ssr:deno:install
 
 ### Configuration
 
-In `config/initializers/ssr_deno.rb`:
+The generator writes `config/initializers/ssr_deno.rb` with every option
+present and commented out. All settings live under
+`Rails.application.config.ssr_deno`:
 
 ```ruby
-SSR::Deno.configure do |config|
-  config.max_heap_size_mb = 128
-  config.isolate_pool_size = 4
-  config.render_timeout_ms = 1000
-end
-```
+Rails.application.config.ssr_deno.bundles = {
+  application: Rails.root.join('dist/server/entry-server.js')
+}
 
-```ruby
+Rails.application.config.ssr_deno.max_heap_size_mb = 128
+Rails.application.config.ssr_deno.isolate_pool_size = 4
+Rails.application.config.ssr_deno.render_timeout_ms = 1000
+
 # Raise on bundle errors in dev/test, fall back to CSR in production
 Rails.application.config.ssr_deno.raise_on_bundle_error = false
 # Emit heap stats notification every 50 renders
 Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
 ```
 
+- `bundles` (default: `{}`): map of bundle name to bundle path. `:application` is the name `ssr_render` uses when no `bundle:` is passed.
+- `enabled` (default: `true`): master switch. When `false`, no bundles are registered, no heap stats are sampled, and `ssr_render` returns an empty string for every bundle — including a `DevModeBundle` that registered itself.
+- `auto_reload` (default: `Rails.env.development?`): reload a bundle from disk when its mtime changes.
+- `max_heap_size_mb` (default: `nil`, i.e. the gem default of 64): per-isolate V8 heap.
+- `isolate_pool_size` (default: `nil`, i.e. the gem default of 1): V8 isolate count.
+- `render_timeout_ms` (default: `nil`, i.e. the gem default of 500): render timeout.
+- `node_builtins_enabled` (default: `nil`, i.e. the gem default of `false`): Node.js built-in module support.
 - `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs, returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
 - `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs, returns empty string.
 - `source_maps_enabled` (default: `!Rails.env.production?`): resolve V8 errors to original `.tsx`/`.ts` files. Requires `.js.map` sidecars next to bundles.
-- `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable.
+- `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable sampling.
 
 ### Basic
 
-`ssr_render` delegates to `SSR::Deno::Bundle#render` and accepts the same `raw_input:` and `raw_output:` options.
+`ssr_render` delegates to `SSR::Deno::Bundle#render` and accepts the same
+`raw_input:` and `raw_output:` options, plus `bundle:` to select a bundle other
+than `:application`:
+
+```erb
+<%= ssr_render({ page: 'admin' }, bundle: :admin).html_safe %>
+```
 
 Rails auto-escapes HTML in views. Call `.html_safe` on the output if your bundle returns trusted HTML:
 
@@ -398,7 +420,8 @@ See [CSP Nonce](#csp-nonce) for standalone usage and JS-side setup.
 **All platforms**
 
 - Ruby 3.3+
-- Rust toolchain ([rustup](https://rustup.rs))
+- Rust 1.95+ ([rustup](https://rustup.rs)) — the MSRV declared in
+  `ext/ssr_deno/Cargo.toml` and verified by a dedicated CI job
 - Deno (for most sample builds)
 - Node.js + npm (for the `node-ssr-app` sample, which uses esbuild via npm scripts instead of `deno task`)
 
@@ -438,7 +461,9 @@ After `bin/setup`, optionally edit `.env`:
 
 - **sccache** (optional): uncomment `SCCACHE=` and `RUSTC_WRAPPER=sccache` for faster subsequent builds.
 
-See `.env.example` for all options.
+See `.env.example` for all build and test options. It does not cover the
+`SSR_DENO_*` runtime settings — those are documented in
+[Environment variables](#environment-variables).
 
 ### Compile
 
