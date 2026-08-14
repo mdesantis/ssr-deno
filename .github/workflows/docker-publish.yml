@@ -48,8 +48,13 @@ jobs:
           build-args: |
             RUBY_VERSION=${{ matrix.ruby.version }}
           target: base
-          cache-from: type=gha,scope=${{ matrix.platform.name }}-ruby${{ matrix.ruby.tag }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform.name }}-ruby${{ matrix.ruby.tag }}
+          # No cache-from/cache-to here on purpose. This workflow only runs
+          # on tag pushes (see `on:` above), and GitHub Actions' `type=gha`
+          # cache backend can only be read by the current branch, its base
+          # branch, or the default branch — a tag is none of those relative
+          # to any other tag. Every release build has been fully cold since
+          # this workflow's first version; the cache-from/cache-to lines
+          # only ever wrote a new, immediately-dead cache entry per release.
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
 
       - name: Export digest
