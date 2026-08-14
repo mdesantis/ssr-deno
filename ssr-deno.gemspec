@@ -24,10 +24,19 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
+  # Rust test sources use both the `*_test.rs` convention (alongside the
+  # module) and the `<module>/tests.rs` submodule convention. All are
+  # `#[cfg(test)]`-gated and never compiled into a release build, so none ship.
+  # Scoped to src/ and crates/ rather than ext/ssr_deno/**: the latter walks
+  # the multi-gigabyte cargo target/ tree on every gemspec evaluation, i.e.
+  # every `bundle exec`.
+  rust_test_files = Dir['ext/ssr_deno/{src,crates}/**/*_test.rs'] +
+                    Dir['ext/ssr_deno/{src,crates}/**/tests.rs']
   spec.files = Dir['lib/**/*.rb', 'sig/**/*.rbs'] +
                (Dir['ext/ssr_deno/Cargo.*', 'ext/ssr_deno/src/**/*', 'ext/ssr_deno/crates/**/*'] -
-                Dir['ext/ssr_deno/src/*_test.rs']) +
-               ['ssr-deno.gemspec', 'ext/ssr_deno/extconf.rb', 'README.md', 'CHANGELOG.md', 'LICENSE.txt']
+                rust_test_files) +
+               ['ssr-deno.gemspec', 'ext/ssr_deno/extconf.rb', 'README.md', 'CHANGELOG.md', 'LICENSE.txt'] +
+               Dir['docs/*.md']
 
   # Native extension
   spec.extensions = ['ext/ssr_deno/extconf.rb']
