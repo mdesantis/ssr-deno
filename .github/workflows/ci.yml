@@ -132,6 +132,11 @@ jobs:
         run: bundle exec rake rubocop:rails
       - name: Validate RBS signatures
         run: bundle exec rake rbs
+      # `perf:check` is deliberately absent, so this job is not the full
+      # `bundle exec rake` default chain. The perf suite compares single-bundle
+      # against RactorPool throughput ratios with pool=4; shared GitHub runners
+      # have too few vCPUs and too much neighbour noise for those ratios to
+      # mean anything. It stays a local pre-release gate.
 
   msrv:
     runs-on: ubuntu-latest
@@ -182,6 +187,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: tmp/cargo-target
+          # No os/arch/ruby component unlike the matrix legs above — this
+          # job is one fixed combination, so they'd be constants.
           key: cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
           restore-keys: |
             cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
