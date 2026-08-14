@@ -1,0 +1,34 @@
+name: Cache cleanup
+
+# Caches written by a workflow run triggered on a pull request are scoped to
+# that PR's merge ref (refs/pull/<N>/merge) and can never be read by anything
+# else — not the base branch, not other PRs (GitHub Actions cache access
+# rules). Once a PR closes, every cache it wrote is permanently dead weight
+# against the repo's fixed 10GB cache cap. This deletes it immediately
+# instead of waiting on GitHub's own LRU eviction, which evicts globally and
+# can otherwise end up evicting live caches on `main` first.
+
+on:
+  pull_request:
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to clean caches for (for a manual/backfill run)'
+        required: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete this PR's merge-ref caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          gh cache delete --all --ref "refs/pull/${PR_NUMBER}/merge" --succeed-on-no-caches
