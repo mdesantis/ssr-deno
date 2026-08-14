@@ -21,23 +21,23 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 - **Plan step = complete only when all dependencies are ✅.** Use ◐ (partial) if deps open. Use ❌ for rejected steps. Move plan to `plans/archived/` only when fully done.
 
 ## Workflow
-- **`bundle exec rake` — only valid full-pipeline command.** Runs: Rust compile + `cargo:test` + `cargo:coverage` + `cargo:clippy` + `cargo:fmt` + Vite build + Ruby tests + coverage:check + perf:check + RuboCop + rubocop:rails + RBS. Never `bundle exec rake test` or subset.
+- **`bundle exec rake` — only valid full-pipeline command.** See the `default` task in `Rakefile` for the exact chain and order — not duplicated here, it goes stale. Never `bundle exec rake test` or subset.
 
 - **Before `bundle exec rake`, run all default steps sequentially first.** Compile, cargo:test, cargo:coverage, cargo:clippy, cargo:fmt, samples, Ruby tests, coverage:check, perf:check, RuboCop, rubocop:rails, RBS — each step independently. **Check exit status (`echo $?`)** after each (run command standalone, never piped to `tail`/`grep` — pipe masks exit code). Fix any failure before the final `bundle exec rake`. This avoids wasting time on a long pipeline that aborts on step N and also catches false failures from stale coverage data. **After all sequential steps pass, run `bundle exec rake` once as the final confirmation.**
 - **Check assignment-blank-line rule before running rake.** Read every modified Ruby file. Fix violations first.
 - **Never auto-commit.** Only commit when asked ("commit please"). Show `git diff --cached` and wait for confirmation.
 - **Fixup before push.** If staged changes are strictly related to the previous commit and that commit wasn't pushed yet, amend instead of creating a new commit. Exception: archival always gets its own commit (rename + reference updates together).
 - **Use `caveman-commit` skill for commit messages.** Conventional Commits, subject ≤50 chars, body only for non-obvious why.
-- **Compile with `bundle exec rake compile`.** Never raw `cargo build` — skips linker flags, Ruby can't load result.
+- **Compile with `bundle exec rake compile`.** Never raw `cargo build` — skips linker flags, Ruby can't load result. Sole exception: the `Dockerfile`'s builder stage, which runs before the Rakefile is copied and renames the `.so` by hand (see the comment there).
 - **Keep `sig/ssr/deno.rbs` in sync.** Update in same step as any method signature/type/exception change.
 - **Archiving plans: stage both new file and old-path deletion.** Use `git mv` or add deletion explicitly. Update all references to old path.
 - **Release workflow:**
-  - Bump **all** `Cargo.toml` files in the workspace — `ext/ssr_deno/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_core/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_sys/Cargo.toml`, `ext/ssr_deno/crates/ssr_deno_dev_mode/Cargo.toml` — and `lib/ssr/deno/version.rb`. All five must match. Partial bump breaks the workspace.
+  - Bump `version` in `[workspace.package]` (`ext/ssr_deno/Cargo.toml`) and `lib/ssr/deno/version.rb`. Member crates inherit via `version.workspace = true` — don't add per-crate `version` back.
   - Run `bundle install` → commit `Gemfile.lock`.
   - Move `## Unreleased` to `## [version] - YYYY-MM-DD`, add fresh empty `## Unreleased` on top.
   - Tag commit (e.g. `v0.1.0-alpha.4`).
 - **Stale audit after every changeset.** Check before marking complete:
-  - `README.md`, `plans/*.md`, `CHANGELOG.md`, source comments, `docs/*.md`, `rakelib/*.rake` header comments, `.github/workflows/ci.yml`, test files, sample files/dirs, `.vscode/settings.json` (`deno.enablePaths` — gitignored but commit with `git add -f`).
+  - `README.md`, `plans/*.md`, `CHANGELOG.md`, source comments, `docs/*.md`, `rakelib/*.rake` header comments, `.github/workflows/ci.yml`, test files, sample files/dirs, `.vscode/settings.json` (`deno.enablePaths` — matched by the global excludes file, so already-tracked edits commit normally but a new file there needs `git add -f`).
   - When adding/renaming/deleting samples: `rg` across non-vendor/non-generated repo for stale path refs.
 - **RuboCop: auto-correct first.** `[Correctable]` offenses → `bundle exec rubocop -a <file>` (safe) or `-A` (all). Manual edit only if auto-correct fails.
 - **TDD when step is testable.** Write failing test → implement → verify pass. If expected-fail test passes immediately, investigate before implementing. Fast loop: `bundle exec rake test`; full gate: `bundle exec rake`.
@@ -52,10 +52,10 @@ Ruby gem embedding Deno V8 via Rust native ext (`ext/ssr_deno/`). No subprocess,
 
 ## Test architecture
 
-9 suites, each a separate Ruby process (avoids pool re-initialization —
+Each suite runs as a separate Ruby process (avoids pool re-initialization —
 the pool is permanent once created) writing its own generated runner to
-`tmp/test_runner_*.rb`. See `rakelib/test.rake` for the exact per-suite
-config — don't duplicate the list here, it goes stale.
+`tmp/test_runner_*.rb`. See `rakelib/test.rake` for the suite list and the
+exact per-suite config — don't duplicate it here, it goes stale.
 
 `bundle exec rake test` runs all of them except `test:perf` (which runs
 standalone via `perf:check`) and merges coverage; `coverage:check` enforces

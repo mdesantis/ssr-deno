@@ -14,8 +14,10 @@ AllCops:
     - 'samples/**/*'
     - 'scripts/**/*'
     - 'tmp/**/*'
-    - 'test/dummy/**/*'
     - 'test/internal/**/*'
+    # An explicit AllCops/Exclude replaces RuboCop's defaults rather than
+    # extending them, so this has to be restated: CI's `bundler-cache: true`
+    # installs gems into vendor/bundle, which would otherwise be linted.
     - 'vendor/**/*'
 
 Layout/HeredocIndentation:
@@ -71,6 +73,7 @@ ThreadSafety/NewThread:
   Exclude:
     - 'scripts/**/*'
     - 'test/**/*'
+
 Naming/VariableNumber:
   EnforcedStyle: snake_case
   Exclude:
@@ -78,9 +81,12 @@ Naming/VariableNumber:
 
 Style/ClassAndModuleChildren:
   EnforcedStyle: nested
+
 Style/Documentation:
   Enabled: false
+
 Style/EmptyMethod:
   Enabled: false
+
 Style/StringLiterals:
   EnforcedStyle: single_quotes
