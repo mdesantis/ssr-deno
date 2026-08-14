@@ -55,6 +55,68 @@ module SSR
         assert_equal 0, SSR::Deno::Bundle.registry.size
       end
 
+      def test_subscribe_heap_stats_disabled_for_non_positive_rate
+        assert_nil SSR::Deno::Railtie.subscribe_heap_stats(0)
+        assert_nil SSR::Deno::Railtie.subscribe_heap_stats(-1)
+        assert_nil SSR::Deno::Railtie.subscribe_heap_stats(nil)
+      end
+
+      def test_subscribe_heap_stats_emits_every_nth_render
+        SSR::Deno::Bundle.registry[:application] = {
+          path: MINIMAL_BUNDLE, auto_reload: false
+        }
+
+        subscriber = SSR::Deno::Railtie.subscribe_heap_stats(2)
+
+        refute_nil subscriber
+
+        events = []
+        callback = ->(_name, _start, _finish, _id, payload) { events << payload }
+
+        begin
+          ActiveSupport::Notifications.subscribed(callback, 'heap_stats.ssr_deno') do
+            2.times { @view.ssr_render({ data: { name: 'Heap' } }) }
+          end
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+
+        assert_equal 1, events.size, 'rate 2 must emit once per two renders'
+        assert_operator events.first.size, :>, 0
+      end
+
+      def test_subscribe_heap_stats_logs_collection_failure
+        subscriber = SSR::Deno::Railtie.subscribe_heap_stats(1)
+        original_logger = Rails.logger
+        log_output = StringIO.new
+        klass = SSR::Deno::HeapStats.singleton_class
+
+        Rails.logger = ActiveSupport::Logger.new(log_output)
+        klass.alias_method(:original_fetch, :fetch)
+        klass.define_method(:fetch) { raise SSR::Deno::Error, 'boom' }
+
+        begin
+          ActiveSupport::Notifications.instrument('render.ssr_deno', bundle_name: 'x')
+        ensure
+          klass.alias_method(:fetch, :original_fetch)
+          klass.remove_method(:original_fetch)
+
+          Rails.logger = original_logger
+
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+
+        assert_includes log_output.string, 'Failed to collect heap stats: boom'
+      end
+
+      def test_ssr_render_returns_empty_string_when_disabled
+        Rails.application.config.ssr_deno.enabled = false
+
+        assert_equal '', @view.ssr_render({ data: { name: 'Disabled' } })
+      ensure
+        Rails.application.config.ssr_deno.enabled = true
+      end
+
       def test_ssr_render_raises_on_unknown_option
         error = assert_raises ArgumentError do
           @view.ssr_render({}, raw_ouputput: true)
@@ -189,6 +251,25 @@ module SSR
 
         assert event, 'render.ssr_deno event should fire on render_chunks'
         assert_equal MINIMAL_BUNDLE, event.last[:bundle_name]
+        assert_nil event.last[:error]
+      end
+
+      def test_render_chunks_instrumentation_records_error
+        bundle = SSR::Deno::Bundle.new(REJECT_BUNDLE)
+
+        events = []
+        callback = ->(name, _start, _finish, _id, payload) { events << [name, payload] }
+
+        ActiveSupport::Notifications.subscribed(callback, /render\.ssr_deno/) do
+          assert_raises(SSR::Deno::RenderError) do
+            bundle.render_chunks({}) { |_| nil }
+          end
+        end
+
+        event = events.assoc('render.ssr_deno')
+
+        assert event, 'render.ssr_deno event should fire even when the render fails'
+        refute_nil event.last[:error], 'failed chunked render must record :error in the payload'
       end
 
       private

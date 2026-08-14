@@ -15,14 +15,21 @@ module SSR
       #   @option options [Boolean] :raw_output  Skip JSON.parse — return raw
       #     JSON string from JS.
       # @return [String, Object] Raw result from the bundle. Empty string on SSR
-      #   failure when +raise_on_render_error+ is false (CSR fallback).
+      #   failure when +raise_on_render_error+ is false (CSR fallback), and
+      #   when +config.ssr_deno.enabled+ is false.
       # @raise [SSR::Deno::BundleNotFoundError] if bundle name not registered.
-      # @raise [SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError]
-      #   when +raise_on_render_error+ is true.
+      # @raise [SSR::Deno::RenderError, SSR::Deno::JsRuntimeWorkerError,
+      #   SSR::Deno::JsRuntimeOutOfMemoryError] when +raise_on_render_error+
+      #   is true.
       def ssr_render(data = nil, **options)
         bundle_name = options.delete(:bundle) || :application
 
         assert_known_ssr_render_options!(options)
+
+        # `enabled = false` means "disable SSR entirely": the Railtie skips
+        # bundle registration, so without this the helper would raise
+        # BundleNotFoundError for every render instead of falling back to CSR.
+        return '' unless Rails.application.config.ssr_deno.enabled
 
         instrument 'ssr_render.ssr_deno', bundle_name: bundle_name, identifier: bundle_name do |payload|
           bundle = find_bundle!(bundle_name)

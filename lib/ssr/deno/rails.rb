@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Rails integration for ssr-deno.
-# Activated by: gem 'ssr_deno', require: 'ssr/deno/rails'
+# Activated by: gem 'ssr-deno', require: 'ssr/deno/rails'
 unless defined?(Rails::Railtie)
   raise LoadError, '[ssr-deno] Rails integration requires railties. ' \
                    'Add gem "railties" to your Gemfile.'

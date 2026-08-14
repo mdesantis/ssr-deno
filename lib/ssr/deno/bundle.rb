@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'json'
+
 require_relative 'instrumenter'
 
 module SSR
@@ -21,7 +23,8 @@ module SSR
             @registry.transform_values! do |cfg|
               # Skip entries that are already instantiated bundles — e.g. a
               # SSR::Deno::DevModeBundle registered itself directly. Only
-              # transform raw config hashes inserted by Config.bundle.
+              # transform raw config hashes, which the Railtie inserts from
+              # +config.ssr_deno.bundles+.
               next cfg unless cfg.is_a?(Hash)
 
               bundle = new(cfg[:path])
@@ -137,8 +140,15 @@ module SSR
 
         json_input = raw_input ? data : JSON.generate(data)
 
-        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do
+        # Block form only: the Enumerator form returns immediately and raises
+        # later, at iteration time, by which point this block — and the
+        # instrumentation event — has already completed successfully.
+        instrument 'render.ssr_deno', bundle_name: @bundle_path, identifier: @bundle_path do |payload|
           SSR::Deno.native_render_chunks(@bundle_path, json_input, &)
+        rescue StandardError => error
+          payload[:error] = error.message
+
+          raise
         end
       end
 
