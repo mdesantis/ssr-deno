@@ -34,11 +34,11 @@ flowchart TB
 | `lib/ssr/deno.rb` | Entry point — `require`s the native extension and all `SSR::Deno::*` Ruby modules. |
 | `lib/ssr/deno/config.rb` | `SSR::Deno::Config` — config setters (`max_heap_size_mb=`, `isolate_pool_size=`, `render_timeout_ms=`, `node_builtins_enabled=`, `source_maps_enabled=`, `dev_resolve_alias=`). Env var defaults (`SSR_DENO_*` prefix) applied at load time. |
 | `lib/ssr/deno/heap_stats.rb` | `SSR::Deno::HeapStats.fetch` / `fetch!` — V8 heap statistics. |
-| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator`. Class-instance `@registry` (populated by `Bundle.create_bundles!`) backs named-bundle lookup. |
+| `lib/ssr/deno/bundle.rb` | `SSR::Deno::Bundle.new(path)` → loads SSR bundle into all isolates. `bundle.render(data)` → JSON-serializes data, dispatches to next isolate, parses result. `bundle.render_chunks(data)` → chunked render via `Enumerator`. Class-instance `@registry` backs named-bundle lookup — populated by the Railtie (from `config.ssr_deno.bundles`) and by `DevModeBundle#initialize`; `Bundle.create_bundles!` materializes the raw config hashes into `Bundle` instances. |
 | `lib/ssr/deno/render_error.rb` | `SSR::Deno::RenderError` and friends — maps native render failures to typed Ruby exceptions with `js_error_message`/`js_error_backtrace`/`js_error_name`. |
-| `lib/ssr/deno/dev_mode_bundle.rb` | `SSR::Deno::DevModeBundle` — dev-mode equivalent of `Bundle` (per-request module reload, no Vite build). |
+| `lib/ssr/deno/dev_mode_bundle.rb` | `SSR::Deno::DevModeBundle` — dev-mode equivalent of `Bundle` (loads source files directly, no Vite build; opt-in mtime-based reload via `auto_reload`). |
 | `lib/ssr/deno/ractor_pool.rb`, `lib/ssr/deno/ractor_pool/worker.rb` | `SSR::Deno::RactorPool` — opt-in Ractor-based isolate pool, and its per-Ractor worker. |
-| `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper (`render.ssr_deno`, `bundle_load.ssr_deno`). |
+| `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper. Events: `render.ssr_deno`, `bundle_load.ssr_deno`, `ssr_render.ssr_deno`, `bundle_miss.ssr_deno`, `heap_stats.ssr_deno`. |
 | `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev. |
 | `lib/ssr/deno/rails/helper.rb` | View helper `ssr_render(data)`. |
 | `lib/ssr/deno/rails/log_subscriber.rb` | `ActiveSupport::LogSubscriber` — logs render/bundle-load events from `instrumenter.rb`. |
@@ -65,7 +65,7 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
 | `src/require_loader.rs` | Minimal `NodeRequireLoader` — rejects file loading, passes built-in module resolution to Deno |
-| `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `DenoError`, validators (`validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
+| `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `SSRDenoError`, validators (`validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
 | `crates/ssr_deno_core/src/source_mapper.rs` | `SsrSourceMapper` — self-managed source map registry. Parses `.js.map` sidecars, resolves V8 stack frame positions to original `.tsx`/`.ts` sources with IIFE offset correction. Used in render error formatting. |
 | `crates/ssr_deno_sys/src/lib.rs` | `Sys` type satisfying `ExtNodeSys` and `WhichSys` trait bounds (`FsCanonicalize`, `FsMetadata`, `FsRead`, `FsReadDir`, `FsOpen`, `EnvCurrentDir`, …) |
 | `crates/ssr_deno_dev_mode/src/` | Dev-mode crate: `dev_mode_builder`, `dev_mode_module_loader`, `dev_mode_npm_resolver`, `require_loader`. Builds the dev `MainWorker` with on-demand transpile + Byonm npm resolver. |
@@ -122,8 +122,8 @@ globalThis.render = render
 
 ### SSR render modes
 
-The gem provides two render paths. Both run the full V8 event loop
-(macrotasks, timers, Promises all fire):
+Both render paths below run the full V8 event loop (macrotasks, timers,
+Promises all fire):
 
 #### Buffered render (`bundle.render(data)`)
 
@@ -237,7 +237,7 @@ ext/ssr_deno/                                         # Rust native extension
 ├── Cargo.toml                                        # deno_runtime, magnus dependencies
 ├── crates/
 │   ├── ssr_deno_core/                                # Pure-Rust types (no V8 dep)
-│   │   └── src/                                      # Config, DenoError, validators, source_mapper
+│   │   └── src/                                      # Config, SSRDenoError, validators, source_mapper
 │   ├── ssr_deno_sys/                                 # `Sys` type for ExtNodeSys / WhichSys
 │   └── ssr_deno_dev_mode/                            # Dev-mode worker builder + module loader + Byonm resolver
 └── src/

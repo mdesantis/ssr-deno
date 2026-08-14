@@ -76,8 +76,8 @@ pool.shutdown  # graceful teardown
 | Option | Default | Description |
 |---|---|---|
 | `bundle_path:` | required | Path to the SSR JS bundle. |
-| `size:` | `1` | Number of Ractor workers. Cannot exceed `Config.isolate_pool_size`. |
-| `auto_reload:` | `false` | Re-evaluate the bundle file on every render (dev only). |
+| `size:` | `1` | Number of Ractor workers. Not validated against `Config.isolate_pool_size` — set the pool size to at least this value or workers will contend for isolates. |
+| `auto_reload:` | `false` | Before each render, re-evaluate the bundle file if its mtime changed (dev only). |
 
 ### Methods
 

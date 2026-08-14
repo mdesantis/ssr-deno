@@ -72,8 +72,8 @@ bundle.render_chunks({ page: 'home' }) { |chunk| stream.write(chunk) }
 ```
 
 The bundle registers itself in `SSR::Deno::Bundle.registry[name]`, so
-the Rails helper `ssr_render(name: :app, …)` resolves it without further
-wiring.
+the Rails helper `ssr_render(data, bundle: :app)` resolves it without
+further wiring.
 
 ### Constructor options
 
