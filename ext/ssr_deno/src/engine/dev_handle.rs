@@ -31,7 +31,7 @@ pub(crate) enum DevModeWorkerMsg {
 }
 
 /// Owns the channel to a dedicated dev worker thread that runs a single
-/// Deno `MainWorker` with `DevModuleLoader` (source-level module loading).
+/// Deno `MainWorker` with `DevModeModuleLoader` (source-level module loading).
 ///
 /// `render_timeout_ms` is **not** cached on the handle — it is read by Ruby
 /// from `SSR::Deno::Config` on every render and passed through the FFI, so

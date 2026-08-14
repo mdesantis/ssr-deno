@@ -17,7 +17,7 @@ use super::render::{RenderState, begin_render, end_render, poll_render_state, to
 /// chunks through `chunk_tx` to the Ruby consumer.
 ///
 /// This poll-based design avoids the need to expose `Deno.core.ops` to user
-/// scripts (which is hidden post-bootstrap in deno_runtime 0.255+). For SSR
+/// scripts (which deno_runtime hides post-bootstrap). For SSR
 /// workloads (bounded HTML fragments), the absence of async backpressure is
 /// acceptable -- chunks are small and the Ruby consumer is fast.
 ///
@@ -80,8 +80,9 @@ pub async fn render_chunked(
         oom_triggered,
         "chunked-render",
     )
-    // inspect_err requires Rust 1.83+ (current toolchain is 1.95). If
-    // supporting older compilers, replace with `.map_err(|e| { ...; e })`.
+    // inspect_err requires Rust 1.83+, below the MSRV declared in
+    // Cargo.toml. If lowering that floor, replace with
+    // `.map_err(|e| { ...; e })`.
     .inspect_err(|_| {
         let _ = worker.execute_script(
             "<ssr-deno:render-chunked-cleanup>",

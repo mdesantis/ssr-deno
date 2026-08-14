@@ -73,11 +73,9 @@ impl Drop for Watchdog {
         // return via `?`), signal the watchdog to exit. Detach instead of
         // joining — during a panic unwind, joining would block the current
         // thread for the full render timeout while the watchdog's recv_timeout
-        // runs to completion. The watchdog thread exits on its own once
+        // runs to completion. Dropping the JoinHandle detaches the thread —
+        // no blocking join. The watchdog thread exits on its own once
         // recv_timeout detects the disconnected sender.
-        // Dropping the JoinHandle detaches the thread — no blocking join.
-        // The watchdog thread exits on its own once recv_timeout detects
-        // the disconnected sender.
         drop(self.cancel_tx.take());
         drop(self.handle.take());
     }

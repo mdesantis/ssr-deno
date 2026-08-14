@@ -52,7 +52,7 @@ pub fn warm_cjs_cache(
 ///
 /// **Single-shot per worker lifetime.** V8 caches modules in its module map
 /// keyed by URL; calling this function a second time on the same worker
-/// returns the cached `ModuleId` without re-fetching from `DevModuleLoader`,
+/// returns the cached `ModuleId` without re-fetching from `DevModeModuleLoader`,
 /// even if source files have changed on disk. The post-eval namespace script
 /// also clears `globalThis.render = undefined`, so a second call fails with
 /// "Entry did not assign a function to globalThis.render".
@@ -76,7 +76,7 @@ pub async fn dev_load_entry(
     new_aliases: HashMap<String, String>,
     cjs_paths: &SharedCjsPaths,
 ) -> Result<(), SSRDenoError> {
-    // 1. Update the shared alias map (DevModuleLoader reads it lazily).
+    // 1. Update the shared alias map (DevModeModuleLoader reads it lazily).
     set_aliases(alias_map, new_aliases);
 
     // 2. Resolve entry to absolute URL.
@@ -90,7 +90,7 @@ pub async fn dev_load_entry(
         ))
     })?;
 
-    // 3. Load the entry module and all its dependencies through DevModuleLoader.
+    // 3. Load the entry module and all its dependencies through DevModeModuleLoader.
     //    This triggers transpilation of .ts/.tsx and source-map registration.
     //    The loader pushes every `node_modules/*.{js,cjs}` path that gets
     //    wrapped in a require()-shim onto `cjs_paths`.
