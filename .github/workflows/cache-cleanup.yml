@@ -25,7 +25,7 @@ concurrency:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       actions: write
       contents: read
@@ -36,4 +36,46 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
-          gh cache delete --all --ref "refs/pull/${PR_NUMBER}/merge" --succeed-on-no-caches
+          ref="refs/pull/${PR_NUMBER}/merge"
+
+          # A single `gh cache delete --all` is not enough. ci.yml sets
+          # SCCACHE_GHA_ENABLED, and sccache's Actions backend writes one cache
+          # entry per compilation unit rather than one per job, so a full CI
+          # run leaves thousands of entries on the merge ref. gh deletes them
+          # one REST call at a time and trips GitHub's secondary rate limit
+          # partway through (HTTP 429), exiting non-zero with most of them
+          # still present — which is how PR #7 finished "cleaned up" with 684
+          # caches left behind.
+          #
+          # So: re-check the real count, retry, and back off between passes.
+          # A transient API failure must not abort the step under `bash -e`,
+          # and an empty value would break the numeric test below.
+          count_caches() {
+            local n
+            n=$(gh api "repos/${GH_REPO}/actions/caches?ref=${ref}&per_page=1" --jq '.total_count' 2>/dev/null || true)
+
+            case "$n" in
+              '' | *[!0-9]*) echo -1 ;;
+              *) echo "$n" ;;
+            esac
+          }
+
+          for attempt in $(seq 1 12); do
+            remaining=$(count_caches)
+
+            echo "pass ${attempt}: ${remaining} cache(s) on ${ref}"
+
+            if [ "$remaining" -eq 0 ]; then
+              echo "All caches for ${ref} deleted."
+              exit 0
+            fi
+
+            gh cache delete --all --ref "$ref" --succeed-on-no-caches || true
+
+            sleep 20
+          done
+
+          # Deliberately not a failure. Partial progress still reclaims most of
+          # the space, GitHub's LRU takes the rest, and a red X on every merge
+          # is noise people learn to ignore.
+          echo "::warning::$(count_caches) cache(s) still on ${ref} after 12 passes; leaving the rest to LRU eviction."
