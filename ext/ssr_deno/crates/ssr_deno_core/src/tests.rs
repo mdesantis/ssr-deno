@@ -144,6 +144,29 @@ fn validate_pool_size_accepts_large() {
 }
 
 // -----------------------------------------------------------------------
+// pool_size_checked
+// -----------------------------------------------------------------------
+
+#[test]
+fn pool_size_checked_rejects_zero() {
+    assert_eq!(pool_size_checked(0), Err("Pool size must be at least 1"));
+}
+
+#[test]
+fn pool_size_checked_accepts_nonzero() {
+    assert!(pool_size_checked(1).is_ok());
+    assert!(pool_size_checked(256).is_ok());
+}
+
+#[test]
+fn pool_size_checked_and_validate_pool_size_share_a_message() {
+    let typed = validate_pool_size(0).unwrap_err();
+    let bare = pool_size_checked(0).unwrap_err();
+
+    assert!(format!("{typed}").ends_with(bare));
+}
+
+// -----------------------------------------------------------------------
 // resolve_pool_size
 // -----------------------------------------------------------------------
 

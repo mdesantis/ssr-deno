@@ -20,7 +20,9 @@ use engine::{IsolatePool, SSRDenoError};
 use magnus::value::ReprValue;
 use magnus::{Error, ExceptionClass, Module, Object, Ruby, Value, block::Yield, function, method};
 use ssr_deno_core::source_mapper::global_get_source_mapper;
-use ssr_deno_core::{Config, max_heap_size_mb_checked, validate_render_timeout_ms};
+use ssr_deno_core::{
+    Config, max_heap_size_mb_checked, pool_size_checked, validate_render_timeout_ms,
+};
 
 // Recover from poisoned mutex instead of panicking. Poison happens if a thread
 // panics while holding the lock — extremely rare, but unrecoverable if we
@@ -193,7 +195,16 @@ fn native_set_max_heap_size_mb(ruby: &Ruby, mb: usize) -> Result<(), Error> {
 }
 
 /// Called by Ruby before the first Bundle.new to configure the isolate pool size.
+///
+/// Validates that `size` is at least 1. Without this the value is only checked
+/// at pool init, which surfaces the mistake as a worker-init failure on the
+/// first `Bundle.new` rather than at the assignment that caused it — unlike
+/// the heap-size and render-timeout setters, which both reject eagerly.
 fn native_set_isolate_pool_size(ruby: &Ruby, size: usize) -> Result<(), Error> {
+    if let Err(msg) = pool_size_checked(size) {
+        return Err(Error::new(ruby.exception_arg_error(), msg));
+    }
+
     check_not_initialized(ruby)?;
     lock_config().isolate_pool_size = size;
     Ok(())
@@ -564,7 +575,7 @@ fn native_dev_render_chunks(
     }
     if !ruby.block_given() {
         // Rack-3 compatible — block-less call returns an Enumerator usable
-        // directly as a streaming response body. Matches prod's
+        // directly as a chunked response body. Matches prod's
         // `native_render_chunks` contract. The handle Ruby value is captured
         // verbatim in the Enumerator args so the method receives the same
         // typed-data wrapper when resumed.

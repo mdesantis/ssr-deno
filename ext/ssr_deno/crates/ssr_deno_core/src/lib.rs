@@ -90,10 +90,16 @@ impl Config {
 /// Validates that `size` is at least 1.
 /// Returns `Ok(())` if valid, or an `SSRDenoError::WorkerInit` error.
 pub fn validate_pool_size(size: usize) -> Result<(), SSRDenoError> {
+    pool_size_checked(size).map_err(|msg| SSRDenoError::WorkerInit(msg.into()))
+}
+
+/// Same check as [`validate_pool_size`], but yielding a bare message for
+/// callers that raise a Ruby `ArgumentError` rather than a typed gem error.
+/// Sole owner of the message text, so the setter and the pool-init path
+/// can't drift apart.
+pub fn pool_size_checked(size: usize) -> Result<(), &'static str> {
     if size == 0 {
-        return Err(SSRDenoError::WorkerInit(
-            "Pool size must be at least 1".into(),
-        ));
+        return Err("Pool size must be at least 1");
     }
     Ok(())
 }

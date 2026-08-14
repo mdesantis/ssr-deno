@@ -77,11 +77,24 @@ module SSR
 
           return if value.nil? || value.empty?
 
+          integer_value = parse_integer_env(env_var, value)
+
+          return if integer_value.nil?
+
+          # Separate rescue from the parse above: an out-of-range value is
+          # a different failure and gets a different message.
           begin
-            send(setter, Integer(value))
+            send(setter, integer_value)
           rescue ArgumentError => error
             warn "[ssr-deno] Cannot apply #{env_var}=#{value.inspect}: #{error.message}, skipping"
           end
+        end
+
+        def parse_integer_env(env_var, value)
+          Integer(value)
+        rescue ArgumentError => error
+          warn "[ssr-deno] Cannot parse #{env_var}=#{value.inspect}: #{error.message}, skipping"
+          nil
         end
 
         def apply_bool_env(env_var, setter)
@@ -89,9 +102,9 @@ module SSR
 
           return if value.nil? || value.empty?
 
-          recognised = %w[true 1 yes false 0 no]
+          recognized = %w[true 1 yes false 0 no]
 
-          unless recognised.include?(value.downcase)
+          unless recognized.include?(value.downcase)
             warn "[ssr-deno] Unrecognized boolean for #{env_var}=#{value.inspect}, ignoring"
             return
           end

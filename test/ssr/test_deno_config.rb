@@ -20,6 +20,10 @@ module SSR
       RUBY
     end
 
+    def test_isolate_pool_size_rejects_zero
+      assert_raises(ArgumentError) { SSR::Deno::Config.isolate_pool_size = 0 }
+    end
+
     def test_render_timeout_ms_before_init
       assert_subprocess(<<~RUBY, 'Expected render_timeout_ms= to succeed before init')
         SSR::Deno::Config.render_timeout_ms = 500
@@ -73,7 +77,19 @@ module SSR
       end
 
       assert_equal 128, SSR::Deno::Config.max_heap_size_mb
+      assert_includes err, 'Cannot parse'
+
+      # Distinct from the parse failure above: this one is a well-formed
+      # integer the setter rejects as out of range.
+      _, err = capture_io do
+        ENV['SSR_DENO_RENDER_TIMEOUT_MS'] = '50'
+        SSR::Deno::Config.send(:apply_integer_env, 'SSR_DENO_RENDER_TIMEOUT_MS', :render_timeout_ms=)
+      end
+
       assert_includes err, 'Cannot apply'
+      assert_includes err, 'at least 100ms'
+
+      ENV.delete('SSR_DENO_RENDER_TIMEOUT_MS')
 
       _, err = capture_io do
         ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'treu'
