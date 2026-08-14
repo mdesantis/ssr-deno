@@ -23,7 +23,7 @@ pub fn register_dev_mode_ffi(
     // that don't need the render engine.
     //
     // Current FFI functions that stay in root:
-    //   native_dev_worker_new (creates DevIsolateHandle→spawns dev_worker)
+    //   native_dev_worker_new (creates DevModeIsolateHandle→spawns dev_worker)
     //   native_dev_render       (dispatches via render engine)
     //   native_dev_render_chunks (dispatches via render engine)
     //   native_dev_check_stale  (queries DevModeMtimeCache)
