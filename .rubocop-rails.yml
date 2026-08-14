@@ -3,5 +3,8 @@ inherit_from: .rubocop.yml
 plugins:
   - rubocop-rails
 
+# The rubocop:rails task passes an explicit file list (lib/ssr/deno/rails/),
+# so the base file's Exclude globs are irrelevant here. Reset rather than
+# inherit so nothing in that list can be silently skipped.
 AllCops:
   Exclude: []

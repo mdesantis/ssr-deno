@@ -2,7 +2,8 @@
 
 require 'minitest/test_task'
 
-# Default Minitest task (overridden below to exclude node_builtins suite)
+# Default Minitest task (cleared and replaced below by the per-suite split;
+# see EXCLUDED_MAIN for what test:main leaves out)
 Minitest::TestTask.create
 
 # Override test: clears the default Minitest task and splits into suites:

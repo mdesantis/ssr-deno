@@ -12,13 +12,9 @@ Rake::ExtensionTask.new('ssr_deno') do |ext|
   ext.lib_dir = 'lib/ssr/deno'
 end
 
-# Task files in rakelib/ (see each file for its exact task list — not
-# duplicated here, it goes stale):
-#   cargo.rake   — cargo:test(:<crate>), cargo:clippy, cargo:fmt, cargo:coverage
-#   perf.rake    — perf:check, perf:baseline:update
-#   rbs.rake     — rbs:validate, rbs:up_to_date, rbs:diff, rbs
-#   samples.rake — samples:build(:<name>), samples:clean
-#   test.rake    — test:main and 8 other suites, plus coverage:check
+# Task definitions live in rakelib/ — cargo.rake, perf.rake, rbs.rake,
+# samples.rake, test.rake. Run `rake -T` for the current list; it is not
+# duplicated here because it goes stale.
 
 RuboCop::RakeTask.new
 

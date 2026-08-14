@@ -5,17 +5,17 @@ source 'https://rubygems.org'
 # Specify your gem's dependencies in ssr-deno.gemspec
 gemspec
 
-gem 'benchmark'
+gem 'benchmark', '~> 0.5'
 gem 'combustion', '~> 1.5', require: false
 gem 'dotenv', '~> 3.1'
-gem 'irb'
+gem 'irb', '~> 1.18'
 gem 'minitest', '~> 6.0', require: false
 gem 'minitest-profile', '~> 0.0', require: false
 gem 'puma', '~> 8.0', require: false
 gem 'rails', '~> 8.0', require: false
 gem 'rake', '~> 13.0'
 gem 'rake-compiler', '~> 1.3'
-gem 'rbs', require: false
+gem 'rbs', '~> 4.1', require: false
 gem 'rubocop', '~> 1.21', require: false
 gem 'rubocop-minitest', '~> 0.39', require: false
 gem 'rubocop-performance', '~> 1.26', require: false
