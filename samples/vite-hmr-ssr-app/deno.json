@@ -2,6 +2,7 @@
   "name": "@ssr-deno/vite-hmr-ssr-app",
   "version": "1.0.0",
   "exports": "./src/entry-server.ts",
+  "lock": "deno.lock",
   "nodeModulesDir": "auto",
   "exclude": ["dist/", "node_modules/"],
   "tasks": {

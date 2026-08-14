@@ -9,7 +9,7 @@
     "node_modules/"
   ],
   "tasks": {
-    "build": "deno run -A npm:vite build --ssr",
+    "build": "deno run --unstable-bare-node-builtins -A npm:vite build --ssr",
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
