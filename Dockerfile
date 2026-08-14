@@ -37,7 +37,9 @@ RUN git clone --depth 1 https://github.com/rbenv/ruby-build.git /tmp/ruby-build 
     && /tmp/ruby-build/bin/ruby-build $RUBY_VERSION /usr/local \
     && rm -rf /tmp/ruby-build
 
-# Install Rust
+# Install Rust. Unpinned (tracks stable) on purpose — the image is a shipping
+# artifact, not an MSRV gate. The declared rust-version floor is verified by
+# the `msrv` job in .github/workflows/ci.yml against a pinned toolchain.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path
 ENV PATH=/root/.cargo/bin:$PATH
@@ -46,7 +48,7 @@ WORKDIR /app
 
 # Cache-optimised layer order:
 #   1. Gem deps (rare changes) → bundle install cached separately
-#   2. Rust sources + V8 vendor → cargo build cached separately
+#   2. Rust sources → cargo build cached separately
 #   3. Everything else → fast layers, Rust stays cached
 # Gemfile change = only layer 1 + final layers invalidated
 # Ruby/docs change = only layer 3 invalidated (no Rust rebuild!)
@@ -68,6 +70,11 @@ ENV SCCACHE=/usr/bin/sccache
 ENV SCCACHE_DIR=/root/.cache/sccache
 ENV CARGO_TARGET_DIR=/app/tmp/cargo-target
 
+# Raw `cargo build` rather than `rake compile` (which AGENTS.md mandates
+# elsewhere): the full project isn't copied yet, so the Rakefile and its
+# rake-compiler task aren't available at this layer. The .so is renamed into
+# place below, which is the only thing rake-compiler would add here — the
+# linker flags come from RUSTFLAGS, set above.
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/tmp,sharing=locked \
@@ -75,7 +82,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     cargo build --manifest-path ext/ssr_deno/Cargo.toml -p ssr_deno --release && \
     cp "$CARGO_TARGET_DIR/release/libssr_deno.so" /tmp/libssr_deno.so
 
-# Copy rest of the project (Ruby, config, tests, docs).
+# Copy the rest of the project. .dockerignore keeps test/, docs/, samples/,
+# plans/ and coverage/ out, so this is Ruby sources plus build config.
 # Layer invalidates on non-Rust changes — cargo stays cached.
 COPY . .
 
