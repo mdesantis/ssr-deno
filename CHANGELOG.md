@@ -1,5 +1,28 @@
 ## Unreleased
 
+### Added
+- **Gem now ships `docs/`** — `README.md` links to `docs/architecture.md`, `docs/compatibility.md`, `docs/dev-mode.md`, `docs/ractor-pool.md` and `docs/csp-nonce.md`, none of which were in `spec.files`. Those links were dead for anyone reading the README from an installed gem.
+- **The `rails g ssr:deno:install` initializer documents every option the Railtie reads** — `max_heap_size_mb`, `isolate_pool_size` and `heap_stats_sample_rate` were missing, and the remaining options are now listed in Railtie declaration order. A generator test asserts the full list, so the template can't fall behind again.
+
+### Changed
+- **`SSR::Deno::Config.isolate_pool_size = 0` now raises `ArgumentError`** — previously accepted, then rejected much later as a worker-init failure on the first `Bundle.new`. Matches `max_heap_size_mb=` and `render_timeout_ms=`, which both already validated eagerly.
+- **The Railtie applies `config.ssr_deno` numeric options on nil rather than truthiness** — `max_heap_size_mb`, `isolate_pool_size` and `render_timeout_ms` set to `0` were silently dropped instead of being rejected by the setter.
+- **`ssr_render` returns an empty string when `config.ssr_deno.enabled` is `false`** — the generator template calls that flag "disable SSR entirely", but the helper never checked it, so every render raised `BundleNotFoundError` (the Railtie having skipped bundle registration) instead of falling back to CSR.
+- **Failed block-form `render_chunks` calls record `:error` in the `render.ssr_deno` payload**, matching `render`. `LogSubscriber` branches on that key, so a failed chunked render was logged as a success. The Enumerator form is unchanged — it returns before rendering starts and raises at iteration time, after the instrumentation event has closed.
+- **Env var parse failures and range failures now report differently** — `SSR_DENO_RENDER_TIMEOUT_MS=50` said "Cannot apply … invalid value for Integer", wording that describes a parse error. Parse failures say "Cannot parse", out-of-range values say "Cannot apply" with the setter's own message.
+
+### Fixed
+- **Published gem no longer includes any Rust test source** — the alpha.10 exclusion only matched the `*_test.rs` convention, so eight `<module>/tests.rs` files still shipped: `src/nop_types/`, `src/require_loader/`, `crates/ssr_deno_core/` (plus `source_mapper/`), `crates/ssr_deno_sys/`, and three under `crates/ssr_deno_dev_mode/`.
+- **`.dockerignore` now excludes `.env`** — `bin/setup` always creates one and the `Dockerfile`'s `COPY . .` baked a developer's local build settings into any locally built image.
+- **README documented a `SSR::Deno.configure` block that does not exist** — no such method is defined anywhere in the gem. The Rails configuration section now uses `Rails.application.config.ssr_deno.*` throughout, and documents `bundles`, `enabled`, `auto_reload`, `max_heap_size_mb` and `isolate_pool_size`, which it previously omitted.
+- **`heap_stats_sample_rate = 0` raised `ZeroDivisionError` on every render** — README documented `0` as the way to disable heap sampling, but the Railtie computed `counter % sample_rate` with no guard, and the surrounding `rescue` only covered `SSR::Deno::Error`/`JSON::ParserError`. A non-positive rate now skips the `render.ssr_deno` subscription outright, so `0` disables sampling as documented and costs nothing on the render path.
+- **`docs/dev-mode.md` documented the Rails helper's bundle-selection option as `name:`** — it is `bundle:`, and `ssr_render` raises `ArgumentError` for any unrecognized option, so the documented call could never work. README now documents `bundle:` too.
+- **README's boolean env var rule was wrong** — unrecognized values are warned about and ignored, leaving the setting at its default; they are not "treated as false".
+- **`docs/ractor-pool.md` claimed `size:` "cannot exceed `Config.isolate_pool_size`"** (nothing validates that) **and that `auto_reload:` re-evaluates the bundle "on every render"** (it is mtime-gated).
+- **`docs/architecture.md` corrections** — `DevModeBundle` was described as doing per-request module reload when `auto_reload` is opt-in and off by default (contradicting `docs/dev-mode.md`); the Instrumenter was credited with two events when five exist; the `Bundle` registry was described as populated by `create_bundles!`, which only materializes entries the Railtie and `DevModeBundle` insert; and the pure-Rust error type was named `DenoError` rather than `SSRDenoError`.
+- **README's "Build all Vite samples" claim** — `rake samples:build` also builds both webpack samples and the esbuild/npm one.
+- **README prerequisites omitted the Rust MSRV** — 1.95, declared in `Cargo.toml` and verified by a dedicated CI job.
+
 ## [0.1.0-alpha.10] - 2026-08-13
 
 ### Changed
