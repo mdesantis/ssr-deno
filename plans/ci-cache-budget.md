@@ -119,6 +119,26 @@ Order matters; L3 must land before or with L1.
   job — the 18% figure is a one-off, not ongoing telemetry, and L3 is expected
   to remove most of what sccache was covering.
 
+### Phase 2 measured result
+
+Merged as `ab0d3d1`. All 9 jobs green. Matrix legs **880–1454s → 460–530s**;
+`lint` runs in 18s; `rust-checks` and `msrv` were both cold on the first two
+runs (new key, and the msrv entry had been LRU-evicted), so their steady-state
+numbers are still unmeasured.
+
+| entry | before | after |
+|---|---|---|
+| `cargo-target-msrv` | 1378 MB | **686 MB** |
+| `cargo-target-checks` | — | 1770 MB (new) |
+| 6 leg entries | 787–804 MB | unchanged |
+| sccache | 3.62 GB (6710) | 2.48 GB (5427) |
+| **total** | **10.34 GB** | **10.00 GB** |
+
+`CARGO_PROFILE_DEV_DEBUG=0` + `CARGO_INCREMENTAL=0` halved the msrv entry. The
+leg entries are immutable and hit exactly, so the `cargo install
+cargo-llvm-cov` removal only shows up when they next rotate on a Rust-touching
+change.
+
 ## Phase 3 — one target cache per arch
 
 Drop `matrix.ruby` from the target key; gate the save to a canonical leg
