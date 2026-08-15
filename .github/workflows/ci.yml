@@ -104,10 +104,22 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
-          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ matrix.ruby }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          # No matrix.ruby component: the bulk of this tree is
+          # release/gn_out/obj/librusty_v8.a plus the Deno dependency graph,
+          # which is byte-identical across Ruby versions. Six entries were two
+          # payloads stored three times each.
+          #
+          # Only the canonical leg saves (see the save step), so a tree built
+          # against one Ruby ABI never accumulates artifacts from another.
+          # Non-canonical legs restore it and rebuild just their own chain:
+          # rb-sys re-runs because it declares RBCONFIG_* via
+          # cargo:rerun-if-env-changed, which regenerates the bindings and
+          # relinks magnus and the cdylib. A wrong-ABI .so would fail loudly at
+          # `require` in `rake test`, not silently.
+          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
           restore-keys: |
-            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ matrix.ruby }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ matrix.ruby }}-
+            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
@@ -115,15 +127,20 @@ jobs:
       - name: Compile native extension
         run: bundle exec rake compile
       # Saved here rather than as a post-job step on purpose: nothing after
-      # this point writes the cached directory. The cargo test/clippy/fmt/
-      # llvm-cov steps below build into ext/ssr_deno/tmp/cargo-target instead
-      # (see the CARGO_TARGET_DIR note in `env:` above), so everything worth
-      # caching already exists here — and a later test failure still leaves
-      # the build artifacts cached.
+      # this point writes the cached directory — this job only runs `rake
+      # compile`, which writes the absolute RB_SYS_CARGO_TARGET_DIR. So
+      # everything worth caching already exists here, and a later test failure
+      # still leaves the build artifacts cached.
+      #
+      # One canonical Ruby per arch writes the shared entry. Letting all three
+      # write would not race — the loser just warns "cache already exists" —
+      # but it would make *which* ABI's artifacts are in the tree depend on
+      # which leg finished first. A fixed writer keeps that deterministic.
+      #
       # `cache-hit` is true only on an exact primary-key match, which is
       # exactly when saving would be a no-op warning.
       - name: Save Cargo build artifacts (target dir)
-        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && matrix.ruby == '4.0' && steps.cargo-target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: tmp/cargo-target
@@ -242,6 +259,15 @@ jobs:
         run: bundle exec rake cargo:test:ssr_deno
       - name: Run Rust coverage (cargo-llvm-cov)
         run: bundle exec rake cargo:coverage
+      # Telemetry, not a gate. sccache costs ~2.5GB of the 10GB cache cap and
+      # thousands of entries, and the only hit-rate figure on record (~18%,
+      # plans/archived/ci-speedup.md) predates the job split — it was largely
+      # serving a cold shadow build that no longer exists. This job is now the
+      # only one doing heavy compilation, so its numbers decide whether
+      # sccache still earns its keep. See plans/ci-cache-budget.md (L1).
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
       # cargo llvm-cov writes an instrumented sibling tree that is worthless to
       # restore — different rustc flags, so it shares nothing with the builds
       # above. Dropped before the cache is saved.
@@ -345,8 +371,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
-          # No os/arch/ruby component unlike the matrix legs above — this
-          # job is one fixed combination, so they'd be constants.
+          # No os/arch component — this job is one fixed combination, so they'd
+          # be constants. Its own prefix keeps it off the matrix legs' entries:
+          # this one is a dev-profile tree built by a pinned toolchain.
           key: cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
           restore-keys: |
             cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
