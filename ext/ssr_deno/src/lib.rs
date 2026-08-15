@@ -169,18 +169,21 @@ fn map_render_error(ruby: &Ruby, e: SSRDenoError) -> Error {
     }
 }
 
-/// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
-/// Must be called before any native_load_bundle or native_render call.
-///
-/// Validates that the value doesn't overflow when converted to bytes.
-/// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
-/// which is far beyond any practical V8 heap limit.
+/// Called by Ruby before the first Bundle.new to enable Node.js built-in
+/// module support. Must be called before any native_load_bundle or
+/// native_render call.
 fn native_set_node_builtins_enabled(ruby: &Ruby, enabled: bool) -> Result<(), Error> {
     check_not_initialized(ruby)?;
     lock_config().node_builtins = enabled;
     Ok(())
 }
 
+/// Called by Ruby before the first Bundle.new to configure the V8 heap limit.
+/// Must be called before any native_load_bundle or native_render call.
+///
+/// Validates that the value doesn't overflow when converted to bytes.
+/// The max safe value is usize::MAX / 1024 / 1024 (~16 TB on 64-bit),
+/// which is far beyond any practical V8 heap limit.
 fn native_set_max_heap_size_mb(ruby: &Ruby, mb: usize) -> Result<(), Error> {
     if let Err(msg) = max_heap_size_mb_checked(mb) {
         return Err(Error::new(

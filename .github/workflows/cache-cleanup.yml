@@ -77,10 +77,22 @@ jobs:
 
             gh cache delete --all --ref "$ref" --succeed-on-no-caches || true
 
-            sleep 20
+            # No back-off after the final pass -- nothing follows it.
+            if [ "$attempt" -lt 12 ]; then
+              sleep 20
+            fi
           done
+
+          # The loop can exhaust its passes having cleared everything on the
+          # last one, so re-check rather than assuming failure.
+          remaining=$(count_caches)
+
+          if [ "$remaining" -eq 0 ]; then
+            echo "All caches for ${ref} deleted."
+            exit 0
+          fi
 
           # Deliberately not a failure. Partial progress still reclaims most of
           # the space, GitHub's LRU takes the rest, and a red X on every merge
           # is noise people learn to ignore.
-          echo "::warning::$(count_caches) cache(s) still on ${ref} after 12 passes; leaving the rest to LRU eviction."
+          echo "::warning::${remaining} cache(s) still on ${ref} after 12 passes; leaving the rest to LRU eviction."

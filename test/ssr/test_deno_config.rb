@@ -91,6 +91,19 @@ module SSR
 
       ENV.delete('SSR_DENO_RENDER_TIMEOUT_MS')
 
+      # Negative values raise RangeError out of magnus's unsigned conversion,
+      # before any of our own validation. Rescuing only ArgumentError let this
+      # abort `require "ssr/deno"` outright.
+      _, err = capture_io do
+        ENV['SSR_DENO_ISOLATE_POOL_SIZE'] = '-1'
+        SSR::Deno::Config.send(:apply_integer_env, 'SSR_DENO_ISOLATE_POOL_SIZE', :isolate_pool_size=)
+      end
+
+      assert_includes err, 'Cannot apply'
+      assert_includes err, 'negative'
+
+      ENV.delete('SSR_DENO_ISOLATE_POOL_SIZE')
+
       _, err = capture_io do
         ENV['SSR_DENO_NODE_BUILTINS_ENABLED'] = 'treu'
         SSR::Deno::Config.send(:apply_bool_env, 'SSR_DENO_NODE_BUILTINS_ENABLED', :node_builtins_enabled=)

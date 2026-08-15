@@ -25,10 +25,12 @@ env:
   # `rake compile` writes the absolute workspace-root path below (rb-sys
   # passes --target-dir explicitly).
   #
-  # That split only matters for jobs that run both. `rust-checks` owns every
-  # cargo task now and overrides CARGO_TARGET_DIR to the absolute path so its
-  # tree is a single cacheable directory; the matrix legs only run `rake
-  # compile`, so they only ever touch the absolute one.
+  # That split only matters for jobs that run both. `rust-checks` overrides
+  # CARGO_TARGET_DIR to the absolute path so its tree is a single cacheable
+  # directory; the matrix legs only run `rake compile`, so they only ever
+  # touch the absolute one. `msrv` is the remaining exception: it runs both,
+  # so its cargo:test steps still build into the uncached relative path —
+  # a time cost, not a correctness one. See plans/ci-cache-budget.md.
   CARGO_TARGET_DIR: tmp/cargo-target
   RB_SYS_CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
   # Incremental artifacts are for iterative local rebuilds; across CI runs they
@@ -219,15 +221,6 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
-      # Built into a scratch directory, not the cached one: `cargo install`
-      # honours CARGO_TARGET_DIR, so without this override cargo-llvm-cov's
-      # whole dependency graph ends up inside the saved cache entry.
-      - name: Install Rust coverage tools
-        env:
-          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-llvm-cov-install
-        run: |
-          rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov
       - name: Restore Cargo registry + git deps
         id: cargo-deps
         uses: actions/cache/restore@v6
@@ -247,6 +240,16 @@ jobs:
           restore-keys: |
             cargo-target-checks-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
             cargo-target-checks-
+      # After the restores, not before: this downloads and builds a dependency
+      # graph, so it wants the warm registry. CARGO_TARGET_DIR is overridden to
+      # a scratch dir because `cargo install` honours it — otherwise
+      # cargo-llvm-cov's artifacts land in the saved target entry.
+      - name: Install Rust coverage tools
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-llvm-cov-install
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov
       - name: Check Rust formatting
         run: bundle exec rake cargo:fmt
       - name: Run Clippy
@@ -271,17 +274,21 @@ jobs:
       # cargo llvm-cov writes an instrumented sibling tree that is worthless to
       # restore — different rustc flags, so it shares nothing with the builds
       # above. Dropped before the cache is saved.
+      # always(): these sit after the checks, so without it a clippy or test
+      # failure on main would throw away a perfectly good build tree and make
+      # the next run rebuild from cold. The matrix job avoids this by saving
+      # immediately after compile; here the tree is only complete at the end.
       - name: Prune uncacheable artifacts
-        if: github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main'
         run: rm -rf tmp/cargo-target/llvm-cov-target
       - name: Save Cargo build artifacts (target dir)
-        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        if: always() && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
       - name: Save Cargo registry + git deps
-        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        if: always() && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -332,9 +339,10 @@ jobs:
     env:
       # This job answers "does rustc 1.95.0 accept the code", not "is the
       # backtrace readable", so [profile.dev]'s unpacked debug info is dead
-      # weight in its cache entry — the largest of the lot at ~1.27GB against
-      # the release legs' ~800MB. Set at job level so `rake compile` and the
-      # cargo test steps below share one fingerprint.
+      # weight in its cache entry. Measured: ~1.27GB → ~686MB. Set at job
+      # level so `rake compile` and the cargo test steps share one
+      # fingerprint — though only compile's output is actually cached here,
+      # since the test steps build into the relative CARGO_TARGET_DIR.
       CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
       - uses: actions/checkout@v7
