@@ -6,9 +6,9 @@
 
 ### Changed
 - **`SSR::Deno::Config.isolate_pool_size = 0` now raises `ArgumentError`** — previously accepted, then rejected much later as a worker-init failure on the first `Bundle.new`. Matches `max_heap_size_mb=` and `render_timeout_ms=`, which both already validated eagerly.
-- **The Railtie applies `config.ssr_deno` numeric options on nil rather than truthiness** — `max_heap_size_mb`, `isolate_pool_size` and `render_timeout_ms` set to `0` were silently dropped instead of being rejected by the setter.
+- **The Railtie applies `config.ssr_deno` numeric options on nil rather than truthiness**, and via one keyed loop rather than five near-identical lines. No behaviour change: `0` is truthy in Ruby, so the old guard already passed it through to the setter.
 - **`ssr_render` returns an empty string when `config.ssr_deno.enabled` is `false`** — the generator template calls that flag "disable SSR entirely", but the helper never checked it, so every render raised `BundleNotFoundError` (the Railtie having skipped bundle registration) instead of falling back to CSR.
-- **Failed block-form `render_chunks` calls record `:error` in the `render.ssr_deno` payload**, matching `render`. `LogSubscriber` branches on that key, so a failed chunked render was logged as a success. The Enumerator form is unchanged — it returns before rendering starts and raises at iteration time, after the instrumentation event has closed.
+- **Failed block-form `render_chunks` calls record `:error` in the `render.ssr_deno` payload**, matching `render` and making the failure visible to anything subscribed to that event. Note `LogSubscriber#render` does not itself branch on `:error` — only `ssr_render` does — so this changes the payload, not the gem's own log output. The Enumerator form is unchanged: it returns before rendering starts and raises at iteration time, after the instrumentation event has closed.
 - **Env var parse failures and range failures now report differently** — `SSR_DENO_RENDER_TIMEOUT_MS=50` said "Cannot apply … invalid value for Integer", wording that describes a parse error. Parse failures say "Cannot parse", out-of-range values say "Cannot apply" with the setter's own message.
 
 ### Fixed

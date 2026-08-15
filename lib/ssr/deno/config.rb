@@ -83,9 +83,14 @@ module SSR
 
           # Separate rescue from the parse above: an out-of-range value is
           # a different failure and gets a different message.
+          #
+          # RangeError as well as ArgumentError: the native setters take
+          # unsigned integers, so a negative value raises RangeError out of
+          # magnus's conversion before any of our own validation runs. Without
+          # it, SSR_DENO_ISOLATE_POOL_SIZE=-1 aborts `require "ssr/deno"`.
           begin
             send(setter, integer_value)
-          rescue ArgumentError => error
+          rescue ArgumentError, RangeError => error
             warn "[ssr-deno] Cannot apply #{env_var}=#{value.inspect}: #{error.message}, skipping"
           end
         end
