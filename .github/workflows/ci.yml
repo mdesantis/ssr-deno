@@ -19,6 +19,20 @@ env:
   SCCACHE_GHA_ENABLED: 'true'
   RUSTC_WRAPPER: 'sccache'
   RUSTFLAGS: '-C link-arg=-fuse-ld=mold'
+  # These two disagree on purpose, for now. Cargo resolves a relative
+  # CARGO_TARGET_DIR against the CWD, and every cargo invocation in
+  # rakelib/cargo.rake runs with chdir: 'ext/ssr_deno' — so cargo
+  # test/clippy/fmt/llvm-cov build into ext/ssr_deno/tmp/cargo-target, which is
+  # NOT cached and is rebuilt cold every run. Only `rake compile` writes the
+  # cached workspace-root tree, because rb-sys passes --target-dir explicitly
+  # from RB_SYS_CARGO_TARGET_DIR below.
+  #
+  # Do not "fix" this in isolation: unifying the paths speeds the legs up but
+  # forces the dev-profile tree, `clippy --all-targets` artifacts and
+  # llvm-cov-target/ into the cached entry on all six legs, which blows the
+  # 10GB cache cap. The fix is to move that work into its own job — see
+  # plans/ci-cache-budget.md. sccache is what currently covers the uncached
+  # side, so it is load-bearing until then.
   CARGO_TARGET_DIR: tmp/cargo-target
   RB_SYS_CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
 
@@ -65,8 +79,21 @@ jobs:
         run: |
           rustup component add llvm-tools-preview
           cargo install cargo-llvm-cov
-      - name: Cache Cargo registry + git deps
-        uses: actions/cache@v6
+      # Restore/save are split, and only `main` saves. A pull_request run can
+      # read main's entries but writes into refs/pull/<N>/merge, a scope
+      # nothing else can ever read — so every open PR used to duplicate the
+      # whole ~5.6GB cargo cache set against the repo's fixed 10GB cap, and
+      # those writes evicted main's live entries. Reads still keep main's
+      # entries hot, because eviction is by last access.
+      #
+      # Trade-off: a PR leg has no fallback of its own. If main's entry is
+      # evicted, every push to that PR pays a cold build (~24m measured, inside
+      # the 45m timeout) until main repopulates. Slower, not broken — and
+      # strictly better than the old behaviour, where the PR's own writes were
+      # what evicted main's entries in the first place.
+      - name: Restore Cargo registry + git deps
+        id: cargo-deps
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
@@ -74,8 +101,9 @@ jobs:
           key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
           restore-keys: |
             cargo-deps-
-      - name: Cache Cargo build artifacts (target dir)
-        uses: actions/cache@v6
+      - name: Restore Cargo build artifacts (target dir)
+        id: cargo-target
+        uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
           key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ matrix.ruby }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
@@ -88,6 +116,28 @@ jobs:
           deno-version: v2.x
       - name: Compile native extension
         run: bundle exec rake compile
+      # Saved here rather than as a post-job step on purpose: nothing after
+      # this point writes the cached directory. The cargo test/clippy/fmt/
+      # llvm-cov steps below build into ext/ssr_deno/tmp/cargo-target instead
+      # (see the CARGO_TARGET_DIR note in `env:` above), so everything worth
+      # caching already exists here — and a later test failure still leaves
+      # the build artifacts cached.
+      # `cache-hit` is true only on an exact primary-key match, which is
+      # exactly when saving would be a no-op warning.
+      - name: Save Cargo build artifacts (target dir)
+        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: tmp/cargo-target
+          key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+      - name: Save Cargo registry + git deps
+        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
       - name: Run Rust unit tests (V8-free crates)
         run: bundle exec rake cargo:test
       - name: Run Rust unit tests (ssr_deno_dev_mode)
@@ -174,8 +224,10 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
-      - name: Cache Cargo registry + git deps
-        uses: actions/cache@v6
+      # Restore/save split, main-only save — same rationale as the matrix job.
+      - name: Restore Cargo registry + git deps
+        id: cargo-deps
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
@@ -183,8 +235,9 @@ jobs:
           key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
           restore-keys: |
             cargo-deps-
-      - name: Cache Cargo build artifacts (target dir)
-        uses: actions/cache@v6
+      - name: Restore Cargo build artifacts (target dir)
+        id: cargo-target
+        uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
           # No os/arch/ruby component unlike the matrix legs above — this
@@ -202,6 +255,20 @@ jobs:
         env:
           RB_SYS_CARGO_PROFILE: 'dev'
         run: bundle exec rake compile
+      - name: Save Cargo build artifacts (target dir)
+        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: tmp/cargo-target
+          key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+      - name: Save Cargo registry + git deps
+        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
       - name: Run Rust unit tests (V8-free crates)
         run: bundle exec rake cargo:test
       - name: Run Rust unit tests (ssr_deno_dev_mode)

@@ -7,6 +7,11 @@ name: Cache cleanup
 # against the repo's fixed 10GB cache cap. This deletes it immediately
 # instead of waiting on GitHub's own LRU eviction, which evicts globally and
 # can otherwise end up evicting live caches on `main` first.
+#
+# ci.yml no longer writes cargo caches on PR refs (its cache steps are split
+# into restore + a `main`-gated save), so the bulk of what this used to
+# reclaim is gone. It remains the backstop for what still lands there:
+# sccache's per-compilation-unit entries and setup-ruby's bundler cache.
 
 on:
   pull_request:
