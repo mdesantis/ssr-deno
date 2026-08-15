@@ -1,5 +1,10 @@
 # CI Workflow Speed-Up Plan
 
+> **Superseded in part.** The `actions/cache` setup described here later
+> exhausted the repo's 10GB cache cap. See
+> [`plans/ci-cache-budget.md`](../ci-cache-budget.md) — it also revises the
+> claim below that sccache is "complementary to `actions/cache`".
+
 ## Problem
 
 The CI workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) consistently fails or times out because:
