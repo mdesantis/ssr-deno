@@ -77,27 +77,47 @@ timeout) until `main` repopulates — slower, not broken, and strictly better
 than the old behaviour where the PR's own writes evicted `main`'s entries. This
 gets better as Phase 2/3 shrink `main`'s footprint and eviction stops.
 
-## Phase 2 — restructure (approved in principle, after measuring Phase 1)
+### Phase 1 measured result
+
+Merged as `4ea1a4a`. Verified with a throwaway Rust-source commit to force a
+key miss: **0 saves** across the PR run (5 legs restored via `restore-keys`, 1
+missed outright — all 7 would have written before), and `refs/pull/9/merge`
+ended up holding only sccache entries. On the follow-up `main` run exactly 1
+save fired, from the one leg whose key genuinely missed — the gate works in
+both directions.
+
+`Cache cleanup` then drained 2122 entries from that merge ref to zero.
+
+Post-merge steady state, **still over cap with zero open PRs**:
+
+| ref | kind | count | size |
+|---|---|---|---|
+| `main` | cargo-target | 7 | 6.01 GB |
+| `main` | sccache | 6710 | 3.62 GB |
+| `main` | cargo-deps | 1 | 0.25 GB |
+| **total** | | **6958** | **10.34 GB** |
+
+## Phase 2 — restructure
 
 Order matters; L3 must land before or with L1.
 
-- **L3 — move Ruby-independent work off the 6-leg matrix.** New `rust-checks`
-  job (1 leg, x86_64, Ruby 4.0): `cargo:fmt`, `cargo:clippy`, all
+- **L3 — move Ruby-independent work off the 6-leg matrix.** ✅ New
+  `rust-checks` job (x86_64, Ruby 4.0) owns `cargo:fmt`, `cargo:clippy`, all
   `cargo:test:*`, `cargo:coverage`, with `CARGO_TARGET_DIR` absolute so its dev
-  tree is finally cacheable. New `lint` job (no Rust toolchain): `rubocop`,
-  `rubocop:rails`, `rbs`. Legs keep compile, samples, Ruby tests,
-  `coverage:check`. Biggest time win: legs stop paying the cold shadow build,
-  880–1454s → ~300–500s expected.
-- **L5 — key and size hygiene.** rustc-version component in the key
-  (`dtolnay/rust-toolchain` exposes `outputs.cachekey`); `CARGO_INCREMENTAL: 0`;
-  keep `cargo install cargo-llvm-cov` out of the cached dir and gate it to the
-  legs that run coverage; prune `incremental/`, `llvm-cov-target/`,
-  `examples/` before save; `CARGO_PROFILE_DEV_DEBUG: 0` and `cargo check` for
-  msrv (1.27 → ~0.5GB, ~20min off that job).
-- **L1 — drop sccache.** Only after L3. Frees ~3.79GB and ~6400 entries, and
-  makes `cache-cleanup.yml`'s retry loop vestigial. Measure first: add
-  `sccache --show-stats` to one leg — the 18% figure is a one-off, not ongoing
-  telemetry.
+  tree is a single cacheable directory. New `lint` job (no Rust toolchain, no
+  cargo cache) owns `rubocop`, `rubocop:rails`, `rbs`. Legs keep compile,
+  samples, Ruby tests, `coverage:check`.
+- **L5 — key and size hygiene.** Partly done: `CARGO_INCREMENTAL: 0`
+  workflow-wide; `cargo install cargo-llvm-cov` built into a scratch dir and
+  removed from the matrix legs entirely; `llvm-cov-target/` pruned before save;
+  `CARGO_PROFILE_DEV_DEBUG: 0` on msrv. **Still open:** a rustc-version
+  component in the key (`dtolnay/rust-toolchain` exposes `outputs.cachekey`) —
+  without it a floating-`stable` bump leaves stale artifacts in the restored
+  `deps/` forever, since cargo never GCs them.
+- **L1 — drop sccache.** Only after L3 lands and its effect is measured. Frees
+  ~3.6GB and ~6700 entries. Measure first: add `sccache --show-stats` to one
+  job — the 18% figure is a one-off, not ongoing telemetry, and L3 is expected
+  to remove most of what sccache was covering.
 
 ## Phase 3 — one target cache per arch
 

@@ -19,31 +19,33 @@ env:
   SCCACHE_GHA_ENABLED: 'true'
   RUSTC_WRAPPER: 'sccache'
   RUSTFLAGS: '-C link-arg=-fuse-ld=mold'
-  # These two disagree on purpose, for now. Cargo resolves a relative
-  # CARGO_TARGET_DIR against the CWD, and every cargo invocation in
-  # rakelib/cargo.rake runs with chdir: 'ext/ssr_deno' — so cargo
-  # test/clippy/fmt/llvm-cov build into ext/ssr_deno/tmp/cargo-target, which is
-  # NOT cached and is rebuilt cold every run. Only `rake compile` writes the
-  # cached workspace-root tree, because rb-sys passes --target-dir explicitly
-  # from RB_SYS_CARGO_TARGET_DIR below.
+  # Cargo resolves a relative CARGO_TARGET_DIR against the CWD, and every
+  # cargo invocation in rakelib/cargo.rake runs with chdir: 'ext/ssr_deno'.
+  # This default therefore resolves to ext/ssr_deno/tmp/cargo-target, while
+  # `rake compile` writes the absolute workspace-root path below (rb-sys
+  # passes --target-dir explicitly).
   #
-  # Do not "fix" this in isolation: unifying the paths speeds the legs up but
-  # forces the dev-profile tree, `clippy --all-targets` artifacts and
-  # llvm-cov-target/ into the cached entry on all six legs, which blows the
-  # 10GB cache cap. The fix is to move that work into its own job — see
-  # plans/ci-cache-budget.md. sccache is what currently covers the uncached
-  # side, so it is load-bearing until then.
+  # That split only matters for jobs that run both. `rust-checks` owns every
+  # cargo task now and overrides CARGO_TARGET_DIR to the absolute path so its
+  # tree is a single cacheable directory; the matrix legs only run `rake
+  # compile`, so they only ever touch the absolute one.
   CARGO_TARGET_DIR: tmp/cargo-target
   RB_SYS_CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
+  # Incremental artifacts are for iterative local rebuilds; across CI runs they
+  # are dead weight in the cache (1.7GB of a 21GB dev tree locally). Release
+  # already disables incremental; this covers the dev builds in rust-checks
+  # and msrv.
+  CARGO_INCREMENTAL: '0'
 
 jobs:
   build-and-test:
     runs-on: ${{ matrix.platform.runner }}
     name: CI (${{ matrix.platform.arch }}) - ${{ matrix.ruby }}
-    # Legs run ~13-16m warm-cache. No job in this file had a timeout before
-    # this — a genuine hang (e.g. a runtime deadlock in the render path)
-    # would've silently sat for the GitHub default of 6h. Matches the msrv
-    # job's 45m for one consistent number across the workflow.
+    # Legs ran ~13-18m warm-cache while they also carried the Rust checks;
+    # those moved to the `rust-checks` job, so expect less. The timeout exists
+    # because no job in this file had one — a genuine hang (e.g. a runtime
+    # deadlock in the render path) would've silently sat for the GitHub
+    # default of 6h. Kept at the msrv job's 45m for one consistent number.
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -75,10 +77,6 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
-      - name: Install Rust coverage tools
-        run: |
-          rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov
       # Restore/save are split, and only `main` saves. A pull_request run can
       # read main's entries but writes into refs/pull/<N>/merge, a scope
       # nothing else can ever read — so every open PR used to duplicate the
@@ -138,16 +136,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
-      - name: Run Rust unit tests (V8-free crates)
-        run: bundle exec rake cargo:test
-      - name: Run Rust unit tests (ssr_deno_dev_mode)
-        run: bundle exec rake cargo:test:ssr_deno_dev_mode
-      - name: Run Rust unit tests (ssr_deno)
-        run: bundle exec rake cargo:test:ssr_deno
-      - name: Run Rust coverage (cargo-llvm-cov)
-        run: bundle exec rake cargo:coverage
-      - name: Run Clippy
-        run: bundle exec rake cargo:clippy
       - name: Build SSR sample bundles
         run: bundle exec rake samples:build
       - name: Run tests
@@ -174,19 +162,129 @@ jobs:
           path: coverage/
           include-hidden-files: true
           retention-days: 7
+      # `perf:check` is deliberately absent from this workflow, so no job here
+      # is the full `bundle exec rake` default chain. The perf suite compares
+      # single-bundle against RactorPool throughput ratios with pool=4; shared
+      # GitHub runners have too few vCPUs and too much neighbour noise for
+      # those ratios to mean anything. It stays a local pre-release gate.
+
+  # Everything that does not vary with the Ruby version. Running these on all
+  # six legs meant six copies of an identical result — and, because the cargo
+  # tasks build into an uncached directory (see the CARGO_TARGET_DIR note in
+  # `env:`), six full cold builds of the Deno/V8 workspace per run, discarded
+  # each time. This job pays that once, into a cache that actually persists.
+  #
+  # CARGO_TARGET_DIR is absolute here, unlike the workflow default: with every
+  # cargo task confined to this job there is no longer a reason to split the
+  # tree, and one cached dev tree is what makes these steps warm.
+  rust-checks:
+    runs-on: ubuntu-latest
+    name: Rust checks
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Mozilla-Actions/sccache-action@v0.0.11
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq --no-install-suggests --no-install-recommends \
+            mold \
+            pkg-config \
+            libclang-dev
+      # Built into a scratch directory, not the cached one: `cargo install`
+      # honours CARGO_TARGET_DIR, so without this override cargo-llvm-cov's
+      # whole dependency graph ends up inside the saved cache entry.
+      - name: Install Rust coverage tools
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-llvm-cov-install
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov
+      - name: Restore Cargo registry + git deps
+        id: cargo-deps
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          restore-keys: |
+            cargo-deps-
+      - name: Restore Cargo build artifacts (target dir)
+        id: cargo-target
+        uses: actions/cache/restore@v6
+        with:
+          path: tmp/cargo-target
+          key: cargo-target-checks-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          restore-keys: |
+            cargo-target-checks-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-checks-
       - name: Check Rust formatting
         run: bundle exec rake cargo:fmt
+      - name: Run Clippy
+        run: bundle exec rake cargo:clippy
+      - name: Run Rust unit tests (V8-free crates)
+        run: bundle exec rake cargo:test
+      - name: Run Rust unit tests (ssr_deno_dev_mode)
+        run: bundle exec rake cargo:test:ssr_deno_dev_mode
+      - name: Run Rust unit tests (ssr_deno)
+        run: bundle exec rake cargo:test:ssr_deno
+      - name: Run Rust coverage (cargo-llvm-cov)
+        run: bundle exec rake cargo:coverage
+      # cargo llvm-cov writes an instrumented sibling tree that is worthless to
+      # restore — different rustc flags, so it shares nothing with the builds
+      # above. Dropped before the cache is saved.
+      - name: Prune uncacheable artifacts
+        if: github.ref == 'refs/heads/main'
+        run: rm -rf tmp/cargo-target/llvm-cov-target
+      - name: Save Cargo build artifacts (target dir)
+        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: tmp/cargo-target
+          key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+      - name: Save Cargo registry + git deps
+        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
+
+  # Pure static analysis of lib/ and sig/ — no compiled extension, no Rust
+  # toolchain, no cargo cache. Splitting it out keeps a lint failure from
+  # waiting on a V8 build.
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint (RuboCop, RBS)
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
       - name: Run RuboCop
         run: bundle exec rake rubocop
       - name: Run RuboCop (Rails)
         run: bundle exec rake rubocop:rails
       - name: Validate RBS signatures
         run: bundle exec rake rbs
-      # `perf:check` is deliberately absent, so this job is not the full
-      # `bundle exec rake` default chain. The perf suite compares single-bundle
-      # against RactorPool throughput ratios with pool=4; shared GitHub runners
-      # have too few vCPUs and too much neighbour noise for those ratios to
-      # mean anything. It stays a local pre-release gate.
 
   msrv:
     runs-on: ubuntu-latest
@@ -205,6 +303,13 @@ jobs:
     # comment in Cargo.toml) fails here instead of going unnoticed. One
     # platform/Ruby combo is enough: this is a toolchain check, not a
     # Ruby-compatibility check.
+    env:
+      # This job answers "does rustc 1.95.0 accept the code", not "is the
+      # backtrace readable", so [profile.dev]'s unpacked debug info is dead
+      # weight in its cache entry — the largest of the lot at ~1.27GB against
+      # the release legs' ~800MB. Set at job level so `rake compile` and the
+      # cargo test steps below share one fingerprint.
+      CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
       - uses: actions/checkout@v7
         with:
