@@ -159,6 +159,49 @@ confining raw `cargo test` to one job on one Ruby.
 `[profile.ci]` is not an option: rb-sys raises on any profile name other than
 `dev`/`release`. Use `CARGO_PROFILE_RELEASE_*` env overrides instead.
 
+### Phase 3 measured result
+
+Merged as `a136deb`. The six per-Ruby leg entries collapsed to two per-arch
+entries. After purging the five superseded per-Ruby entries by hand (~3.9GB
+of dead weight the LRU would otherwise have taken its time over):
+
+| kind | count | size |
+|---|---|---|
+| cargo | 5 | 4.20 GB |
+| sccache | 3912 | 1.90 GB |
+| other | 6 | 0.21 GB |
+| **total** | **3923** | **6.32 GB** |
+
+Down from 10.34GB, and **under the cap with ~3.7GB of headroom**. Note the
+`actions/cache/usage` endpoint lags after bulk deletes — it still read 10.19GB
+when the summed entries were 6.32GB. Sum the entries; don't trust the endpoint
+immediately after a purge.
+
+Cargo entries now: `cargo-target-checks` 1770MB, `cargo-target-Linux-X64`
+804MB, `cargo-target-Linux-ARM64` 787MB, `cargo-target-msrv` 686MB,
+`cargo-deps` 256MB.
+
+**Cross-ABI assertion, verified** on a `workflow_dispatch` run once the stale
+entries were gone, so every leg was forced onto the shared key:
+
+| leg | Deno stack | rb-sys/magnus | workspace |
+|---|---|---|---|
+| 3.3, 3.4 (non-canonical) | 0 | 2 | 4 |
+| 4.0 (canonical) | 0 | 0 | 4 |
+
+Non-canonical legs rebuild rb-sys and magnus and reuse the entire Deno/V8
+stack; the canonical leg rebuilds neither. That is the `RBCONFIG_*`
+fingerprinting argument confirmed empirically rather than assumed.
+
+Warm steady-state timings: legs 454–543s, `rust-checks` 143s, `msrv` 233s,
+`lint` 19s — against 880–1454s per leg before any of this.
+
+A caution for whoever verifies this next: `gh run view --log` keeps ANSI
+colour codes *between* `Compiling` and the crate name, macOS `sed` does not
+understand `\x1b`, and `gh api .../jobs/<id>/logs` returns no text. Three
+separate false zeros came from that. A zero is not evidence until the same
+pattern produces a non-zero where one is expected.
+
 ## Later — `Swatinem/rust-cache`
 
 At a stable checkpoint, evaluate replacing the hand-rolled steps. It already
