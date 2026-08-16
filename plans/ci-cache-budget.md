@@ -271,6 +271,29 @@ disables the pruning that is the action's entire reason for existing, leaving a
 third-party dependency carrying key management that fits in four lines, plus the
 risk that a `v2.x` update reintroduces the breakage.
 
+## Review findings (2026-08-16)
+
+A review of the whole cache effort (`c755332..main`) found three issues, all
+introduced by the changes themselves:
+
+- **`rust-checks` save gating was a no-op.** GitHub applies "a default status
+  check of `success()`" to any `if` naming no status function, so gating on
+  `steps.build_complete.outcome` alone silently meant `success()` — a coverage
+  failure discarded a complete tree, the exact case the comment claimed to
+  bank. Fixed with `${{ !cancelled() && … }}`. Note the `${{ }}` wrapper is
+  required: a bare leading `!` is a YAML tag indicator and fails to parse.
+- **`cache-cleanup` could outrun its own timeout.** A single pass over a few
+  thousand rate-limited entries measured ~7.5min, so 12 passes can exceed
+  `timeout-minutes: 30`; a cancelled job skips the deliberate non-failing exit
+  and produces the red X the design avoids. Now bounded by a 20-minute wall
+  clock budget as well as the pass count.
+- **Rust unit tests stopped running on aarch64.** The L3 job split moved
+  `cargo:test*`/clippy off the six-leg matrix onto a single `ubuntu-latest`
+  job. That was proposed as "one Ruby version instead of three" — true, but it
+  silently dropped an *architecture* dimension the Ruby reasoning doesn't
+  cover. `rust-checks` is now a 2-leg matrix over both arches, and its cache
+  key gained a `runner.arch` component so the trees cannot collide.
+
 ## Verification
 
 Authoritative number is `gh api repos/mdesantis/ssr-deno/actions/cache/usage`,
