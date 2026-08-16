@@ -131,8 +131,9 @@ jobs:
           # rebuild from a fixed dependency base — they already rebuild on
           # every leg of every run, so that costs nothing new.
           # See plans/ci-cache-budget.md.
-          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
           restore-keys: |
+            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
             cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-
             cargo-target-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Deno
@@ -252,8 +253,9 @@ jobs:
           path: tmp/cargo-target
           # Keyed on rustc + Cargo.lock, no source hash — see the matrix
           # job's key for the rationale.
-          key: cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
           restore-keys: |
+            cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
             cargo-target-checks-${{ steps.rust.outputs.cachekey }}-
             cargo-target-checks-
       # After the restores, not before: this downloads and builds a dependency
@@ -275,6 +277,7 @@ jobs:
       - name: Run Rust unit tests (ssr_deno_dev_mode)
         run: bundle exec rake cargo:test:ssr_deno_dev_mode
       - name: Run Rust unit tests (ssr_deno)
+        id: build_complete
         run: bundle exec rake cargo:test:ssr_deno
       - name: Run Rust coverage (cargo-llvm-cov)
         run: bundle exec rake cargo:coverage
@@ -290,21 +293,25 @@ jobs:
       # cargo llvm-cov writes an instrumented sibling tree that is worthless to
       # restore — different rustc flags, so it shares nothing with the builds
       # above. Dropped before the cache is saved.
-      # always(): these sit after the checks, so without it a clippy or test
-      # failure on main would throw away a perfectly good build tree and make
-      # the next run rebuild from cold. The matrix job avoids this by saving
-      # immediately after compile; here the tree is only complete at the end.
+      # Gated on the last tree-producing step rather than on the job, so a
+      # coverage failure still banks a complete tree while an early clippy or
+      # test failure does not. Plain always() was unsafe once the key stopped
+      # rotating per commit: a run that died before building would save a
+      # near-empty tree as that generation's only entry, every later run would
+      # hit it exactly and skip the save, and nothing would heal it until the
+      # lockfile or toolchain moved. Plain success() would have the opposite
+      # flaw -- a late coverage failure discarding a good tree.
       - name: Prune uncacheable artifacts
-        if: always() && github.ref == 'refs/heads/main'
+        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main'
         run: rm -rf tmp/cargo-target/llvm-cov-target
       - name: Save Cargo build artifacts (target dir)
-        if: always() && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
       - name: Save Cargo registry + git deps
-        if: always() && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -402,8 +409,9 @@ jobs:
           # rustc component still earns its place: it rotates the entry the day
           # the pin moves, which is exactly when the tree stops being valid.
           # No source-file hash — see the matrix job's key for why.
-          key: cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
           restore-keys: |
+            cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
             cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-
             cargo-target-msrv-
       - name: Compile native extension
