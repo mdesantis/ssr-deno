@@ -202,13 +202,59 @@ understand `\x1b`, and `gh api .../jobs/<id>/logs` returns no text. Three
 separate false zeros came from that. A zero is not evidence until the same
 pattern produces a non-zero where one is expected.
 
-## Later — `Swatinem/rust-cache`
+## Phase 4 — stop the per-merge rotation
 
-At a stable checkpoint, evaluate replacing the hand-rolled steps. It already
-does most of L5 (prunes workspace-crate artifacts, incremental, unused deps,
-`registry/src`, week-old files) and ships `save-if` and `shared-key`. Mapping
-would be `workspaces: "ext/ssr_deno -> ../../tmp/cargo-target"`, which needs
-verifying against the relative-path bug above.
+The three prior phases all reduced *how many* entries exist at once. None
+touched rotation: the target keys ended in
+`hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs')`, and
+`actions/cache` only skips saving on an exact primary-key hit, so **every
+Rust-touching merge minted a complete new ~4.05GB generation** while the old one
+lingered. Measured on the merge of the review follow-ups: steady state 6.33GB →
+10.28GB, over the cap, needing a second manual purge.
+
+Fix: drop the source-hash component from all three target keys and add a rustc
+component via `dtolnay/rust-toolchain`'s `outputs.cachekey` (`id: rust`). The
+rustc component is mandatory, not decorative — without the source hash the entry
+would otherwise never rotate at all, so a floating-`stable` bump would leave a
+permanently frozen tree whose restored `deps/` cargo can no longer use. This
+also closes the L5 open item.
+
+Trade: within one `(rustc, Cargo.lock)` generation the entry never refreshes,
+so the four workspace crates rebuild from a fixed dependency base. They already
+rebuild on every leg of every run (measured: 4 workspace crates on all six legs,
+canonical included), so the incremental cost is only their intermediate
+artifacts. The expensive part — the Deno/V8 graph — is keyed by `Cargo.lock`,
+which still rotates.
+
+## Rejected — `Swatinem/rust-cache`
+
+Previously earmarked here as a "later" option, with a suggested mapping of
+`workspaces: "ext/ssr_deno -> ../../tmp/cargo-target"`. **That mapping is the
+one configuration that breaks the build**, and the action as a whole is
+rejected.
+
+From its v2.9.2 `src/cleanup.ts`:
+
+```js
+let keepProfile = new Set(["build", ".fingerprint", "deps"]);
+await rmExcept(profileDir, keepProfile);
+```
+
+`cleanTargetDir` runs unconditionally per configured workspace — it is *not*
+gated on `cache-targets`. Our profile root holds `build .fingerprint deps` plus
+`gn_out`, `clang` and `ninja_gn_binaries`, and the v8 crate parks its static
+library at `<target>/<profile>/gn_out/obj/librusty_v8.a` (147MB locally). That
+file would be deleted before every save, and the v8 build script only re-runs on
+`.gn`/`BUILD.gn`/`src/binding.cc` or its declared env vars — so it is never
+re-downloaded. `build/` and `.fingerprint/` survive, so cargo considers v8 fresh.
+Since the cdylib relinks every run, the next warm build fails with
+`cannot find -lrusty_v8`.
+
+It can be worked around by pointing `workspaces` at a nonexistent path so the
+cleaner no-ops and feeding the real tree through `cache-directories` — but that
+disables the pruning that is the action's entire reason for existing, leaving a
+third-party dependency carrying key management that fits in four lines, plus the
+risk that a `v2.x` update reintroduces the breakage.
 
 ## Verification
 
