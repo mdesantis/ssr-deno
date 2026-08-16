@@ -70,6 +70,7 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - name: Set up Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
       - uses: Mozilla-Actions/sccache-action@v0.0.11
       - name: Install build dependencies
@@ -118,9 +119,21 @@ jobs:
           # cargo:rerun-if-env-changed, which regenerates the bindings and
           # relinks magnus and the cdylib. A wrong-ABI .so would fail loudly at
           # `require` in `rake test`, not silently.
-          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          #
+          # No source-file hash either, deliberately — do not add one back.
+          # actions/cache only skips saving on an exact primary-key hit, so a
+          # key ending in hashFiles('**/*.rs') minted a whole new ~4GB
+          # generation on every Rust-touching merge while the old one lingered,
+          # which is what kept pushing the repo over the 10GB cap. Keyed on the
+          # rustc version and Cargo.lock, it rotates only when the dependency
+          # graph or toolchain actually changes. The trade is that the entry
+          # never refreshes within a generation, so the four workspace crates
+          # rebuild from a fixed dependency base — they already rebuild on
+          # every leg of every run, so that costs nothing new.
+          # See plans/ci-cache-budget.md.
+          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
           restore-keys: |
-            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-
             cargo-target-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Deno
         uses: denoland/setup-deno@v2
@@ -212,6 +225,7 @@ jobs:
           ruby-version: '4.0'
           bundler-cache: true
       - name: Set up Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
       - uses: Mozilla-Actions/sccache-action@v0.0.11
       - name: Install build dependencies
@@ -236,9 +250,11 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
-          key: cargo-target-checks-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          # Keyed on rustc + Cargo.lock, no source hash — see the matrix
+          # job's key for the rationale.
+          key: cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
           restore-keys: |
-            cargo-target-checks-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-checks-${{ steps.rust.outputs.cachekey }}-
             cargo-target-checks-
       # After the restores, not before: this downloads and builds a dependency
       # graph, so it wants the warm registry. CARGO_TARGET_DIR is overridden to
@@ -354,6 +370,7 @@ jobs:
           ruby-version: '4.0'
           bundler-cache: true
       - name: Set up Rust (pinned MSRV)
+        id: rust
         uses: dtolnay/rust-toolchain@1.95.0
       - uses: Mozilla-Actions/sccache-action@v0.0.11
       - name: Install build dependencies
@@ -381,10 +398,13 @@ jobs:
           path: tmp/cargo-target
           # No os/arch component — this job is one fixed combination, so they'd
           # be constants. Its own prefix keeps it off the matrix legs' entries:
-          # this one is a dev-profile tree built by a pinned toolchain.
-          key: cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/src/**/*.rs', 'ext/ssr_deno/crates/**/*.rs') }}
+          # this one is a dev-profile tree built by a pinned toolchain. The
+          # rustc component still earns its place: it rotates the entry the day
+          # the pin moves, which is exactly when the tree stops being valid.
+          # No source-file hash — see the matrix job's key for why.
+          key: cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
           restore-keys: |
-            cargo-target-msrv-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-
             cargo-target-msrv-
       - name: Compile native extension
         # Override the workflow-wide `release` profile: this job checks
