@@ -309,14 +309,22 @@ jobs:
       # success()" to any `if` that names no status function, so gating on
       # steps.build_complete alone would silently mean success() -- and a
       # coverage failure would discard a complete tree, the exact case this is
-      # meant to bank. With !cancelled(), the outcome check is what decides:
-      # coverage failed but the tree is built -> save; clippy failed so
-      # build_complete never ran (outcome '') -> no save. Plain always() was unsafe once the key stopped
-      # rotating per commit: a run that died before building would save a
-      # near-empty tree as that generation's only entry, every later run would
-      # hit it exactly and skip the save, and nothing would heal it until the
-      # lockfile or toolchain moved. Plain success() would have the opposite
-      # flaw -- a late coverage failure discarding a good tree.
+      # meant to bank. With !cancelled(), the outcome check is what decides.
+      #
+      # Measured on a throwaway probe branch, all four cases:
+      #
+      #   case            build_complete.outcome   this form   bare form
+      #   all-pass        success                  save        save
+      #   coverage-fails  success                  save        SKIPPED
+      #   build-fails     failure                  no save     no save
+      #   clippy-fails    skipped                  no save     no save
+      #
+      # Plain always() was unsafe once the key stopped rotating per commit: a
+      # run that died before building would save a near-empty tree as that
+      # generation's only entry, every later run would hit it exactly and skip
+      # the save, and nothing would heal it until the lockfile or toolchain
+      # moved. Plain success() is the bare form above -- it loses the
+      # coverage-fails row.
       - name: Prune uncacheable artifacts
         if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' }}
         run: rm -rf tmp/cargo-target/llvm-cov-target
