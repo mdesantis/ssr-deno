@@ -18,7 +18,9 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT"
 
-# Single source of truth for every dependency shared by more than one crate.
+# Single source of truth for the Deno/V8 stack and the shared basics. Most are
+# used by more than one crate; deno_ast and deno_resolver are dev-mode-only but
+# live here so the whole pinned stack bumps in one place.
 # Declaring them here keeps the root crate and ssr_deno_dev_mode from drifting
 # apart — they previously carried hand-copied version requirements. The Deno
 # stack is pinned exactly (`=`) because its crates hard-pin each other
