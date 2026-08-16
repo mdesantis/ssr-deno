@@ -212,12 +212,27 @@ Rust-touching merge minted a complete new ~4.05GB generation** while the old one
 lingered. Measured on the merge of the review follow-ups: steady state 6.33GB →
 10.28GB, over the cap, needing a second manual purge.
 
-Fix: drop the source-hash component from all three target keys and add a rustc
-component via `dtolnay/rust-toolchain`'s `outputs.cachekey` (`id: rust`). The
-rustc component is mandatory, not decorative — without the source hash the entry
-would otherwise never rotate at all, so a floating-`stable` bump would leave a
-permanently frozen tree whose restored `deps/` cargo can no longer use. This
-also closes the L5 open item.
+Fix: key the three target caches on **rustc version + `Cargo.lock` + workspace
+manifests** instead of a source hash. The rustc component comes from
+`dtolnay/rust-toolchain`'s `outputs.cachekey` (`id: rust`) and is mandatory, not
+decorative — without it the entry would never rotate at all, so a floating-
+`stable` bump would leave a permanently frozen tree whose restored `deps/` cargo
+can no longer use. This closes the L5 open item.
+
+The `Cargo.toml` component matters for a subtler reason: cargo folds profile
+settings and feature selection into every fingerprint, so a `[profile.release]`
+edit or a feature tweak on an already-locked dependency invalidates the whole
+tree *without* changing `Cargo.lock`. With a key that ignored manifests, the
+primary key would keep hitting, the save would be skipped by the
+`cache-hit != 'true'` gate, and the corrected tree would never be written back —
+a full cold V8/Deno rebuild on every run until an unrelated lockfile bump
+happened to rotate the key.
+
+Relatedly, `rust-checks`' saves moved from `always()` to gating on the last
+tree-producing step (`id: build_complete`). Plain `always()` was safe while the
+key rotated per commit; once it stops, a run that dies before building would
+save a near-empty tree as that generation's only entry, and every later run
+would hit it exactly and skip the save.
 
 Trade: within one `(rustc, Cargo.lock)` generation the entry never refreshes,
 so the four workspace crates rebuild from a fixed dependency base. They already
