@@ -43,8 +43,8 @@ jobs:
   build-and-test:
     runs-on: ${{ matrix.platform.runner }}
     name: CI (${{ matrix.platform.arch }}) - ${{ matrix.ruby }}
-    # Legs ran ~13-18m warm-cache while they also carried the Rust checks;
-    # those moved to the `rust-checks` job, so expect less. The timeout exists
+    # Legs ran 880-1454s warm-cache while they also carried the Rust checks;
+    # since those moved to `rust-checks` they measure 483-513s. The timeout exists
     # because no job in this file had one — a genuine hang (e.g. a runtime
     # deadlock in the render path) would've silently sat for the GitHub
     # default of 6h. Kept at the msrv job's 45m for one consistent number.
@@ -125,8 +125,9 @@ jobs:
           # key ending in hashFiles('**/*.rs') minted a whole new ~4GB
           # generation on every Rust-touching merge while the old one lingered,
           # which is what kept pushing the repo over the 10GB cap. Keyed on the
-          # rustc version and Cargo.lock, it rotates only when the dependency
-          # graph or toolchain actually changes. The trade is that the entry
+          # rustc version, Cargo.lock and the workspace Cargo.toml files, it
+          # rotates only when the dependency graph, profile/feature settings or
+          # toolchain actually change. The trade is that the entry
           # never refreshes within a generation, so the four workspace crates
           # rebuild from a fixed dependency base — they already rebuild on
           # every leg of every run, so that costs nothing new.
@@ -263,7 +264,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: tmp/cargo-target
-          # Keyed on rustc + Cargo.lock, no source hash — see the matrix
+          # Keyed on rustc + Cargo.lock + workspace manifests, no source hash — see the matrix
           # job's key for the rationale.
           key: cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
           restore-keys: |
@@ -293,12 +294,13 @@ jobs:
         run: bundle exec rake cargo:test:ssr_deno
       - name: Run Rust coverage (cargo-llvm-cov)
         run: bundle exec rake cargo:coverage
-      # Telemetry, not a gate. sccache costs ~2.5GB of the 10GB cache cap and
-      # thousands of entries, and the only hit-rate figure on record (~18%,
-      # plans/archived/ci-speedup.md) predates the job split — it was largely
-      # serving a cold shadow build that no longer exists. This job is now the
-      # only one doing heavy compilation, so its numbers decide whether
-      # sccache still earns its keep. See plans/ci-cache-budget.md (L1).
+      # Telemetry, not a gate. sccache costs ~1.9GB of the 10GB cache cap and
+      # thousands of entries. The ~18% hit rate on record
+      # (plans/archived/ci-speedup.md) predated the job split and was largely
+      # serving a cold shadow build that no longer exists, so this replaced it:
+      # a warm run here reports 188 compile requests, 112 executed, 109 hits,
+      # 0 misses — 100%. That settled the "drop sccache?" question as keep.
+      # See plans/ci-cache-budget.md.
       - name: sccache stats
         if: always()
         run: sccache --show-stats
@@ -371,8 +373,8 @@ jobs:
     name: MSRV (1.95.0)
     # First cold-cache run took 30m43s (own cache prefix, no sccache hits
     # since it doesn't share the floating-stable jobs' compiler). Warm runs
-    # should land closer to the main legs' ~15m; 45m covers a repeat cold
-    # run without leaving a genuine hang undetected for hours.
+    # land far below that once warm — measured 233-275s; 45m covers a repeat
+    # cold run without leaving a genuine hang undetected for hours.
     timeout-minutes: 45
     # Verifies the `rust-version` declared in ext/ssr_deno/Cargo.toml's
     # [workspace.package] continuously — a declared floor that CI never
@@ -386,7 +388,7 @@ jobs:
     env:
       # This job answers "does rustc 1.95.0 accept the code", not "is the
       # backtrace readable", so [profile.dev]'s unpacked debug info is dead
-      # weight in its cache entry. Measured: ~1.27GB → ~686MB. Set at job
+      # weight in its cache entry. Measured: 1378MB → 686MB. Set at job
       # level so `rake compile` and the cargo test steps share one
       # fingerprint — though only compile's output is actually cached here,
       # since the test steps build into the relative CARGO_TARGET_DIR.
