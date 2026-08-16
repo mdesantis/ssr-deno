@@ -211,9 +211,21 @@ jobs:
   # cargo task confined to this job there is no longer a reason to split the
   # tree, and one cached dev tree is what makes these steps warm.
   rust-checks:
-    runs-on: ubuntu-latest
-    name: Rust checks
+    runs-on: ${{ matrix.platform.runner }}
+    name: Rust checks (${{ matrix.platform.arch }})
     timeout-minutes: 45
+    # Both arches on purpose. fmt, clippy and coverage are arch-independent and
+    # the second leg re-runs them for nothing, but the cargo test suites are
+    # not: ssr_deno_sys is full of cfg(unix) paths, and an aarch64-only defect
+    # (a too-weak atomic ordering that x86's stronger memory model hides, say)
+    # would otherwise only surface if a Ruby integration test happened to trip
+    # it. The legs run in parallel, so this costs cache space, not wall clock.
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { runner: ubuntu-latest,    arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64  }
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/cargo-target
     steps:
@@ -253,11 +265,11 @@ jobs:
           path: tmp/cargo-target
           # Keyed on rustc + Cargo.lock, no source hash — see the matrix
           # job's key for the rationale.
-          key: cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
+          key: cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
           restore-keys: |
-            cargo-target-checks-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
-            cargo-target-checks-${{ steps.rust.outputs.cachekey }}-
-            cargo-target-checks-
+            cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-
+            cargo-target-checks-${{ runner.arch }}-
       # After the restores, not before: this downloads and builds a dependency
       # graph, so it wants the warm registry. CARGO_TARGET_DIR is overridden to
       # a scratch dir because `cargo install` honours it — otherwise
@@ -293,25 +305,29 @@ jobs:
       # cargo llvm-cov writes an instrumented sibling tree that is worthless to
       # restore — different rustc flags, so it shares nothing with the builds
       # above. Dropped before the cache is saved.
-      # Gated on the last tree-producing step rather than on the job, so a
-      # coverage failure still banks a complete tree while an early clippy or
-      # test failure does not. Plain always() was unsafe once the key stopped
+      # !cancelled() is load-bearing: GitHub applies "a default status check of
+      # success()" to any `if` that names no status function, so gating on
+      # steps.build_complete alone would silently mean success() -- and a
+      # coverage failure would discard a complete tree, the exact case this is
+      # meant to bank. With !cancelled(), the outcome check is what decides:
+      # coverage failed but the tree is built -> save; clippy failed so
+      # build_complete never ran (outcome '') -> no save. Plain always() was unsafe once the key stopped
       # rotating per commit: a run that died before building would save a
       # near-empty tree as that generation's only entry, every later run would
       # hit it exactly and skip the save, and nothing would heal it until the
       # lockfile or toolchain moved. Plain success() would have the opposite
       # flaw -- a late coverage failure discarding a good tree.
       - name: Prune uncacheable artifacts
-        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' }}
         run: rm -rf tmp/cargo-target/llvm-cov-target
       - name: Save Cargo build artifacts (target dir)
-        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
+        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
       - name: Save Cargo registry + git deps
-        if: steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
+        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
