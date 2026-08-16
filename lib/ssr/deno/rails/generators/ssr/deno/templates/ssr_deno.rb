@@ -28,6 +28,10 @@ Rails.application.config.ssr_deno.bundles = {
 # Number of V8 isolates to render across, round-robin (default: 1).
 # Rails.application.config.ssr_deno.isolate_pool_size = 4
 
+# Emit a heap_stats.ssr_deno notification every N renders (default: 100).
+# Set to 0 to disable sampling.
+# Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
+
 # Render timeout in milliseconds (default: 500ms, min 100, max 300000).
 # Rails.application.config.ssr_deno.render_timeout_ms = 1000
 
@@ -41,7 +45,3 @@ Rails.application.config.ssr_deno.bundles = {
 # development/test, false in production). Requires .js.map sidecars next to
 # bundles. Best-effort -- silently skips missing or corrupt .map files.
 # Rails.application.config.ssr_deno.source_maps_enabled = !Rails.env.production?
-
-# Emit a heap_stats.ssr_deno notification every N renders (default: 100).
-# Set to 0 to disable sampling.
-# Rails.application.config.ssr_deno.heap_stats_sample_rate = 50

@@ -1,5 +1,11 @@
 # CI cache budget
 
+Supersedes [`plans/archived/ci-speedup.md`](archived/ci-speedup.md) in part: the
+`actions/cache` setup it applied is what later exhausted the cap, and its claim
+that sccache is "complementary to `actions/cache`" is revised below (§ L1 — the
+two overlapped far more than that implied, and sccache was kept for a different
+reason than the one recorded there).
+
 Repo exceeded GitHub's fixed 10GB Actions cache cap (peaked 10.26GB with **zero
 open PRs**). LRU then evicted 3 of 6 `cargo-target` caches on `main`, so those
 legs rebuilt cold, re-saved, evicted others — thrash. Surfaced as `Cache
@@ -23,9 +29,10 @@ coverage or slowing CI.
 
 Per open PR, before Phase 1: ~5.6 GB.
 
-## Why it overflows
+## Why it overflowed
 
-Three multipliers stack:
+Three multipliers stacked. All three are fixed; kept here as the analysis the
+phases below were built on.
 
 1. **Per-PR duplication.** A PR run reads `main`'s cache but saves into
    `refs/pull/<N>/merge`, unreadable by anything else.
@@ -37,7 +44,11 @@ Three multipliers stack:
    `release/gn_out/obj/librusty_v8.a` plus the Deno dep graph — byte-identical
    across Ruby 3.3/3.4/4.0.
 
-## The bug underneath
+## The bug underneath (partly fixed)
+
+Since L3, only `msrv` still runs both paths — `rust-checks` overrides
+`CARGO_TARGET_DIR` to an absolute path and no matrix leg runs a cargo task. The
+original analysis follows.
 
 `CARGO_TARGET_DIR` is relative, `RB_SYS_CARGO_TARGET_DIR` absolute. Cargo
 resolves a relative value against the CWD, and every cargo call in
@@ -50,12 +61,14 @@ cached tree, because rb-sys passes `--target-dir` explicitly.
 This reframes sccache: on the release path `actions/cache` keeps cargo from
 invoking rustc at all, so sccache is never consulted there. Its ~18% hit rate
 (`plans/archived/ci-speedup.md`) is almost entirely serving this shadow build —
-it is paying ~3.79GB to partly mitigate the bug. **Do not remove sccache before
-the duplication is fixed.**
+it was paying ~3.79GB to partly mitigate the bug. That blocker is gone (the
+duplication was fixed in L3), and sccache was then measured at a 100% hit rate
+and kept — see L1 below.
 
-Also: `cargo install cargo-llvm-cov` runs at workspace root *before* the cache
-steps and honours `CARGO_TARGET_DIR`, so its whole dep graph is baked into every
-leg's saved entry.
+Also: `cargo install cargo-llvm-cov` ran at workspace root *before* the cache
+steps and honours `CARGO_TARGET_DIR`, so its whole dep graph was baked into
+every leg's saved entry. Fixed in L5 — it now runs in `rust-checks` only, after
+the restores, with `CARGO_TARGET_DIR` redirected to a scratch dir.
 
 ## Phase 1 — PRs restore, never save ✅
 
@@ -102,7 +115,7 @@ Post-merge steady state, **still over cap with zero open PRs**:
 Order matters; L3 must land before or with L1.
 
 - **L3 — move Ruby-independent work off the 6-leg matrix.** ✅ New
-  `rust-checks` job (x86_64, Ruby 4.0) owns `cargo:fmt`, `cargo:clippy`, all
+  `rust-checks` job (Ruby 4.0; x86_64 only at first, both arches since `3ed34d6`) owns `cargo:fmt`, `cargo:clippy`, all
   `cargo:test:*`, `cargo:coverage`, with `CARGO_TARGET_DIR` absolute so its dev
   tree is a single cacheable directory. New `lint` job (no Rust toolchain, no
   cargo cache) owns `rubocop`, `rubocop:rails`, `rbs`. Legs keep compile,
@@ -110,14 +123,14 @@ Order matters; L3 must land before or with L1.
 - **L5 — key and size hygiene.** Partly done: `CARGO_INCREMENTAL: 0`
   workflow-wide; `cargo install cargo-llvm-cov` built into a scratch dir and
   removed from the matrix legs entirely; `llvm-cov-target/` pruned before save;
-  `CARGO_PROFILE_DEV_DEBUG: 0` on msrv. **Still open:** a rustc-version
-  component in the key (`dtolnay/rust-toolchain` exposes `outputs.cachekey`) —
-  without it a floating-`stable` bump leaves stale artifacts in the restored
-  `deps/` forever, since cargo never GCs them.
-- **L1 — drop sccache.** Only after L3 lands and its effect is measured. Frees
-  ~3.6GB and ~6700 entries. Measure first: add `sccache --show-stats` to one
-  job — the 18% figure is a one-off, not ongoing telemetry, and L3 is expected
-  to remove most of what sccache was covering.
+  `CARGO_PROFILE_DEV_DEBUG: 0` on msrv. The rustc-version component
+  (`dtolnay/rust-toolchain`'s `outputs.cachekey`) was the last open item and
+  landed with Phase 4 — see below. ✅
+- **L1 — drop sccache.** ❌ Rejected on measurement. `sccache --show-stats`
+  was added to `rust-checks` (`ci.yml`) and a warm run reports **188 compile
+  requests, 112 executed, 109 hits, 0 misses — a 100% hit rate**. It earns its
+  ~1.9GB. The ~18% figure from `plans/archived/ci-speedup.md` predated the job
+  split and was largely serving the cold shadow build that L3 removed.
 
 ### Phase 2 measured result
 
@@ -177,9 +190,11 @@ Down from 10.34GB, and **under the cap with ~3.7GB of headroom**. Note the
 when the summed entries were 6.32GB. Sum the entries; don't trust the endpoint
 immediately after a purge.
 
-Cargo entries now: `cargo-target-checks` 1770MB, `cargo-target-Linux-X64`
-804MB, `cargo-target-Linux-ARM64` 787MB, `cargo-target-msrv` 686MB,
-`cargo-deps` 256MB.
+Cargo entries at that point: `cargo-target-checks` 1770MB,
+`cargo-target-Linux-X64` 804MB, `cargo-target-Linux-ARM64` 787MB,
+`cargo-target-msrv` 686MB, `cargo-deps` 256MB. (`3ed34d6` later split the
+`checks` entry per arch, making six — see the current inventory under
+Verification.)
 
 **Cross-ABI assertion, verified** on a `workflow_dispatch` run once the stale
 entries were gone, so every leg was forced onto the shared key:
@@ -354,15 +369,32 @@ skipped step's `outcome` is `skipped`, not `''`.
 
 ## Verification
 
-Authoritative number is `gh api repos/mdesantis/ssr-deno/actions/cache/usage`,
-not a sum of `gh cache list`.
+**Sum `gh cache list`; do not trust `actions/cache/usage`.** The endpoint lags
+badly after bulk deletes — it read 10.19GB when the summed entries were 6.32GB
+(see the Phase 3 note above). An earlier revision of this section said the
+opposite; it was wrong.
 
-- Phase 1: on a PR touching a Rust source file, every cache step logs `Cache
-  restored from key: …` and no `Cache saved with key` line appears; then
-  `gh api "repos/mdesantis/ssr-deno/actions/caches?ref=refs/pull/<N>/merge&per_page=1" --jq '.total_count'`
-  shows sccache and bundler entries only, zero `cargo-target-*`.
-- Push a second commit to the same PR: leg still restores, duration within a few
-  minutes of pre-change warm time.
-- After merge: exactly one save per job on the `main` run; `Cache cleanup`
-  drains the merge ref to zero; re-measure usage and record real per-entry
-  sizes — those numbers decide Phase 2's scope.
+```bash
+gh api --paginate "repos/mdesantis/ssr-deno/actions/caches?per_page=100" \
+  --jq '.actions_caches[] | "\(.size_in_bytes)\t\(.key)"' \
+  | awk -F'\t' '{k=($2 ~ /^sccache\//)?"sccache":(($2 ~ /^cargo-/)?"cargo":"other");
+                  s[k]+=$1;c[k]++;t+=$1;n++}
+                 END {for(x in s) printf "%-8s %5d %6.2f GB\n",x,c[x],s[x]/1073741824;
+                      printf "%-8s %5d %6.2f GB\n","TOTAL",n,t/1073741824}'
+```
+
+Steady state should be **6 cargo entries**, one per lineage:
+`cargo-target-Linux-{X64,ARM64}`, `cargo-target-checks-{X64,ARM64}`,
+`cargo-target-msrv`, `cargo-deps`. **Two entries sharing a lineage prefix is
+rotation** — the regression this plan exists to prevent.
+
+Note what will *not* work as a check: "merge a Rust source change and watch for
+a save". After Phase 4 no key component reads Rust sources, so such a change
+produces an exact hit and no save — following that recipe yields a false pass.
+The pre-merge question worth asking instead is whether the *key* will move:
+
+```bash
+git diff --name-only origin/main...HEAD -- 'ext/ssr_deno/Cargo.lock' 'ext/ssr_deno/**/Cargo.toml'
+```
+
+Empty ⇒ key identical to main's ⇒ no new generation.

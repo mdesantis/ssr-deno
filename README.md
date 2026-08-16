@@ -75,8 +75,9 @@ which act as **defaults** — explicit setter calls override them.
 
 Boolean env vars accept `true`, `1`, `yes` for true and `false`, `0`, `no` for
 false (case-insensitive). Any other value prints a warning and leaves the
-setting at its default. Invalid integer formats print a warning and are
-skipped. Env vars are read once at `require 'ssr/deno'` time.
+setting at its default. Integer values that don't parse, and values the
+setter rejects (out of range, or negative), both print a warning and leave the
+setting at its default rather than failing the load. Env vars are read once at `require 'ssr/deno'` time.
 
 #### Node.js builtins
 
@@ -354,9 +355,10 @@ bin/rails generate ssr:deno:install
 
 ### Configuration
 
-The generator writes `config/initializers/ssr_deno.rb` with every option
-present and commented out. All settings live under
-`Rails.application.config.ssr_deno`:
+The generator writes `config/initializers/ssr_deno.rb` listing every option —
+`bundles` live, the rest commented out — and appends an `on_worker_boot` hook
+to `config/puma.rb` so bundles load per worker under clustered Puma. All
+settings live under `Rails.application.config.ssr_deno`:
 
 ```ruby
 Rails.application.config.ssr_deno.bundles = {

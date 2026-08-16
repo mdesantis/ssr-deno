@@ -1,7 +1,7 @@
 ## Unreleased
 
 ### Added
-- **Gem now ships `docs/`** — `README.md` links to `docs/architecture.md`, `docs/compatibility.md`, `docs/dev-mode.md`, `docs/ractor-pool.md` and `docs/csp-nonce.md`, none of which were in `spec.files`. Those links were dead for anyone reading the README from an installed gem.
+- **Gem now ships `docs/`** — `README.md` links to `docs/architecture.md`, `docs/compatibility.md`, `docs/dev-mode.md`, `docs/ractor-pool.md` and `docs/csp-nonce.md`, none of which were in `spec.files`. Those links were dead for anyone reading the README from an installed gem. Links from `docs/` and RDoc into `plans/archived/` now use absolute GitHub URLs, since `plans/` is deliberately not shipped and the archive is historical.
 - **The `rails g ssr:deno:install` initializer documents every option the Railtie reads** — `max_heap_size_mb`, `isolate_pool_size` and `heap_stats_sample_rate` were missing, and the remaining options are now listed in Railtie declaration order. A generator test asserts the full list, so the template can't fall behind again.
 
 ### Changed
@@ -9,6 +9,7 @@
 - **The Railtie applies `config.ssr_deno` numeric options on nil rather than truthiness**, and via one keyed loop rather than five near-identical lines. No behaviour change: `0` is truthy in Ruby, so the old guard already passed it through to the setter.
 - **`ssr_render` returns an empty string when `config.ssr_deno.enabled` is `false`** — the generator template calls that flag "disable SSR entirely", but the helper never checked it, so every render raised `BundleNotFoundError` (the Railtie having skipped bundle registration) instead of falling back to CSR.
 - **Failed block-form `render_chunks` calls record `:error` in the `render.ssr_deno` payload**, matching `render` and making the failure visible to anything subscribed to that event. Note `LogSubscriber#render` does not itself branch on `:error` — only `ssr_render` does — so this changes the payload, not the gem's own log output. The Enumerator form is unchanged: it returns before rendering starts and raises at iteration time, after the instrumentation event has closed.
+- **Negative `SSR_DENO_*` integer values no longer abort `require "ssr/deno"`** — the native setters take unsigned integers, so magnus raises `RangeError` during conversion before any of the gem's own validation runs. `apply_integer_env` rescued only `ArgumentError`, so `SSR_DENO_ISOLATE_POOL_SIZE=-1` killed the process at load instead of warning and skipping.
 - **Env var parse failures and range failures now report differently** — `SSR_DENO_RENDER_TIMEOUT_MS=50` said "Cannot apply … invalid value for Integer", wording that describes a parse error. Parse failures say "Cannot parse", out-of-range values say "Cannot apply" with the setter's own message.
 
 ### Fixed

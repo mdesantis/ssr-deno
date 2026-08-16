@@ -20,7 +20,10 @@ desc 'Run Rust unit tests for all V8-free crates'
 task 'cargo:test' => V8_FREE_CRATES.map { |c| "cargo:test:#{c}" }
 
 # Crates that require a V8 build (link against librusty_v8.a).
-# Run after `compile` so the archive is already present in target/.
+# Locally these follow `compile`, which leaves the archive in target/. In CI the
+# rust-checks job runs them without a prior compile — the v8 crate's build
+# script fetches its own prebuilt archive, so the ordering is an optimisation,
+# not a prerequisite.
 V8_REQUIRED_CRATES = %w[
   ssr_deno_dev_mode
   ssr_deno

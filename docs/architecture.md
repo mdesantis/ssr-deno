@@ -39,7 +39,7 @@ flowchart TB
 | `lib/ssr/deno/dev_mode_bundle.rb` | `SSR::Deno::DevModeBundle` — dev-mode equivalent of `Bundle` (loads source files directly, no Vite build; opt-in mtime-based reload via `auto_reload`). |
 | `lib/ssr/deno/ractor_pool.rb`, `lib/ssr/deno/ractor_pool/worker.rb` | `SSR::Deno::RactorPool` — opt-in Ractor-based isolate pool, and its per-Ractor worker. |
 | `lib/ssr/deno/instrumenter.rb` | `ActiveSupport::Notifications` wrapper. Events: `render.ssr_deno`, `bundle_load.ssr_deno`, `ssr_render.ssr_deno`, `bundle_miss.ssr_deno`, `heap_stats.ssr_deno`. |
-| `lib/ssr/deno/rails/railtie.rb` | Railtie — config via `config.ssr_deno`, auto-reload in dev. |
+| `lib/ssr/deno/rails/railtie.rb` | Railtie — the `config.ssr_deno` option set and its `enabled` master switch, `apply_runtime_config` (copies non-nil runtime options into `Config`), bundle registration, and `subscribe_heap_stats` (emits `heap_stats.ssr_deno` every N renders; a non-positive N skips the subscription). |
 | `lib/ssr/deno/rails/helper.rb` | View helper `ssr_render(data)`. |
 | `lib/ssr/deno/rails/log_subscriber.rb` | `ActiveSupport::LogSubscriber` — logs render/bundle-load events from `instrumenter.rb`. |
 | `lib/ssr/deno/rails/generators/` | `rails g ssr:deno:install` generator. |
@@ -65,7 +65,7 @@ Config setters write to a Rust `Mutex<Config>` and must be called **before** the
 | `src/nop_types.rs` | NOP implementations for `InNpmPackageChecker`, `NpmPackageFolderResolver`, `PermissionDescriptorParser` |
 | `src/node_builtin_loader.rs` | Custom `ModuleLoader` that allows `node:` scheme URLs (used when `node_builtins_enabled`) |
 | `src/require_loader.rs` | Minimal `NodeRequireLoader` — rejects file loading, passes built-in module resolution to Deno |
-| `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `SSRDenoError`, validators (`validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
+| `crates/ssr_deno_core/src/lib.rs` | Pure-Rust types: `Config`, `SSRDenoError`, validators (`pool_size_checked`, `max_heap_size_mb_checked`, `validate_pool_size`, `validate_render_timeout_ms`, `resolve_pool_size`), `next_index` counter |
 | `crates/ssr_deno_core/src/source_mapper.rs` | `SsrSourceMapper` — self-managed source map registry. Parses `.js.map` sidecars, resolves V8 stack frame positions to original `.tsx`/`.ts` sources with IIFE offset correction. Used in render error formatting. |
 | `crates/ssr_deno_sys/src/lib.rs` | `Sys` type satisfying `ExtNodeSys` and `WhichSys` trait bounds (`FsCanonicalize`, `FsMetadata`, `FsRead`, `FsReadDir`, `FsOpen`, `EnvCurrentDir`, …) |
 | `crates/ssr_deno_dev_mode/src/` | Dev-mode crate: `dev_mode_builder`, `dev_mode_module_loader`, `dev_mode_npm_resolver`, `require_loader`. Builds the dev `MainWorker` with on-demand transpile + Byonm npm resolver. |
@@ -87,7 +87,7 @@ flowchart LR
 
 - Pool size defaults to `1` isolate (override via `isolate_pool_size` config).
 - Each isolate has its own V8 heap (configured by `max_heap_size_mb`).
-- Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/archived/v8-oom-protection.md`](../plans/archived/v8-oom-protection.md)).
+- Each isolate registers a `near_heap_limit_callback` that doubles the heap limit and terminates JS execution when the heap approaches the cap, turning a potential `SIGTRAP` crash into a catchable `JsRuntimeOutOfMemoryError` (see [`plans/archived/v8-oom-protection.md`](https://github.com/mdesantis/ssr-deno/blob/main/plans/archived/v8-oom-protection.md)).
 - Bundles are broadcast to all isolates at load time (each isolate calls `execute_script` + namespacing).
 - Render requests are dispatched via atomic counter increment + channel send. No locks in the hot path.
 - Render timeout is enforced by a watchdog thread (`Watchdog` in `watchdog.rs`) that calls `v8::IsolateHandle::terminate_execution()` after the configured deadline. This interrupts both synchronous blocking JS and hung async renders. After termination, `cancel_terminate_execution()` restores the isolate for reuse.
@@ -147,7 +147,7 @@ Pumps the full V8 event loop (same as event-loop render) but delivers HTML
 Returns an `Enumerator` (no block) or yields each chunk to a block. Compatible
 with Rack 3 response bodies, `ActionController::Live`, and Rack `hijack`.
 
-See [`plans/archived/chunked-http-streaming.md`](../plans/archived/chunked-http-streaming.md)
+See [`plans/archived/chunked-http-streaming.md`](https://github.com/mdesantis/ssr-deno/blob/main/plans/archived/chunked-http-streaming.md)
 for architecture details.
 
 **Recommended bundler settings (Vite example):**
@@ -234,7 +234,7 @@ sequenceDiagram
 
 ```
 ext/ssr_deno/                                         # Rust native extension
-├── Cargo.toml                                        # deno_runtime, magnus dependencies
+├── Cargo.toml                                        # workspace root: [workspace.package] + [workspace.dependencies]
 ├── crates/
 │   ├── ssr_deno_core/                                # Pure-Rust types (no V8 dep)
 │   │   └── src/                                      # Config, SSRDenoError, validators, source_mapper

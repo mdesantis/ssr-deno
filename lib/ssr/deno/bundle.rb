@@ -100,7 +100,7 @@ module SSR
       #   exceeds the configured limit (+max_heap_size_mb+). A user component
       #   that allocates memory across renders (leaks) can trigger this. The
       #   near-heap-limit callback terminates execution before V8 would crash
-      #   the process with SIGTRAP. See {file:plans/archived/v8-oom-protection.md}.
+      #   the process with SIGTRAP. See https://github.com/mdesantis/ssr-deno/blob/main/plans/archived/v8-oom-protection.md.
       def render(data = nil, raw_input: false, raw_output: false)
         reload_if_changed if @auto_reload
 

@@ -15,7 +15,7 @@ In your JS entry-server, read the nonce from the parsed data:
 
 ```ts
 function render(argsJson: string): string {
-  const { data, nonce } = JSON.parse(argsJson)
+  const { page, nonce } = JSON.parse(argsJson)
   // use nonce for inline <script>/<style> tags
 }
 globalThis.render = render
@@ -34,7 +34,7 @@ import createEmotionServer from '@emotion/server/create-instance'
 import App from './App.tsx'
 
 function render(argsJson: string): string {
-  const { data, nonce } = JSON.parse(argsJson)
+  const { page, nonce } = JSON.parse(argsJson)
 
   const cache = createCache({
     key: 'ssr',
