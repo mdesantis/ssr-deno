@@ -294,6 +294,64 @@ introduced by the changes themselves:
   cover. `rust-checks` is now a 2-leg matrix over both arches, and its cache
   key gained a `runner.arch` component so the trees cannot collide.
 
+## Open claims — both now verified (2026-08-16)
+
+### Rotation stops on a Rust-only change ✅
+
+Two independent lines of evidence, neither needing a CI run:
+
+**No key component reads Rust source.** `hashFiles` is SHA-256 over the
+concatenated per-file SHA-256 digests, so it reproduces offline. Against the
+tree at `3ed34d6`:
+
+```
+lock      -> 804e81c76b26f067ccf51f77b922944e5d920a45b9e3047667f2ca4b8e8865cd
+manifests -> 08e7f25ee38c000a6cd659078b7b435714932f0a9ebfd9dcf5b582686ac1f498
+inputs: Cargo.lock + the four workspace Cargo.toml files.  any .rs input? False
+```
+
+Both match the trailing components of every live key byte-for-byte. The only
+`**/*.rs` left in `ci.yml` is inside a comment.
+
+**Save is skipped on an exact hit.** Run `31955401535`, `CI (x86_64) - 4.0`:
+zero `Save Cargo build artifacts` lines, and the entry's `created_at`
+(13:14:54) predates the run (15:22) while `last_accessed_at` updated.
+
+A `.rs`-only change alters no key component ⇒ identical key ⇒ exact hit ⇒ save
+skipped.
+
+**Per-PR check worth keeping** — answers "will merging this mint a new ~5.4GB
+generation?" before it happens:
+
+```bash
+git diff --name-only origin/main...HEAD -- 'ext/ssr_deno/Cargo.lock' 'ext/ssr_deno/**/Cargo.toml'
+```
+
+Empty ⇒ key identical to main's. Non-empty ⇒ new generation, and the old one
+lingers until LRU takes it.
+
+**Do not open a throwaway PR to re-confirm this.** A PR run writes sccache
+entries into `refs/pull/<N>/merge` (PR #9's held 2122, ~1.1GB at the current
+average) against ~1.16GB of headroom — near-certain eviction of a live
+1.5–1.7GB `cargo-target` entry and a cold ~24min rebuild.
+
+### `rust-checks` save gating ✅
+
+Measured on a throwaway `probe/if-semantics` branch running both the current
+and pre-`3ed34d6` forms side by side against four failure shapes. All four
+assert legs passed; the branch, its runs and its (zero) caches were removed.
+
+| case | `build_complete.outcome` | current form | bare form |
+|---|---|---|---|
+| all-pass | `success` | save | save |
+| **coverage-fails** | `success` | **save** | **skipped** |
+| build-fails | `failure` | no save | no save |
+| clippy-fails | `skipped` | no save | no save |
+
+The `coverage-fails` row is the whole point: it shows both the bug `3ed34d6`
+fixed and the fix, in one run. It also corrected a comment in `ci.yml` — a
+skipped step's `outcome` is `skipped`, not `''`.
+
 ## Verification
 
 Authoritative number is `gh api repos/mdesantis/ssr-deno/actions/cache/usage`,
