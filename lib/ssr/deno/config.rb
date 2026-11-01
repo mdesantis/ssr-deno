@@ -28,11 +28,10 @@ module SSR
           @_mutex.synchronize { SSR::Deno.native_set_source_maps_enabled(enabled) }
         end
 
-        # rubocop:disable ThreadSafety/ClassInstanceVariable
+        # rubocop:disable-next ThreadSafety/ClassInstanceVariable
         def dev_resolve_alias
           @dev_resolve_alias || DEFAULT_DEV_RESOLVE_ALIAS
         end
-        # rubocop:enable ThreadSafety/ClassInstanceVariable
 
         # Setting to +nil+ restores the default alias map.
         def dev_resolve_alias=(map)

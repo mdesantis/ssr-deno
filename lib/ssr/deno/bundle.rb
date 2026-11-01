@@ -13,7 +13,7 @@ module SSR
         # Create bundles from config hashes stored in +registry+.
         # Thread-safe (outer guard + mutex). Call from +on_worker_boot+
         # (Puma clustered) or lazily on first render (single mode).
-        # rubocop:disable ThreadSafety/ClassInstanceVariable
+        # rubocop:disable-next ThreadSafety/ClassInstanceVariable
         def create_bundles!
           return if @_bundles_created
 
@@ -36,7 +36,6 @@ module SSR
             @_bundles_created = true
           end
         end
-        # rubocop:enable ThreadSafety/ClassInstanceVariable
       end
 
       @registry = {} # rubocop:disable ThreadSafety/MutableClassInstanceVariable
