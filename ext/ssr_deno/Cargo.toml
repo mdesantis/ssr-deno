@@ -33,7 +33,7 @@ deno_error = "=0.7.1"
 deno_resolver = { version = "=0.91.0", features = ["deno_ast"] }
 deno_runtime = { version = "=0.268.0", features = ["hmr"] }
 deno_semver = "=0.10.1"
-magnus = { version = "0.8", features = ["embed"] }
+magnus = { version = "0.9", features = ["embed"] }
 node_resolver = "=0.98.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
