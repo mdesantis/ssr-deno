@@ -217,7 +217,7 @@ understand `\x1b`, and `gh api .../jobs/<id>/logs` returns no text. Three
 separate false zeros came from that. A zero is not evidence until the same
 pattern produces a non-zero where one is expected.
 
-## Phase 4 — stop the per-merge rotation
+## Phase 4 — stop the per-merge rotation ✅
 
 The three prior phases all reduced *how many* entries exist at once. None
 touched rotation: the target keys ended in
@@ -366,6 +366,68 @@ assert legs passed; the branch, its runs and its (zero) caches were removed.
 The `coverage-fails` row is the whole point: it shows both the bug `3ed34d6`
 fixed and the fix, in one run. It also corrected a comment in `ci.yml` — a
 skipped step's `outcome` is `skipped`, not `''`.
+
+## Cold start after idle (2026-11-01)
+
+The repo sat untouched from 2026-08-17. GitHub evicts any cache entry not
+accessed for 7 days, so by the next push the cache held 0.47GB and **no cargo
+entries at all**. Expect this after any idle week: the first run is fully cold
+on every job (run `41306995597`: legs 737–851s, `rust-checks` 1038s arm64 /
+1420s x86_64, `msrv` 1162s — all inside the 45m timeout). That push also moved
+`Cargo.lock`, the manifests and floating `stable` (1.95 → 1.99), so it would
+have minted a new generation regardless; with the old one already evicted,
+nothing overlapped.
+
+### Cold-run save loss — open
+
+That run left **5 cargo entries, not 6**: `cargo-target-Linux-ARM64` was never
+written. Its save step reported success; the log says:
+
+```
+##[warning]You've hit a rate limit, your rate limit will reset in 3 seconds
+Failed to save: Unable to reserve cache with key cargo-target-Linux-ARM64-…, another job may be creating this cache.
+```
+
+`actions/cache/save` downgrades every save failure to a warning, so the step
+stays green. "Another job may be creating this cache" is misleading here —
+Phase 3 made the canonical leg the only writer of that key. The cause is
+burst load on the cache API: on a cold run every job saves within the same
+few minutes, while sccache is writing ~2.9k small entries through the same
+API.
+
+Most other `Unable to reserve` lines in that run are benign races, not
+losses: `cargo-deps` and setup-ruby's bundler cache are shared keys every job
+tries to save, the first writer wins, and both entries exist. Tell them apart
+by checking whether the key exists afterwards, not by the message.
+
+Impact: until one save succeeds, all three arm64 legs build the release tree
+cold on every run — Phase 3's whole saving, lost for one arch, silently.
+Warm runs are unaffected (exact hit ⇒ no save attempted), so this only bites
+right after a cold start — which the 7-day eviction makes routine.
+
+Filled by hand for now: re-ran the `CI (arm64) - 4.0` job alone (763s; save
+succeeded). Resulting state, one entry per lineage as Verification expects:
+
+| entry | size |
+|---|---|
+| `cargo-target-checks-X64` | 1812 MB |
+| `cargo-target-checks-ARM64` | 1788 MB |
+| `cargo-target-Linux-X64` | 791 MB |
+| `cargo-target-Linux-ARM64` | 774 MB |
+| `cargo-target-msrv` | 699 MB |
+| `cargo-deps` | 252 MB |
+| sccache (3786 entries) | 2.15 GB |
+| other | 0.22 GB |
+| **total** | **8.35 GB** |
+
+~1.65GB headroom. sccache grew 0.38GB from the single re-run alone, so it is
+the component to watch as it refills.
+
+Fix, not yet applied: after each target save, check the key exists
+(`gh cache list --key <key>`, needs `actions: read`) and retry once after a
+short wait if not. If the retry also misses, surface it — an `::error::`
+annotation at least; whether to fail the job is still open — rather than
+inheriting the action's silent warning.
 
 ## Verification
 
