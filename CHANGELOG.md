@@ -5,6 +5,7 @@
 - **The `rails g ssr:deno:install` initializer documents every option the Railtie reads** — `max_heap_size_mb`, `isolate_pool_size` and `heap_stats_sample_rate` were missing, and the remaining options are now listed in Railtie declaration order. A generator test asserts the full list, so the template can't fall behind again.
 
 ### Changed
+- **Docker image's Ruby patch versions bumped** — 4.0.6→4.0.9, 3.4.10→3.4.12, 3.3.12→3.3.13 (`Dockerfile`'s `RUBY_VERSION` default and both matrices in the Docker-publish workflow).
 - **`SSR::Deno::Config.isolate_pool_size = 0` now raises `ArgumentError`** — previously accepted, then rejected much later as a worker-init failure on the first `Bundle.new`. Matches `max_heap_size_mb=` and `render_timeout_ms=`, which both already validated eagerly.
 - **The Railtie applies `config.ssr_deno` numeric options on nil rather than truthiness**, and via one keyed loop rather than five near-identical lines. No behaviour change: `0` is truthy in Ruby, so the old guard already passed it through to the setter.
 - **`ssr_render` returns an empty string when `config.ssr_deno.enabled` is `false`** — the generator template calls that flag "disable SSR entirely", but the helper never checked it, so every render raised `BundleNotFoundError` (the Railtie having skipped bundle registration) instead of falling back to CSR.

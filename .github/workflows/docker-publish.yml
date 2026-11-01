@@ -26,9 +26,9 @@ jobs:
         # Keep in sync with the `merge` job's matrix below (no YAML anchors
         # in GitHub Actions) and with ci.yml's `ruby` majors.
         ruby:
-          - { version: '4.0.6', tag: '4.0' }
-          - { version: '3.4.10', tag: '3.4' }
-          - { version: '3.3.12', tag: '3.3' }
+          - { version: '4.0.9', tag: '4.0' }
+          - { version: '3.4.12', tag: '3.4' }
+          - { version: '3.3.13', tag: '3.3' }
         platform:
           - { name: amd64, runner: ubuntu-latest    }
           - { name: arm64, runner: ubuntu-24.04-arm }
@@ -89,9 +89,9 @@ jobs:
       matrix:
         # Keep in sync with the `build` job's matrix above.
         ruby:
-          - { version: '4.0.6', tag: '4.0' }
-          - { version: '3.4.10', tag: '3.4' }
-          - { version: '3.3.12', tag: '3.3' }
+          - { version: '4.0.9', tag: '4.0' }
+          - { version: '3.4.12', tag: '3.4' }
+          - { version: '3.3.13', tag: '3.3' }
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8
