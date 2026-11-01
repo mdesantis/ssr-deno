@@ -28,17 +28,17 @@ license = "MIT"
 # stack rejects.
 [workspace.dependencies]
 deno_ast = { version = "=0.53.3", features = ["transpiling"] }
-deno_core = "=0.410.0"
+deno_core = "=0.413.0"
 deno_error = "=0.7.1"
-deno_resolver = { version = "=0.88.0", features = ["deno_ast"] }
-deno_runtime = { version = "=0.265.0", features = ["hmr"] }
+deno_resolver = { version = "=0.91.0", features = ["deno_ast"] }
+deno_runtime = { version = "=0.268.0", features = ["hmr"] }
 deno_semver = "=0.10.1"
 magnus = { version = "0.8", features = ["embed"] }
-node_resolver = "=0.95.0"
+node_resolver = "=0.98.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sys_traits = "=0.1.28"
-tokio = { version = "1.53.1", features = ["full"] }
+sys_traits = "=0.1.29"
+tokio = { version = "1.54.1", features = ["full"] }
 
 [package]
 name = "ssr_deno"
@@ -86,9 +86,10 @@ opt-level = 1
 [profile.dev.package.v8]
 opt-level = 3
 
-# deno_core 0.410 reaches V8 through this facade crate (aliases the `v8`
-# package as `rusty_v8`) — the override above still matches the real `v8`
-# package name, but the facade itself is new and needs its own override.
+# Since 0.410, deno_core reaches V8 through this facade crate (aliases the
+# `v8` package as `rusty_v8`) — the override above still matches the real
+# `v8` package name, but the facade is a separate package and needs its own
+# override.
 [profile.dev.package.deno_v8]
 opt-level = 3
 
