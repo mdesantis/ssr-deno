@@ -14,12 +14,12 @@
   },
   "imports": {
     "preact": "npm:preact@^10.29.8",
-    "preact-render-to-string": "npm:preact-render-to-string@^6.7.0",
-    "react": "npm:react@^19.2.8",
-    "react-dom": "npm:react-dom@^19.2.8",
-    "react-dom/server": "npm:react-dom@^19.2.8/server",
-    "react/jsx-runtime": "npm:react@^19.2.8/jsx-runtime",
-    "vite": "npm:vite@^8.2.1",
+    "preact-render-to-string": "npm:preact-render-to-string@^6.8.2",
+    "react": "npm:react@^19.3.1",
+    "react-dom": "npm:react-dom@^19.3.1",
+    "react-dom/server": "npm:react-dom@^19.3.1/server",
+    "react/jsx-runtime": "npm:react@^19.3.1/jsx-runtime",
+    "vite": "npm:vite@^8.3.5",
     "@types/deno": "npm:@types/deno@^2.7.0"
   },
   "compilerOptions": {

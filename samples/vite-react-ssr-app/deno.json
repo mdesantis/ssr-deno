@@ -13,12 +13,12 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "react": "npm:react@^19.2.8",
-    "react-dom": "npm:react-dom@^19.2.8",
-    "react/jsx-runtime": "npm:react@^19.2.8/jsx-runtime",
-    "react-dom/server": "npm:react-dom@^19.2.8/server",
-    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^6.0.5",
-    "vite": "npm:vite@^8.2.1",
+    "react": "npm:react@^19.3.1",
+    "react-dom": "npm:react-dom@^19.3.1",
+    "react/jsx-runtime": "npm:react@^19.3.1/jsx-runtime",
+    "react-dom/server": "npm:react-dom@^19.3.1/server",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^6.1.2",
+    "vite": "npm:vite@^8.3.5",
     "@types/deno": "npm:@types/deno@^2.7.0"
   },
   "compilerOptions": {
@@ -26,8 +26,8 @@
     "jsxImportSource": "react",
     "types": [
       "npm:@types/deno",
-      "npm:@types/react@^19.2.14",
-      "npm:@types/react-dom@^19.2.3"
+      "npm:@types/react@^19.3.0",
+      "npm:@types/react-dom@^19.3.0"
     ]
   }
 }

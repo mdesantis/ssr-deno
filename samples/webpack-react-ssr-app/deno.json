@@ -13,25 +13,25 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "react": "npm:react@^19.2.8",
-    "react-dom": "npm:react-dom@^19.2.8",
-    "react/jsx-runtime": "npm:react@^19.2.8/jsx-runtime",
-    "react-dom/server": "npm:react-dom@^19.2.8/server",
-    "webpack": "npm:webpack@^5.109.2",
-    "webpack-cli": "npm:webpack-cli@^7.2.2",
+    "react": "npm:react@^19.3.1",
+    "react-dom": "npm:react-dom@^19.3.1",
+    "react/jsx-runtime": "npm:react@^19.3.1/jsx-runtime",
+    "react-dom/server": "npm:react-dom@^19.3.1/server",
+    "webpack": "npm:webpack@^5.112.2",
+    "webpack-cli": "npm:webpack-cli@^7.3.1",
     "ts-loader": "npm:ts-loader@^9.6.2",
     "typescript": "npm:typescript@^6.0.3",
     "@types/deno": "npm:@types/deno@^2.7.0",
-    "@types/react": "npm:@types/react@^19.2.18",
-    "@types/react-dom": "npm:@types/react-dom@^19.2.4"
+    "@types/react": "npm:@types/react@^19.3.0",
+    "@types/react-dom": "npm:@types/react-dom@^19.3.0"
   },
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "types": [
       "npm:@types/deno",
-      "npm:@types/react@^19.2.18",
-      "npm:@types/react-dom@^19.2.4"
+      "npm:@types/react@^19.3.0",
+      "npm:@types/react-dom@^19.3.0"
     ]
   }
 }
