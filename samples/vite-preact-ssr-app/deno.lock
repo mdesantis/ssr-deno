@@ -5,8 +5,8 @@
     "npm:@types/deno@^2.7.0": "2.7.0",
     "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@19": "19.2.14",
-    "npm:preact-render-to-string@^6.8.2": "6.8.2_preact@10.29.8",
-    "npm:preact@^10.29.8": "10.29.8_preact-render-to-string@6.8.2",
+    "npm:preact-render-to-string@^6.8.2": "6.8.2_preact@11.1.1",
+    "npm:preact@^11.1.1": "11.1.1_preact-render-to-string@6.8.2",
     "npm:react-dom@^19.3.1": "19.3.1_react@19.3.1",
     "npm:react@^19.3.1": "19.3.1",
     "npm:vite@*": "8.3.5",
@@ -221,14 +221,14 @@
         "source-map-js"
       ]
     },
-    "preact-render-to-string@6.8.2_preact@10.29.8": {
+    "preact-render-to-string@6.8.2_preact@11.1.1": {
       "integrity": "sha512-Hdx7cKD3AMYgt795TdddBpUbuGEFoL/VeA6s7VrBt9Gjt0r6rCy5wMp5xkDjQ9cbKj62frHsEx1x8yV6EjoOpg==",
       "dependencies": [
         "preact"
       ]
     },
-    "preact@10.29.8_preact-render-to-string@6.8.2": {
-      "integrity": "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==",
+    "preact@11.1.1_preact-render-to-string@6.8.2": {
+      "integrity": "sha512-vpFVfai437pbuLri7XVeslCPfrEZX6Z1S2gV+MOFrA/kji+NKUXvH7y01EnVjA1guLigfkVp77Sqipd4SIllCg==",
       "dependencies": [
         "preact-render-to-string"
       ],
@@ -306,7 +306,7 @@
       "npm:@types/react-dom@19",
       "npm:@types/react@19",
       "npm:preact-render-to-string@^6.8.2",
-      "npm:preact@^10.29.8",
+      "npm:preact@^11.1.1",
       "npm:react-dom@^19.3.1",
       "npm:react@^19.3.1",
       "npm:vite@^8.3.5"

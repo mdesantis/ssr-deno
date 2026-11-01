@@ -13,7 +13,7 @@
     "serve": "deno run --allow-read --allow-net --allow-env serve.deno.ts"
   },
   "imports": {
-    "preact": "npm:preact@^10.29.8",
+    "preact": "npm:preact@^11.1.1",
     "preact-render-to-string": "npm:preact-render-to-string@^6.8.2",
     "react": "npm:react@^19.3.1",
     "react-dom": "npm:react-dom@^19.3.1",
