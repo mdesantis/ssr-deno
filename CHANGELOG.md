@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.1.0-alpha.11] - 2026-11-05
+
 ### Added
 - **Gem now ships `docs/`** — `README.md` links to `docs/architecture.md`, `docs/compatibility.md`, `docs/dev-mode.md`, `docs/ractor-pool.md` and `docs/csp-nonce.md`, none of which were in `spec.files`. Those links were dead for anyone reading the README from an installed gem. Links from `docs/` and RDoc into `plans/archived/` now use absolute GitHub URLs, since `plans/` is deliberately not shipped and the archive is historical.
 - **The `rails g ssr:deno:install` initializer documents every option the Railtie reads** — `max_heap_size_mb`, `isolate_pool_size` and `heap_stats_sample_rate` were missing, and the remaining options are now listed in Railtie declaration order. A generator test asserts the full list, so the template can't fall behind again.
