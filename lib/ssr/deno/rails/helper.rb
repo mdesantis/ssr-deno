@@ -62,19 +62,18 @@ module SSR
         ''
       end
 
+      # Raises when the name is not registered, or is registered but its file
+      # does not exist (yet) — both fire +bundle_miss.ssr_deno+.
       def find_bundle!(bundle_name)
-        SSR::Deno::Bundle.create_bundles!
+        bundle = SSR::Deno::Bundle.fetch(bundle_name)
 
-        bundle = SSR::Deno::Bundle.registry[bundle_name]
+        return bundle if bundle
 
-        unless bundle
-          instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name, identifier: bundle_name
+        raise SSR::Deno::BundleNotFoundError, "SSR bundle #{bundle_name.inspect} not registered"
+      rescue SSR::Deno::BundleNotFoundError
+        instrument 'bundle_miss.ssr_deno', bundle_name: bundle_name, identifier: bundle_name
 
-          raise SSR::Deno::BundleNotFoundError,
-                "SSR bundle #{bundle_name.inspect} not registered"
-        end
-
-        bundle
+        raise
       end
 
       def assert_known_ssr_render_options!(options)

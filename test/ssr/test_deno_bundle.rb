@@ -168,6 +168,114 @@ module SSR
       assert bundle.instance_variable_get(:@auto_reload)
     end
 
+    def test_create_bundles_skips_missing_file
+      missing = File.join(temp_dir, 'entry-server.js')
+
+      SSR::Deno::Bundle.registry[:missing] = { path: missing, auto_reload: false }
+      SSR::Deno::Bundle.registry[:present] = { path: MINIMAL_BUNDLE, auto_reload: false }
+
+      SSR::Deno::Bundle.create_bundles!
+
+      assert_equal({ path: missing, auto_reload: false }, SSR::Deno::Bundle.registry[:missing])
+      assert_instance_of SSR::Deno::Bundle, SSR::Deno::Bundle.registry[:present]
+    end
+
+    def test_create_bundles_tolerates_registration_mid_walk
+      entered = Queue.new
+      release = Queue.new
+      blocking_path = Object.new
+
+      # File.exist? calls #to_path, so this parks the create_bundles! walk
+      # mid-iteration — deterministic overlap, no sleeps.
+      blocking_path.define_singleton_method(:to_path) do
+        entered.push(true)
+        release.pop
+
+        File.join(Dir.tmpdir, "ssr-deno-missing-#{Process.pid}.js")
+      end
+
+      SSR::Deno::Bundle.registry[:blocking] = { path: blocking_path, auto_reload: false }
+
+      walker = Thread.new { SSR::Deno::Bundle.create_bundles! }
+
+      entered.pop
+
+      # A DevModeBundle registering itself from another thread does exactly
+      # this write, without the mutex.
+      SSR::Deno::Bundle.registry[:added_mid_walk] = Object.new
+
+      assert SSR::Deno::Bundle.registry.key?(:added_mid_walk)
+    ensure
+      release&.push(true)
+      walker&.join
+    end
+
+    def test_fetch_returns_nil_for_unregistered_name
+      assert_nil SSR::Deno::Bundle.fetch(:unregistered)
+    end
+
+    def test_fetch_returns_instantiated_bundle
+      SSR::Deno::Bundle.registry[:fetched] = { path: MINIMAL_BUNDLE, auto_reload: false }
+
+      bundle = SSR::Deno::Bundle.fetch(:fetched)
+
+      assert_instance_of SSR::Deno::Bundle, bundle
+      assert_same bundle, SSR::Deno::Bundle.fetch(:fetched)
+    end
+
+    def test_fetch_raises_while_file_missing
+      missing = File.join(temp_dir, 'entry-server.js')
+
+      SSR::Deno::Bundle.registry[:late] = { path: missing, auto_reload: false }
+
+      error = assert_raises(SSR::Deno::BundleNotFoundError) do
+        SSR::Deno::Bundle.fetch(:late)
+      end
+
+      assert_match(/:late not found at #{Regexp.escape(missing)}/, error.message)
+    end
+
+    def test_fetch_instantiates_bundle_built_after_create_bundles
+      missing = File.join(temp_dir, 'entry-server.js')
+
+      SSR::Deno::Bundle.registry[:late] = { path: missing, auto_reload: true }
+
+      SSR::Deno::Bundle.create_bundles!
+
+      FileUtils.cp(MINIMAL_BUNDLE, missing)
+
+      bundle = SSR::Deno::Bundle.fetch(:late)
+
+      assert_instance_of SSR::Deno::Bundle, bundle
+      assert bundle.auto_reload
+      assert_includes bundle.render({ data: { name: 'Late' } }), 'Late'
+    end
+
+    def test_fetch_rechecks_entry_under_mutex
+      SSR::Deno::Bundle.registry[:raced] = { path: MINIMAL_BUNDLE, auto_reload: false }
+
+      SSR::Deno::Bundle.create_bundles!
+
+      winner = SSR::Deno::Bundle.registry[:raced]
+
+      # Simulate another thread materializing the entry between the
+      # unsynchronized read and the mutex: put a config hash back, then have
+      # the mutex swap in the winner before the re-check runs.
+      SSR::Deno::Bundle.registry[:raced] = { path: MINIMAL_BUNDLE, auto_reload: false }
+
+      mutex = SSR::Deno::Bundle.instance_variable_get(:@_create_mutex)
+
+      mutex.define_singleton_method(:synchronize) do |&block|
+        SSR::Deno::Bundle.registry[:raced] = winner
+
+        block.call
+      end
+
+      assert_same winner, SSR::Deno::Bundle.fetch(:raced)
+    ensure
+      mutex&.singleton_class&.remove_method(:synchronize)
+    end
+
     def test_create_bundles_outer_guard
       original_mutex = SSR::Deno::Bundle.instance_variable_get(:@_create_mutex)
       locked_mutex = Mutex.new

@@ -187,6 +187,64 @@ module SSR
         Rails.application.config.ssr_deno.raise_on_bundle_error = true
       end
 
+      def test_register_bundles_registers_missing_file
+        missing = File.join(Dir.tmpdir, "ssr-deno-missing-#{Process.pid}.js")
+        config = ActiveSupport::OrderedOptions.new
+
+        config.bundles = { late: missing, pathless: nil }
+        config.auto_reload = true
+
+        SSR::Deno::Railtie.register_bundles(config)
+
+        assert_equal({ late: { path: missing, auto_reload: true } }, SSR::Deno::Bundle.registry)
+      end
+
+      def test_ssr_render_bundle_built_after_registration
+        dir = Dir.mktmpdir
+        path = File.join(dir, 'entry-server.js')
+
+        SSR::Deno::Bundle.registry[:application] = { path: path, auto_reload: false }
+
+        error = assert_raises SSR::Deno::BundleNotFoundError do
+          @view.ssr_render({ data: { name: 'Early' } })
+        end
+
+        assert_match(/not found at/, error.message)
+
+        FileUtils.cp(MINIMAL_BUNDLE, path)
+
+        assert_includes @view.ssr_render({ data: { name: 'Late' } }), 'Late'
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+
+      def test_instrumentation_fires_bundle_miss_event_for_missing_file
+        SSR::Deno::Bundle.registry[:application] = {
+          path: File.join(Dir.tmpdir, "ssr-deno-missing-#{Process.pid}.js"), auto_reload: false
+        }
+
+        events = []
+        callback = ->(name, *) { events << name }
+
+        ActiveSupport::Notifications.subscribed(callback, 'bundle_miss.ssr_deno') do
+          assert_raises(SSR::Deno::BundleNotFoundError) { @view.ssr_render({}) }
+        end
+
+        assert_equal ['bundle_miss.ssr_deno'], events
+      end
+
+      def test_ssr_render_csr_fallback_on_missing_file
+        Rails.application.config.ssr_deno.raise_on_bundle_error = false
+
+        SSR::Deno::Bundle.registry[:application] = {
+          path: File.join(Dir.tmpdir, "ssr-deno-missing-#{Process.pid}.js"), auto_reload: false
+        }
+
+        assert_equal '', @view.ssr_render({})
+      ensure
+        Rails.application.config.ssr_deno.raise_on_bundle_error = true
+      end
+
       def test_ssr_render_csr_fallback_on_render_error
         Rails.application.config.ssr_deno.raise_on_render_error = false
 

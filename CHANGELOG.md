@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Changed
+- **Bundles missing at boot are registered anyway and loaded once their file appears** — the Railtie used to drop any `config.ssr_deno.bundles` entry whose file didn't exist at boot, for the life of the process. `bin/rails test` boots the app before `test:prepare`, so a bundle built by a `test:prepare` hook (or on a fresh checkout) failed every render with `SSR bundle :name not registered`. The boot log line is now a warning, and each render checks the file again until it exists, raising `BundleNotFoundError` ("not found at <path>") — or falling back to CSR under `raise_on_bundle_error = false` — until then. New `SSR::Deno::Bundle.fetch(name)` does that lookup.
+
+### Fixed
+- **A missing bundle file no longer breaks every other bundle** — `Bundle.create_bundles!` raised `Errno::ENOENT` partway through, so each later render retried and failed again, even for bundles that existed. The error also slipped past `raise_on_bundle_error`, which only catches `BundleNotFoundError`. Missing entries are now skipped and reported per bundle.
+- **Constructing a `DevModeBundle` while `Bundle.create_bundles!` runs on another thread no longer raises** `can't add a new key into hash during iteration` — the walk now iterates a snapshot of the registry keys.
+
 ## [0.1.0-alpha.11] - 2026-11-05
 
 ### Added

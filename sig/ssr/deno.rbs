@@ -47,6 +47,10 @@ module SSR
 
       def self.create_bundles!: () -> void
 
+      def self.fetch: (Symbol | String name) -> (Bundle | DevModeBundle)?
+
+      private def self.materialize: (Symbol | String name) -> (Bundle | DevModeBundle)?
+
       def initialize: (String | Pathname bundle_path) -> void
 
       attr_reader auto_reload: bool
@@ -91,6 +95,8 @@ module SSR
       RUNTIME_CONFIG_KEYS: Array[Symbol]
 
       def self.apply_runtime_config: (untyped ssr_deno_config) -> void
+
+      def self.register_bundles: (untyped ssr_deno_config) -> void
 
       def self.subscribe_heap_stats: (untyped sample_rate) -> untyped?
 

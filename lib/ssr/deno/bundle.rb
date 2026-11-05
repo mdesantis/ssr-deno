@@ -13,6 +13,11 @@ module SSR
         # Create bundles from config hashes stored in +registry+.
         # Thread-safe (outer guard + mutex). Call from +on_worker_boot+
         # (Puma clustered) or lazily on first render (single mode).
+        #
+        # Entries whose file does not exist yet stay as config hashes rather
+        # than raising — a bundle may be built after boot (e.g. by a
+        # +test:prepare+ hook). {fetch} instantiates them once the file
+        # appears, and raises +BundleNotFoundError+ until then.
         # rubocop:disable-next ThreadSafety/ClassInstanceVariable
         def create_bundles!
           return if @_bundles_created
@@ -20,21 +25,58 @@ module SSR
           @_create_mutex.synchronize do
             next if @_bundles_created
 
-            @registry.transform_values! do |cfg|
-              # Skip entries that are already instantiated bundles — e.g. a
-              # SSR::Deno::DevModeBundle registered itself directly. Only
-              # transform raw config hashes, which the Railtie inserts from
-              # +config.ssr_deno.bundles+.
-              next cfg unless cfg.is_a?(Hash)
-
-              bundle = new(cfg[:path])
-              bundle.auto_reload = true if cfg[:auto_reload]
-
-              bundle
-            end
+            # Walk a snapshot: DevModeBundle#initialize may add a key from
+            # another thread mid-walk, and live iteration would make that
+            # write raise. Keys added later are materialized by fetch.
+            @registry.keys.each { |name| materialize(name) } # rubocop:disable Style/HashEachMethods -- snapshot is the point
 
             @_bundles_created = true
           end
+        end
+
+        # Look up a named bundle, instantiating its config hash on demand.
+        #
+        # @param name [Symbol, String] registry key
+        # @return [Bundle, DevModeBundle, nil] nil when +name+ is not registered
+        # @raise [SSR::Deno::BundleNotFoundError] if +name+ is registered but
+        #   its file does not exist (yet)
+        def fetch(name)
+          create_bundles!
+
+          # Unsynchronized read on the render hot path. Writers can still run
+          # concurrently — materialize swaps values under the mutex, and
+          # DevModeBundle#initialize adds keys without it — which MRI's GVL
+          # makes safe. A stale config hash is re-checked under the mutex.
+          entry = @registry[name] # rubocop:disable ThreadSafety/ClassInstanceVariable
+
+          return entry unless entry.is_a?(Hash)
+
+          @_create_mutex.synchronize do
+            materialize(name) or
+              raise BundleNotFoundError, "SSR bundle #{name.inspect} not found at #{@registry[name][:path]}"
+          end
+        end
+
+        private
+
+        # Replace the config hash registered as +name+ with a +Bundle+ when its
+        # file exists. Entries that are already instantiated bundles — e.g. a
+        # SSR::Deno::DevModeBundle registered itself directly — are returned
+        # as-is. Caller must hold +@_create_mutex+.
+        #
+        # @return [Bundle, DevModeBundle, nil] nil when the file is missing
+        # rubocop:disable-next ThreadSafety/ClassInstanceVariable -- caller holds the mutex
+        def materialize(name)
+          cfg = @registry[name]
+
+          return cfg unless cfg.is_a?(Hash)
+          return unless File.exist?(cfg[:path])
+
+          bundle = new(cfg[:path])
+
+          bundle.auto_reload = true if cfg[:auto_reload]
+
+          @registry[name] = bundle
         end
       end
 

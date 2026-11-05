@@ -40,17 +40,14 @@ module SSR
         end
       end
 
-      initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |_app|
-        next unless config.ssr_deno.enabled
-
-        # Apply config before runtime initialization.
-        # Must be set before any Bundle.new call (triggers pool init).
-        SSR::Deno::Railtie.apply_runtime_config(config.ssr_deno)
-
-        # Store bundle configs in +registry+. Actual +Bundle.new+ is called
-        # from +on_worker_boot+ (Puma clustered) or lazily on first render
-        # (single mode).
-        config.ssr_deno.bundles.each do |name, path|
+      # Store bundle configs in +registry+. Actual +Bundle.new+ is called
+      # from +on_worker_boot+ (Puma clustered) or lazily on first render
+      # (single mode). Bundles missing at boot are registered anyway — they
+      # may be built later (e.g. +bin/rails test+ boots the app before
+      # +test:prepare+ runs) — and +Bundle.fetch+ checks the file again on
+      # each render until it appears.
+      def self.register_bundles(ssr_deno_config)
+        ssr_deno_config.bundles.each do |name, path|
           unless path
             Rails.logger.error "[ssr-deno] Bundle #{name.inspect} has no path. " \
                                'Set a path in config.ssr_deno.bundles.'
@@ -58,12 +55,21 @@ module SSR
           end
 
           unless File.exist?(path)
-            Rails.logger.error "[ssr-deno] Bundle #{name.inspect} not found at #{path}. Skipping."
-            next
+            Rails.logger.warn "[ssr-deno] Bundle #{name.inspect} not found at #{path} yet. " \
+                              'Will retry on render.'
           end
 
-          SSR::Deno::Bundle.registry[name] = { path: path, auto_reload: config.ssr_deno.auto_reload }
+          SSR::Deno::Bundle.registry[name] = { path: path, auto_reload: ssr_deno_config.auto_reload }
         end
+      end
+
+      initializer 'ssr_deno.init_bundles', after: :load_config_initializers do |_app|
+        next unless config.ssr_deno.enabled
+
+        # Apply config before runtime initialization.
+        # Must be set before any Bundle.new call (triggers pool init).
+        SSR::Deno::Railtie.apply_runtime_config(config.ssr_deno)
+        SSR::Deno::Railtie.register_bundles(config.ssr_deno)
       end
 
       # Subscribe a sampler that emits heap_stats.ssr_deno every +sample_rate+

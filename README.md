@@ -212,7 +212,7 @@ Specific subclasses for targeted rescue:
 | Class | When raised |
 |-------|-------------|
 | `SSR::Deno::RenderError` | JS render function throws or times out |
-| `SSR::Deno::BundleNotFoundError` | named bundle not registered |
+| `SSR::Deno::BundleNotFoundError` | unknown bundle name, or bundle file missing on disk (rechecked every render) |
 | `SSR::Deno::JsRuntimeWorkerError` | Deno worker thread died |
 | `SSR::Deno::JsRuntimeOutOfMemoryError` | V8 heap limit exceeded |
 | `SSR::Deno::JsRuntimeInitializationError` | config changed after init |
@@ -375,14 +375,14 @@ Rails.application.config.ssr_deno.raise_on_bundle_error = false
 Rails.application.config.ssr_deno.heap_stats_sample_rate = 50
 ```
 
-- `bundles` (default: `{}`): map of bundle name to bundle path. `:application` is the name `ssr_render` uses when no `bundle:` is passed.
+- `bundles` (default: `{}`): map of bundle name to bundle path. `:application` is the name `ssr_render` uses when no `bundle:` is passed. A path that doesn't exist at boot is still registered (with a warning) and loaded on the first render after the file appears — so a bundle built after boot, e.g. by a `test:prepare` hook, just works.
 - `enabled` (default: `true`): master switch. When `false`, no bundles are registered, no heap stats are sampled, and `ssr_render` returns an empty string for every bundle — including a `DevModeBundle` that registered itself.
 - `auto_reload` (default: `Rails.env.development?`): reload a bundle from disk when its mtime changes.
 - `max_heap_size_mb` (default: `nil`, i.e. the gem default of 64): per-isolate V8 heap.
 - `isolate_pool_size` (default: `nil`, i.e. the gem default of 1): V8 isolate count.
 - `render_timeout_ms` (default: `nil`, i.e. the gem default of 500): render timeout.
 - `node_builtins_enabled` (default: `nil`, i.e. the gem default of `false`): Node.js built-in module support.
-- `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` logs, returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
+- `raise_on_bundle_error` (default: `true` in dev/test, `false` in production): when `false`, `BundleNotFoundError` (unregistered name or missing bundle file) logs, returns empty string (CSR fallback). Use `raise_on_render_error` for render errors.
 - `raise_on_render_error` (default: `true` in dev/test, `false` in production): when `false`, `RenderError` logs, returns empty string.
 - `source_maps_enabled` (default: `!Rails.env.production?`): resolve V8 errors to original `.tsx`/`.ts` files. Requires `.js.map` sidecars next to bundles.
 - `heap_stats_sample_rate` (default: `100`): emit `heap_stats.ssr_deno` Active Support notification every N renders. Set to `0` to disable sampling.
