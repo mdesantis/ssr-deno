@@ -12,6 +12,10 @@ name: Cache cleanup
 # into restore + a `main`-gated save), so the bulk of what this used to
 # reclaim is gone. It remains the backstop for what still lands there:
 # sccache's per-compilation-unit entries and setup-ruby's bundler cache.
+#
+# Superseded cargo entries on `main` itself are not this workflow's job:
+# ci.yml's saves go through .github/actions/cache-save-verified, which
+# deletes the previous generation once the new one is verified.
 
 on:
   pull_request:

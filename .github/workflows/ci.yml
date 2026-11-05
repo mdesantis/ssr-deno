@@ -49,6 +49,12 @@ jobs:
     # deadlock in the render path) would've silently sat for the GitHub
     # default of 6h. Kept at the msrv job's 45m for one consistent number.
     timeout-minutes: 45
+    # actions: write lets cache-save-verified delete superseded cache entries
+    # on main. Fork PRs get a read-only token regardless, and the save steps
+    # only run on main. Same block in rust-checks and msrv.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +86,12 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
+      # Stands in for hashFiles() on Cargo.lock and the manifests, minus the
+      # workspace's own version — a release bump must not mint a new cache
+      # generation. See the script header and plans/ci-cache-budget.md.
+      - name: Hash Cargo lockfile + manifests (version-blind)
+        id: cargo-hash
+        run: .github/scripts/cargo-cache-hashes
       # Restore/save are split, and only `main` saves. A pull_request run can
       # read main's entries but writes into refs/pull/<N>/merge, a scope
       # nothing else can ever read — so every open PR used to duplicate the
@@ -99,7 +111,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-deps-${{ steps.cargo-hash.outputs.lock }}
           restore-keys: |
             cargo-deps-
       - name: Restore Cargo build artifacts (target dir)
@@ -127,14 +139,17 @@ jobs:
           # which is what kept pushing the repo over the 10GB cap. Keyed on the
           # rustc version, Cargo.lock and the workspace Cargo.toml files, it
           # rotates only when the dependency graph, profile/feature settings or
-          # toolchain actually change. The trade is that the entry
+          # toolchain actually change. Both files are hashed by the cargo-hash
+          # step with the workspace's own version stripped, so a release bump
+          # is not a change either. When the key does rotate, the save step
+          # deletes the superseded entry. The trade is that the entry
           # never refreshes within a generation, so the four workspace crates
           # rebuild from a fixed dependency base — they already rebuild on
           # every leg of every run, so that costs nothing new.
           # See plans/ci-cache-budget.md.
-          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
+          key: cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-${{ steps.cargo-hash.outputs.manifests }}
           restore-keys: |
-            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-
             cargo-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-
             cargo-target-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Deno
@@ -155,21 +170,28 @@ jobs:
       # which leg finished first. A fixed writer keeps that deterministic.
       #
       # `cache-hit` is true only on an exact primary-key match, which is
-      # exactly when saving would be a no-op warning.
+      # exactly when saving would be a no-op warning. The composite action
+      # skips the save then, but still prunes. On a miss it saves, verifies
+      # the entry really exists (retrying once), and only then deletes the
+      # previous generation on main. See .github/actions/cache-save-verified.
       - name: Save Cargo build artifacts (target dir)
-        if: github.ref == 'refs/heads/main' && matrix.ruby == '4.0' && steps.cargo-target.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: github.ref == 'refs/heads/main' && matrix.ruby == '4.0'
+        uses: ./.github/actions/cache-save-verified
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+          lineage: cargo-target-${{ runner.os }}-${{ runner.arch }}-
+          cache-hit: ${{ steps.cargo-target.outputs.cache-hit }}
       - name: Save Cargo registry + git deps
-        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/cache-save-verified
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
+          lineage: cargo-deps-
+          cache-hit: ${{ steps.cargo-deps.outputs.cache-hit }}
       - name: Build SSR sample bundles
         run: bundle exec rake samples:build
       - name: Run tests
@@ -215,6 +237,9 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     name: Rust checks (${{ matrix.platform.arch }})
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     # Both arches on purpose. fmt, clippy and coverage are arch-independent and
     # the second leg re-runs them for nothing, but the cargo test suites are
     # not: ssr_deno_sys is full of cfg(unix) paths, and an aarch64-only defect
@@ -249,6 +274,9 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
+      - name: Hash Cargo lockfile + manifests (version-blind)
+        id: cargo-hash
+        run: .github/scripts/cargo-cache-hashes
       - name: Restore Cargo registry + git deps
         id: cargo-deps
         uses: actions/cache/restore@v6
@@ -256,7 +284,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-deps-${{ steps.cargo-hash.outputs.lock }}
           restore-keys: |
             cargo-deps-
       - name: Restore Cargo build artifacts (target dir)
@@ -266,9 +294,9 @@ jobs:
           path: tmp/cargo-target
           # Keyed on rustc + Cargo.lock + workspace manifests, no source hash — see the matrix
           # job's key for the rationale.
-          key: cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
+          key: cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-${{ steps.cargo-hash.outputs.manifests }}
           restore-keys: |
-            cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-
             cargo-target-checks-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-
             cargo-target-checks-${{ runner.arch }}-
       # After the restores, not before: this downloads and builds a dependency
@@ -330,20 +358,26 @@ jobs:
       - name: Prune uncacheable artifacts
         if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' }}
         run: rm -rf tmp/cargo-target/llvm-cov-target
+      # cache-hit is passed to the composite action rather than gated here:
+      # an exact hit skips the save but still prunes superseded entries.
       - name: Save Cargo build artifacts (target dir)
-        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/cache-save-verified
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+          lineage: cargo-target-checks-${{ runner.arch }}-
+          cache-hit: ${{ steps.cargo-target.outputs.cache-hit }}
       - name: Save Cargo registry + git deps
-        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        if: ${{ !cancelled() && steps.build_complete.outcome == 'success' && github.ref == 'refs/heads/main' }}
+        uses: ./.github/actions/cache-save-verified
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
+          lineage: cargo-deps-
+          cache-hit: ${{ steps.cargo-deps.outputs.cache-hit }}
 
   # Pure static analysis of lib/ and sig/ — no compiled extension, no Rust
   # toolchain, no cargo cache. Splitting it out keeps a lint failure from
@@ -376,6 +410,9 @@ jobs:
     # land far below that once warm — measured 233-275s; 45m covers a repeat
     # cold run without leaving a genuine hang undetected for hours.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     # Verifies the `rust-version` declared in ext/ssr_deno/Cargo.toml's
     # [workspace.package] continuously — a declared floor that CI never
     # builds against is just a comment. Every other job floats
@@ -413,6 +450,9 @@ jobs:
             mold \
             pkg-config \
             libclang-dev
+      - name: Hash Cargo lockfile + manifests (version-blind)
+        id: cargo-hash
+        run: .github/scripts/cargo-cache-hashes
       # Restore/save split, main-only save — same rationale as the matrix job.
       - name: Restore Cargo registry + git deps
         id: cargo-deps
@@ -421,7 +461,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-deps-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}
+          key: cargo-deps-${{ steps.cargo-hash.outputs.lock }}
           restore-keys: |
             cargo-deps-
       - name: Restore Cargo build artifacts (target dir)
@@ -435,9 +475,9 @@ jobs:
           # rustc component still earns its place: it rotates the entry the day
           # the pin moves, which is exactly when the tree stops being valid.
           # No source-file hash — see the matrix job's key for why.
-          key: cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-${{ hashFiles('ext/ssr_deno/**/Cargo.toml') }}
+          key: cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-${{ steps.cargo-hash.outputs.manifests }}
           restore-keys: |
-            cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('ext/ssr_deno/Cargo.lock') }}-
+            cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-${{ steps.cargo-hash.outputs.lock }}-
             cargo-target-msrv-${{ steps.rust.outputs.cachekey }}-
             cargo-target-msrv-
       - name: Compile native extension
@@ -450,19 +490,23 @@ jobs:
           RB_SYS_CARGO_PROFILE: 'dev'
         run: bundle exec rake compile
       - name: Save Cargo build artifacts (target dir)
-        if: github.ref == 'refs/heads/main' && steps.cargo-target.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/cache-save-verified
         with:
           path: tmp/cargo-target
           key: ${{ steps.cargo-target.outputs.cache-primary-key }}
+          lineage: cargo-target-msrv-
+          cache-hit: ${{ steps.cargo-target.outputs.cache-hit }}
       - name: Save Cargo registry + git deps
-        if: github.ref == 'refs/heads/main' && steps.cargo-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/cache-save-verified
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ steps.cargo-deps.outputs.cache-primary-key }}
+          lineage: cargo-deps-
+          cache-hit: ${{ steps.cargo-deps.outputs.cache-hit }}
       - name: Run Rust unit tests (V8-free crates)
         run: bundle exec rake cargo:test
       - name: Run Rust unit tests (ssr_deno_dev_mode)

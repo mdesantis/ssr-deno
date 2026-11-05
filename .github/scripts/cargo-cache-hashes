@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Prints the two hashes ci.yml keys its cargo caches on, as `lock=<sha256>`
+# and `manifests=<sha256>` — appended to $GITHUB_OUTPUT when set, stdout
+# otherwise. Run from the repo root. Like hashFiles it reads the working tree;
+# the manifest list comes from git so untracked Cargo.toml files under
+# ext/ssr_deno (vendored or build trees) never leak into the key.
+#
+# Stand-in for hashFiles('ext/ssr_deno/Cargo.lock') and
+# hashFiles('ext/ssr_deno/**/Cargo.toml') that ignores the workspace's own
+# version. A release bump rewrites `[workspace.package] version` and the
+# matching `version` of every path crate in Cargo.lock, and with plain
+# hashFiles that minted a whole new ~5.6GB cache generation per release
+# while the old one lingered — enough to push the repo over the 10GB cap and
+# get sccache evicted. Nothing in a cached tree depends on that version
+# beyond the workspace crates themselves, which rebuild on every run anyway.
+#
+# Everything else still counts: registry/git deps in Cargo.lock (they carry
+# a `source =` line, path crates don't), and every other manifest line —
+# profile and feature edits must keep rotating the key (see Phase 4 in
+# plans/ci-cache-budget.md).
+set -euo pipefail
+
+lock='ext/ssr_deno/Cargo.lock'
+
+# Paragraph mode: one Cargo.lock [[package]] block per record. Drop the
+# version line only from blocks without a `source =` line, i.e. path crates.
+lock_normalized=$(
+  awk '
+    BEGIN { RS = ""; ORS = "\n\n" }
+    /^\[\[package\]\]\n/ && !/\nsource = / {
+      stripped += sub(/\nversion = "[^"\n]*"/, "")
+    }
+    { print }
+    END { printf "Cargo.lock: path-crate versions stripped: %d\n", stripped > "/dev/stderr" }
+  ' "$lock"
+)
+
+# The file name goes into the hash too, so moving lines between manifests
+# still changes it. Only [workspace.package] has its version stripped;
+# members inherit it with `version.workspace = true`.
+manifests_normalized=$(
+  git ls-files -z -- ':(glob)ext/ssr_deno/**/Cargo.toml' | sort -z | while IFS= read -r -d '' f; do
+    printf '== %s\n' "$f"
+    awk '
+      /^\[/ { in_ws = ($0 == "[workspace.package]") }
+      in_ws && /^version = / { next }
+      { print }
+    ' "$f"
+  done
+)
+
+if [ -z "$manifests_normalized" ]; then
+  echo "::error::no Cargo.toml matched under ext/ssr_deno" >&2
+  exit 1
+fi
+
+out="lock=$(printf '%s' "$lock_normalized" | sha256sum | cut -d' ' -f1)
+manifests=$(printf '%s' "$manifests_normalized" | sha256sum | cut -d' ' -f1)"
+
+echo "$out"
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "$out" >> "$GITHUB_OUTPUT"
+fi

@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Helper for the cache-save-verified composite action. Two subcommands:
+#
+#   verify  Poll until KEY exists on refs/heads/main; writes present=true|false
+#           to $GITHUB_OUTPUT. actions/cache/save downgrades every failure to
+#           a warning and stays green, so this is the only way to know a save
+#           actually landed.
+#   prune   Delete every refs/heads/main entry whose key starts with LINEAGE
+#           but is not KEY — the superseded generation.
+#
+# Env: GH_TOKEN, GH_REPO, KEY, LINEAGE. Transient API failures never fail the
+# step: a missed verify just means no prune, a missed prune leaves the old
+# entry to GitHub's LRU, exactly as before this existed.
+set -euo pipefail
+
+ref='refs/heads/main'
+
+# Keys are interpolated into a jq filter below; ours are all [A-Za-z0-9._-].
+case "$KEY" in
+  '' | *[!A-Za-z0-9._-]*)
+    echo "::error::cache-save-verified: refusing unexpected key '${KEY}'"
+    exit 1
+    ;;
+esac
+
+# The lineage must be a prefix of the key, or prune would sweep someone
+# else's entries.
+case "$KEY" in
+  "$LINEAGE"?*) ;;
+  *)
+    echo "::error::cache-save-verified: key '${KEY}' is not in lineage '${LINEAGE}'"
+    exit 1
+    ;;
+esac
+
+if ! command -v gh > /dev/null; then
+  echo "::error::cache-save-verified: gh CLI not found on this runner"
+  echo "present=false" >> "$GITHUB_OUTPUT"
+  exit 0
+fi
+
+# The API's `key` filter is a prefix match, hence the exact comparison.
+count_exact() {
+  local n
+  n=$(gh api -X GET "repos/${GH_REPO}/actions/caches" \
+        -f key="$KEY" -f ref="$ref" -f per_page=100 \
+        --jq "[.actions_caches[] | select(.key == \"${KEY}\")] | length" 2> /dev/null || true)
+
+  case "$n" in
+    '' | *[!0-9]*) echo 0 ;;
+    *) echo "$n" ;;
+  esac
+}
+
+case "${1:-}" in
+  verify)
+    # Up to ~60s. On a cold run several jobs save the shared cargo-deps key at
+    # once; the losers log "Unable to reserve cache ... another job may be
+    # creating this cache" while the winner is still uploading, so a single
+    # immediate check would call a save that is merely in flight a loss.
+    for attempt in 1 2 3 4 5 6 7; do
+      if [ "$(count_exact)" -gt 0 ]; then
+        echo "verified: ${KEY}"
+        echo "present=true" >> "$GITHUB_OUTPUT"
+        exit 0
+      fi
+
+      if [ "$attempt" -lt 7 ]; then
+        sleep 10
+      fi
+    done
+
+    echo "not found after save: ${KEY}"
+    echo "present=false" >> "$GITHUB_OUTPUT"
+    ;;
+
+  prune)
+    if ! entries=$(gh api -X GET "repos/${GH_REPO}/actions/caches" \
+                     -f key="$LINEAGE" -f ref="$ref" -f per_page=100 \
+                     --jq '.actions_caches[] | "\(.id)\t\(.key)"'); then
+      echo "::warning::cache-save-verified: could not list ${LINEAGE}* on ${ref}; nothing pruned"
+      exit 0
+    fi
+
+    pruned=0
+
+    while IFS=$'\t' read -r id key; do
+      if [ -z "$id" ] || [ "$key" = "$KEY" ]; then
+        continue
+      fi
+
+      if gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" > /dev/null; then
+        echo "deleted superseded: ${key}"
+        pruned=$(( pruned + 1 ))
+      else
+        echo "::warning::cache-save-verified: could not delete ${key}; left to LRU eviction"
+      fi
+    done <<< "$entries"
+
+    echo "${LINEAGE}*: kept ${KEY}, pruned ${pruned}"
+    ;;
+
+  *)
+    echo "usage: cache-api verify|prune" >&2
+    exit 2
+    ;;
+esac

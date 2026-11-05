@@ -1,0 +1,100 @@
+name: Save cache, verified, superseded generation pruned
+description: >-
+  actions/cache/save, then confirm the entry exists (retrying the save once),
+  then delete the other refs/heads/main entries of the same lineage. Callers
+  gate it to main; see plans/ci-cache-budget.md (Phase 5).
+
+# Why this exists. actions/cache only skips a save on an exact primary-key hit,
+# so whenever a key rotates (dependency bump, floating-stable rustc bump) the
+# new generation is saved next to the old one, and the old one lingers until
+# GitHub's 7-day idle eviction. Two ~5GB generations at once overflow the
+# repo's 10GB cap, and LRU then evicts live entries (sccache first). Pruning
+# right after a verified save bounds that overlap to minutes.
+#
+# Never prunes without a verified new entry: a lost save keeps the previous
+# generation as everyone's fallback instead of leaving the lineage empty. An
+# exact hit prunes too, which heals leftovers from before this existed or from
+# a run that died between save and prune.
+#
+# Every `if:` carries `!cancelled()` on purpose: without a status function
+# GitHub applies an implicit success(), and callers in rust-checks invoke this
+# after a possibly-failed coverage step (see that job's save comment).
+
+inputs:
+  path:
+    description: Paths to cache, as for actions/cache/save.
+    required: true
+  key:
+    description: Exact primary key — pass the restore step's cache-primary-key.
+    required: true
+  lineage:
+    description: >-
+      Key prefix shared by every generation of this cache, e.g.
+      `cargo-target-Linux-X64-`. Entries on main matching it, other than
+      `key`, are deleted. Must be a prefix of `key`.
+    required: true
+  cache-hit:
+    description: The restore step's cache-hit output; 'true' skips the save but still prunes.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Save
+      if: ${{ !cancelled() && inputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+
+    - name: Verify save
+      id: verify
+      if: ${{ !cancelled() && inputs.cache-hit != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        KEY: ${{ inputs.key }}
+        LINEAGE: ${{ inputs.lineage }}
+      run: '"$GITHUB_ACTION_PATH/cache-api" verify'
+
+    # Measured failure this covers: on a cold run every job saves within the
+    # same few minutes, the cache API rate-limits, and a save "succeeds" with
+    # only a warning in the log. See "Cold-run save loss" in the plan.
+    - name: Retry save
+      if: ${{ !cancelled() && inputs.cache-hit != 'true' && steps.verify.outputs.present != 'true' }}
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+
+    - name: Verify retried save
+      id: reverify
+      if: ${{ !cancelled() && inputs.cache-hit != 'true' && steps.verify.outputs.present != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        KEY: ${{ inputs.key }}
+        LINEAGE: ${{ inputs.lineage }}
+      run: '"$GITHUB_ACTION_PATH/cache-api" verify'
+
+    # An annotation, not a red job: the cause is GitHub's cache API, not the
+    # code under test, and the next main run retries the save on its own.
+    - name: Report lost save
+      if: ${{ !cancelled() && inputs.cache-hit != 'true' && steps.verify.outputs.present != 'true' && steps.reverify.outputs.present != 'true' }}
+      shell: bash
+      env:
+        KEY: ${{ inputs.key }}
+      run: echo "::error::cache ${KEY} was not saved, even after a retry; previous generation kept, nothing pruned"
+
+    - name: Prune superseded generation
+      if: ${{ !cancelled() && (inputs.cache-hit == 'true' || steps.verify.outputs.present == 'true' || steps.reverify.outputs.present == 'true') }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        KEY: ${{ inputs.key }}
+        LINEAGE: ${{ inputs.lineage }}
+      run: '"$GITHUB_ACTION_PATH/cache-api" prune'

@@ -378,7 +378,7 @@ on every job (run `41306995597`: legs 737–851s, `rust-checks` 1038s arm64 /
 have minted a new generation regardless; with the old one already evicted,
 nothing overlapped.
 
-### Cold-run save loss — open
+### Cold-run save loss — fixed in Phase 5
 
 That run left **5 cargo entries, not 6**: `cargo-target-Linux-ARM64` was never
 written. Its save step reported success; the log says:
@@ -423,11 +423,85 @@ succeeded). Resulting state, one entry per lineage as Verification expects:
 ~1.65GB headroom. sccache grew 0.38GB from the single re-run alone, so it is
 the component to watch as it refills.
 
-Fix, not yet applied: after each target save, check the key exists
-(`gh cache list --key <key>`, needs `actions: read`) and retry once after a
-short wait if not. If the retry also misses, surface it — an `::error::`
-annotation at least; whether to fail the job is still open — rather than
-inheriting the action's silent warning.
+Fix originally proposed here: after each target save, check the key exists
+and retry once after a short wait if not. If the retry also misses, surface
+it rather than inheriting the action's silent warning. Phase 5 does this for
+every cargo save, not just the target saves. The open question is settled as
+an `::error::` annotation with the job left green.
+
+## Phase 5 — release bumps and generation overlap ◐
+
+Phase 4 stopped rotation on source changes. It did not stop rotation on the
+two changes it still keys on, and both are routine:
+
+- **Release bumps.** `[workspace.package] version` lives in
+  `ext/ssr_deno/Cargo.toml`, and every path crate's `version` is copied into
+  `Cargo.lock`. So each release changed both hashes and minted a full new
+  generation. Release `3c8c7b8` (alpha.10 → alpha.11), run `42010986692`:
+  - Every job restored through `restore-keys` and saved new entries. That
+    works for build time: the legs rebuilt 7–10 units.
+  - The old generation stayed on `main` next to the new one: 9.42GB, against
+    8.35GB after the Nov 1 cold start.
+  - GitHub's LRU made room by evicting the old `checks-*` entries and most of
+    sccache (2.15GB/3786 entries → 0.73GB/1712).
+  - MSRV, which leans on sccache hardest (its `cargo test` tree is
+    uncached), fell from 81% to 24% hits: 4m → 11m.
+- **Dependency and toolchain bumps.** These must rotate the key. But the old
+  generation then lingers until 7-day idle eviction. Floating `stable` alone
+  rotates the four floating-toolchain entries every six weeks or so.
+
+### A — version-blind key hashes
+
+`.github/scripts/cargo-cache-hashes` replaces `hashFiles()` for the
+`Cargo.lock` and `Cargo.toml` key components in all three jobs. Before
+hashing, it strips:
+
+- the `version` line of every `Cargo.lock` package block without a
+  `source =` line, which is exactly the path crates;
+- the `version` line inside `[workspace.package]`.
+
+Registry/git deps, profiles and features still count, so Phase 4's
+requirement holds.
+
+Checked against real commits:
+
+| change | `lock` | `manifests` |
+|---|---|---|
+| `3c8c7b8^` → `3c8c7b8` (release bump) | same | same |
+| `08b40d1^` → `08b40d1` (magnus bump) | differs | differs |
+| `[profile.release] lto` edit | same | differs |
+
+### B — verified save, superseded generation pruned
+
+All six cargo saves go through `.github/actions/cache-save-verified`:
+
+1. Save.
+2. Poll until the exact key exists on `refs/heads/main`. The wait is up to 60s,
+   because a shared `cargo-deps` save that is still uploading in another job
+   makes the losers' `Unable to reserve` look like a loss.
+3. Retry the save once.
+4. Still missing: an `::error::` annotation, job green, nothing pruned.
+5. Verified, or an exact hit: delete every other `main` entry in the same
+   lineage prefix.
+
+Pruning on an exact hit is what heals leftovers.
+
+The three jobs gain `actions: write`.
+
+Deleting only after verification means a lost save never leaves a lineage
+empty. The same run never loses its source entry either: all jobs restore in
+their first minute, and saves come minutes later. A PR whose exact key was
+pruned falls back through `restore-keys` to the new generation.
+
+Remaining open (◐): first `main` run with this change.
+
+- The key format changes, so it saves a new generation and should prune the
+  `b347…` (alpha.11) entries. The `398fd…` leftovers were deleted by hand
+  beforehand (2026-11-05) to shrink that run's overshoot, leaving 6.96GB:
+  6 cargo entries (6.25GB) and sccache (0.71GB).
+- Confirm `gh` exists on the `ubuntu-24.04-arm` image. The helper emits
+  `::error::` and skips pruning if it doesn't.
+- The next release bump after that should be an exact hit everywhere.
 
 ## Verification
 
@@ -447,16 +521,25 @@ gh api --paginate "repos/mdesantis/ssr-deno/actions/caches?per_page=100" \
 
 Steady state should be **6 cargo entries**, one per lineage:
 `cargo-target-Linux-{X64,ARM64}`, `cargo-target-checks-{X64,ARM64}`,
-`cargo-target-msrv`, `cargo-deps`. **Two entries sharing a lineage prefix is
-rotation** — the regression this plan exists to prevent.
+`cargo-target-msrv`, `cargo-deps`. **Two entries sharing a lineage prefix
+after a `main` run has finished is a regression.** Since Phase 5, a rotation
+saves the new entry and prunes the old one in the same run. A lingering
+sibling means the prune failed; look for `cache-save-verified` warnings or
+errors in that run.
 
 Note what will *not* work as a check: "merge a Rust source change and watch for
 a save". After Phase 4 no key component reads Rust sources, so such a change
 produces an exact hit and no save — following that recipe yields a false pass.
-The pre-merge question worth asking instead is whether the *key* will move:
+The pre-merge question worth asking instead is whether the *key* will move.
+Since Phase 5, a plain `git diff` of the lockfile and manifests over-reports,
+because a version-only diff no longer moves it. Compare the hashes instead:
 
 ```bash
-git diff --name-only origin/main...HEAD -- 'ext/ssr_deno/Cargo.lock' 'ext/ssr_deno/**/Cargo.toml'
+script="$PWD/.github/scripts/cargo-cache-hashes"
+git worktree add -q --detach ../main-hashes origin/main
+diff <("$script" 2>/dev/null) <(cd ../main-hashes && "$script" 2>/dev/null)
+git worktree remove ../main-hashes
 ```
 
-Empty ⇒ key identical to main's ⇒ no new generation.
+No output ⇒ key identical to main's ⇒ no new generation. The rustc component
+can still move independently when floating `stable` advances.
