@@ -493,15 +493,25 @@ empty. The same run never loses its source entry either: all jobs restore in
 their first minute, and saves come minutes later. A PR whose exact key was
 pruned falls back through `restore-keys` to the new generation.
 
-Remaining open (◐): first `main` run with this change.
+First `main` run with this change ✅ — run `42017540886` (`f3ea125`), all
+jobs green. The `398fd…` leftovers had been deleted by hand beforehand
+(2026-11-05) to shrink that run's overshoot.
 
-- The key format changes, so it saves a new generation and should prune the
-  `b347…` (alpha.11) entries. The `398fd…` leftovers were deleted by hand
-  beforehand (2026-11-05) to shrink that run's overshoot, leaving 6.96GB:
-  6 cargo entries (6.25GB) and sccache (0.71GB).
-- Confirm `gh` exists on the `ubuntu-24.04-arm` image. The helper emits
-  `::error::` and skips pruning if it doesn't.
-- The next release bump after that should be an exact hit everywhere.
+- The key format changed, so every lineage saved a new `2ceebcab…`
+  generation.
+- Every save logged `verified:`, and each canonical writer pruned exactly
+  one `b347…` entry. That is 6 deletions across the 6 lineages.
+- `cargo-deps` losers logged the usual `Unable to reserve`, then verified
+  the winner's entry and pruned 0. This is the benign-race case the 60s
+  poll exists for.
+- `gh` is present on both `ubuntu-latest` and `ubuntu-24.04-arm`.
+- After the run: 7.20GB total, exactly 6 cargo entries (6.25GB), sccache
+  0.73GB (refilling), other 0.22GB.
+- Timings: legs 7.5–9m, `rust-checks` 3m, `msrv` 6m (sccache still cold
+  from the eviction).
+
+Remaining open (◐): the next release bump should be an exact hit on every
+cargo key, with no saves and no prunes.
 
 ## Verification
 
